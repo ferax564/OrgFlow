@@ -43,6 +43,10 @@ async function serve(root, port) {
     assert.match(home, /See the company/);
     const cta = await page.$eval('a.btn.primary', el => el.getAttribute('href'));
     assert.equal(cta, 'app.html');
+    assert.ok(await page.$('#how'));
+    assert.ok(await page.$('#using'));
+    const how = await page.$eval('#how h2', el => el.textContent);
+    assert.match(how, /planning session/);
     await page.goto(`http://127.0.0.1:${port}/app.html`, { waitUntil: 'networkidle0' });
     await page.evaluate(() => localStorage.clear());
     await page.reload({ waitUntil: 'networkidle0' });

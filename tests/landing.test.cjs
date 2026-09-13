@@ -33,3 +33,9 @@ test('login page shares site styles', () => {
   assert.match(html, /class="login-page"/);
   assert.doesNotMatch(html, /<style>/);
 });
+
+test('enterprise landing CSS can hide mode cards', () => {
+  const css = read('css/site.css');
+  assert.match(css, /html\[data-host="enterprise"\] \.modes/);
+  assert.match(css, /\.modes\[hidden\]/);
+});

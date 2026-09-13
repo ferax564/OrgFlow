@@ -1,0 +1,23 @@
+# Keycloak for local OIDC. Run OrgFlow on the host so browser redirects
+# to http://localhost:8080 and token exchange uses the same URL.
+#
+#   docker compose up
+#   AUTH_MODE=oidc KEYCLOAK_ISSUER=http://localhost:8080/realms/orgflow \
+#     KEYCLOAK_CLIENT_ID=orgflow KEYCLOAK_CLIENT_SECRET=orgflow-dev-secret \
+#     KEYCLOAK_REDIRECT_URI=http://127.0.0.1:8787/auth/callback \
+#     PUBLIC_URL=http://127.0.0.1:8787 node server/index.js
+#
+# Then open http://127.0.0.1:8787/auth/login (admin@example.com / admin).
+services:
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.3
+    command: start-dev --import-realm
+    environment:
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+      KC_HOSTNAME: localhost
+      KC_HOSTNAME_STRICT: false
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./server/keycloak:/opt/keycloak/data/import

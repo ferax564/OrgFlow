@@ -1,0 +1,46 @@
+{
+  "realm": "orgflow",
+  "enabled": true,
+  "registrationAllowed": false,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "sslRequired": "none",
+  "clients": [
+    {
+      "clientId": "orgflow",
+      "name": "OrgFlow",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "orgflow-dev-secret",
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "redirectUris": [
+        "http://localhost:8787/auth/callback",
+        "http://127.0.0.1:8787/auth/callback"
+      ],
+      "webOrigins": [
+        "http://localhost:8787",
+        "http://127.0.0.1:8787"
+      ]
+    }
+  ],
+  "users": [
+    {
+      "username": "admin",
+      "email": "admin@example.com",
+      "firstName": "Org",
+      "lastName": "Admin",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "admin",
+          "temporary": false
+        }
+      ]
+    }
+  ]
+}

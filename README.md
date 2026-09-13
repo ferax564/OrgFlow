@@ -117,6 +117,25 @@ The Actions `GITHUB_TOKEN` cannot turn Pages on (the Pages create API is an admi
 
 Until that is saved, `has_pages` stays false and `ferax564.github.io/OrgFlow` 404s even though the `gh-pages` branch has the site.
 
+## Enterprise host (optional)
+
+The Pages / here.now site stays private and local. For a shared organization behind **Keycloak** (or a local dev login), run the Node host:
+
+```bash
+npm run start:enterprise
+```
+
+That process serves the planner plus:
+
+- Workspace API (save/load the existing `orgflow.workspace` JSON; one org per tenant)
+- OIDC login (Keycloak) with an **httpOnly** session cookie — or `AUTH_MODE=dev` for local tests
+- Members: **admin / editor / viewer**, plus a separate **export** permission
+- Optional **subtree scope** (a position id): the API never sends seats outside that branch
+- Audit log of load, save and export
+- MCP read tools for Cursor / Claude (`node server/mcp-stdio.js` with a member token)
+
+Details, Docker Keycloak, AWS notes and the MCP snippet: [`server/README.md`](server/README.md).
+
 ## Tests
 
 ```bash

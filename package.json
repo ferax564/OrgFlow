@@ -5,6 +5,8 @@
   "description": "Interactive organization-chart and workforce-planning app that runs entirely in the browser.",
   "scripts": {
     "start": "python3 -m http.server 4173",
+    "start:enterprise": "node server/index.js",
+    "mcp": "node server/mcp-stdio.js",
     "test": "node --test tests/*.test.cjs"
   },
   "engines": {

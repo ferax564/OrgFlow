@@ -5,3 +5,7 @@ test-results/
 *.log
 .idea/
 .vscode/
+.env
+data/
+*.sqlite
+.herenow/

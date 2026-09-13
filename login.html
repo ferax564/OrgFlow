@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>OrgFlow — Sign in</title>
+  <link rel="icon" href="assets/favicon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="css/site.css" />
+  <style>
+    .login-card{max-width:420px;margin:12vh auto;padding:28px;background:var(--panel,#fff);border:1px solid var(--line,#e2e8f0);border-radius:16px}
+    .login-card h1{font-size:22px;margin:0 0 8px}
+    .login-card p{color:#64748b;line-height:1.5}
+    .login-card label{display:block;font-size:12px;font-weight:700;margin:14px 0 6px}
+    .login-card input,.login-card select{width:100%;padding:10px 12px;border-radius:10px;border:1px solid #e2e8f0}
+    .login-card button{margin-top:16px}
+    .err{color:#b42318;font-size:14px}
+  </style>
+</head>
+<body>
+  <div class="login-card">
+    <p class="kicker" style="letter-spacing:.08em;text-transform:uppercase;font-size:11px;font-weight:700;color:#4f46e5">OrgFlow enterprise</p>
+    <h1>Sign in</h1>
+    <p id="lead">This host stores one shared organization. Access is decided after login — Keycloak says who you are; OrgFlow decides what you may see.</p>
+    <p class="err" id="err" hidden></p>
+    <div id="oidc">
+      <a class="btn primary" href="/auth/login">Continue with Keycloak</a>
+    </div>
+    <form id="dev" hidden>
+      <label>Email <input name="email" type="email" required placeholder="you@company.com" /></label>
+      <label>Role
+        <select name="role">
+          <option value="admin">Admin</option>
+          <option value="editor">Editor</option>
+          <option value="viewer">Viewer</option>
+        </select>
+      </label>
+      <label>Subtree scope (optional position id) <input name="scopePositionId" placeholder="POS-003" /></label>
+      <label><input name="canExport" type="checkbox" checked /> Allow export</label>
+      <button class="btn primary" type="submit">Dev sign-in</button>
+    </form>
+  </div>
+  <script>
+    const params = new URLSearchParams(location.search);
+    const err = document.getElementById('err');
+    if (params.get('error') === 'not_member') {
+      err.hidden = false;
+      err.textContent = 'You signed in, but you are not a member of this organization. Ask an admin to add your email.';
+    }
+    fetch('/api/meta').then(r => r.json()).then(meta => {
+      if (meta.auth === 'dev') {
+        document.getElementById('oidc').hidden = true;
+        document.getElementById('dev').hidden = false;
+        document.getElementById('lead').textContent = 'Development sign-in is enabled (AUTH_MODE=dev). Use Keycloak in production.';
+      }
+    }).catch(() => {});
+    document.getElementById('dev').onsubmit = async e => {
+      e.preventDefault();
+      const fd = new FormData(e.target);
+      const res = await fetch('/auth/dev/login', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          email: fd.get('email'),
+          role: fd.get('role'),
+          scopePositionId: fd.get('scopePositionId'),
+          canExport: fd.get('canExport') === 'on'
+        })
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) { err.hidden = false; err.textContent = body.error || 'Sign-in failed.'; return; }
+      location.href = 'app.html';
+    };
+  </script>
+</body>
+</html>

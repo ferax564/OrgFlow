@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>OrgFlow — Admin</title>
+  <link rel="icon" href="assets/favicon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="css/site.css" />
+  <style>
+    main{max-width:960px;margin:40px auto;padding:0 20px 60px}
+    table{width:100%;border-collapse:collapse;font-size:14px}
+    th,td{text-align:left;padding:8px 10px;border-bottom:1px solid #e2e8f0;vertical-align:top}
+    input,select{padding:6px 8px;border-radius:8px;border:1px solid #e2e8f0}
+    .row{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0 24px}
+    pre{background:#0f172a;color:#e2e8f0;padding:12px;border-radius:10px;overflow:auto;font-size:12px}
+    .muted{color:#64748b}
+  </style>
+</head>
+<body>
+  <main>
+    <p><a href="app.html">← Planner</a></p>
+    <h1>Organization access</h1>
+    <p class="muted">One workspace per tenant. Roles: admin (members + replace org), editor (save), viewer (read). Export is a separate flag. Subtree scope is a position id; that person only receives that branch.</p>
+    <h2>Members</h2>
+    <form id="add" class="row">
+      <input name="email" type="email" required placeholder="email@company.com" />
+      <input name="name" placeholder="Name" />
+      <select name="role">
+        <option value="viewer">viewer</option>
+        <option value="editor">editor</option>
+        <option value="admin">admin</option>
+      </select>
+      <input name="scopePositionId" placeholder="Subtree POS-id (optional)" />
+      <label><input name="canExport" type="checkbox" /> Export</label>
+      <button class="btn primary" type="submit">Save member</button>
+    </form>
+    <table><thead><tr><th>Email</th><th>Role</th><th>Export</th><th>Scope</th><th></th></tr></thead><tbody id="members"></tbody></table>
+    <h2>MCP / API tokens</h2>
+    <p class="muted">Create a token for Cursor or Claude. It sees only what this member is allowed to see.</p>
+    <form id="token" class="row">
+      <input name="name" placeholder="Cursor on laptop" />
+      <button class="btn" type="submit">Create token</button>
+    </form>
+    <pre id="newToken" hidden></pre>
+    <table><thead><tr><th>Name</th><th>Prefix</th><th>Created</th><th></th></tr></thead><tbody id="tokens"></tbody></table>
+    <h2>Audit</h2>
+    <table><thead><tr><th>When</th><th>Who</th><th>Action</th><th>Detail</th></tr></thead><tbody id="audit"></tbody></table>
+  </main>
+  <script>
+    async function api(path, opts) {
+      const res = await fetch(path, { credentials: 'same-origin', headers: { accept: 'application/json', ...(opts?.body ? { 'content-type': 'application/json' } : {}) }, ...opts });
+      const body = await res.json().catch(() => ({}));
+      if (res.status === 401) { location.href = '/auth/login'; throw new Error('auth'); }
+      if (!res.ok) throw new Error(body.error || res.statusText);
+      return body;
+    }
+    async function refresh() {
+      const session = await api('/api/session');
+      if (!session.isAdmin) { document.querySelector('main').innerHTML = '<p>Admin only. <a href="app.html">Back</a></p>'; return; }
+      const members = await api('/api/members');
+      document.getElementById('members').innerHTML = members.members.map(m =>
+        `<tr><td>${m.email}<br><span class="muted">${m.name || ''}</span></td><td>${m.role}</td><td>${m.can_export ? 'yes' : 'no'}</td><td>${m.scope_position_id || 'whole org'}</td><td><button data-del="${m.user_id}">Remove</button></td></tr>`
+      ).join('');
+      const tokens = await api('/api/tokens');
+      document.getElementById('tokens').innerHTML = tokens.tokens.map(t =>
+        `<tr><td>${t.name}</td><td>${t.token_prefix}</td><td>${t.created_at.slice(0,19).replace('T',' ')}</td><td><button data-tok="${t.id}">Revoke</button></td></tr>`
+      ).join('');
+      const audit = await api('/api/audit?limit=50');
+      document.getElementById('audit').innerHTML = audit.events.map(e =>
+        `<tr><td>${e.created_at.slice(0,19).replace('T',' ')}</td><td>${e.email}</td><td>${e.action}</td><td>${e.detail}</td></tr>`
+      ).join('');
+    }
+    document.getElementById('add').onsubmit = async e => {
+      e.preventDefault();
+      const fd = new FormData(e.target);
+      await api('/api/members', { method: 'PUT', body: JSON.stringify({ email: fd.get('email'), name: fd.get('name'), role: fd.get('role'), scopePositionId: fd.get('scopePositionId'), canExport: fd.get('canExport') === 'on' }) });
+      e.target.reset();
+      refresh();
+    };
+    document.getElementById('token').onsubmit = async e => {
+      e.preventDefault();
+      const fd = new FormData(e.target);
+      const created = await api('/api/tokens', { method: 'POST', body: JSON.stringify({ name: fd.get('name') || 'MCP' }) });
+      const pre = document.getElementById('newToken');
+      pre.hidden = false;
+      pre.textContent = `ORGFLOW_API_URL=${location.origin}\nORGFLOW_API_TOKEN=${created.token}\n\nCursor mcp.json:\n${JSON.stringify({ mcpServers: { orgflow: { command: 'node', args: ['server/mcp-stdio.js'], env: { ORGFLOW_API_URL: location.origin, ORGFLOW_API_TOKEN: created.token } } } }, null, 2)}`;
+      refresh();
+    };
+    document.body.addEventListener('click', async e => {
+      const del = e.target.closest('[data-del]');
+      const tok = e.target.closest('[data-tok]');
+      if (del) { await api('/api/members/' + del.dataset.del, { method: 'DELETE' }); refresh(); }
+      if (tok) { await api('/api/tokens/' + tok.dataset.tok, { method: 'DELETE' }); refresh(); }
+    });
+    refresh().catch(err => { if (err.message !== 'auth') document.querySelector('main').insertAdjacentHTML('afterbegin', '<p class="err">' + err.message + '</p>'); });
+  </script>
+</body>
+</html>

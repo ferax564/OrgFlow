@@ -270,7 +270,7 @@ function saveBranding(){
   if(!brandingDraft||logoBusy)return;const title=$('#brandChartTitle').value.trim();if(!title){brandingError('Enter a chart title.');$('#brandChartTitle').focus();return}
   const candidate={...brandingDraft,companyName:$('#brandCompany').value.trim(),chartTitle:title,includeExports:$('#brandExports').checked,footer:$('#brandFooter').value.trim()};
   try{localStorage.setItem(BRANDING_KEY,JSON.stringify(candidate))}catch{brandingError('Browser storage is full or unavailable. Your previous branding is unchanged. Try a smaller logo or enable local storage.');return}
-  branding=candidate;applyBranding();closeBranding();toast('Company branding saved');
+  branding=candidate;applyBranding();closeBranding();toast('Company branding saved');afterEnterprisePersist();
 }
 const PLANNING_KEY = 'orgflow.planning.v2';
 const HISTORY_KEY = 'orgflow.history.v1';
@@ -366,7 +366,18 @@ function recordUndoFrom(previousText,note){
   persistLocalHistory(previousText,note);
   updateUndoButtons();
 }
+function enterpriseBlocksWrite(){
+  return Boolean(window.OrgFlowEnterprise?.enabled && !window.OrgFlowEnterprise.canWrite);
+}
+function afterEnterprisePersist(){
+  if(window.OrgFlowEnterprise?.queueSave) window.OrgFlowEnterprise.queueSave();
+}
+async function allowEnterpriseExport(kind){
+  if(!window.OrgFlowEnterprise?.enabled) return true;
+  return window.OrgFlowEnterprise.recordExport(kind);
+}
 function commitPlanning(next,message='',opts={}){
+  if(enterpriseBlocksWrite())throw new Error('You can view this organization but you cannot save changes.');
   if(modelLoadError)throw new Error('Saved workspace could not be loaded. Restore a backup or reopen in a browser with local storage before editing.');
   const checked=validatePlanning(next);
   const serialized=JSON.stringify(checked);let stale=false;
@@ -375,7 +386,7 @@ function commitPlanning(next,message='',opts={}){
   lastSavedPlanningText=serialized;
   workspace=checked;syncProjection();
   if(opts.recordUndo!==false)recordUndoFrom(previous,opts.historyNote||message||'Edit');
-  render();updateUndoButtons();if(message)toast(message);return true;
+  render();updateUndoButtons();if(message)toast(message);afterEnterprisePersist();return true;
 }
 function updateScenario(mutator,message=''){
   const next=structuredClone(workspace),scenario=next.scenarios.find(s=>s.id===next.activeScenarioId);
@@ -675,6 +686,7 @@ function reparentPosition(id,newManagerId){
   catch(error){toast(error.message);}
 }
 function beginCardDrag(e,node){
+  if(enterpriseBlocksWrite())return;
   if(e.button!==0||e.target.closest?.('[data-action="collapse"]'))return;
   const id=node.dataset.id,startX=e.clientX,startY=e.clientY;let moved=false;
   const clearTargets=()=>$$('.node.drop-target').forEach(n=>n.classList.remove('drop-target'));
@@ -818,7 +830,7 @@ async function restoreWorkspace(file){
     const entries={[BRANDING_KEY]:JSON.stringify(next.branding),'orgflow.theme':next.theme,'orgflow.palette':next.palette,'orgflow.planning.view.v2':JSON.stringify(next.view),[PLANNING_KEY]:JSON.stringify(next.planning)},previous={};
     try{for(const key of Object.keys(entries))previous[key]=localStorage.getItem(key);for(const [key,value] of Object.entries(entries))localStorage.setItem(key,value);}
     catch{for(const [key,value] of Object.entries(previous)){try{value===null?localStorage.removeItem(key):localStorage.setItem(key,value);}catch{}}throw new Error('Browser storage is unavailable or full. Restore was not applied.');}
-    workspace=next.planning;lastSavedPlanningText=JSON.stringify(workspace);branding=next.branding;modelLoadError='';$('#loadError').classList.add('hidden');undoStack=[];redoStack=[];updateUndoButtons();syncProjection();hidePositionEditor();setPalette(next.palette,false);setTheme(next.theme,false);restoreView(next.view);applyBranding();render();centerChart();toast(`Restored ${count} scenario(s)`);
+    workspace=next.planning;lastSavedPlanningText=JSON.stringify(workspace);branding=next.branding;modelLoadError='';$('#loadError').classList.add('hidden');undoStack=[];redoStack=[];updateUndoButtons();syncProjection();hidePositionEditor();setPalette(next.palette,false);setTheme(next.theme,false);restoreView(next.view);applyBranding();render();centerChart();toast(`Restored ${count} scenario(s)`);afterEnterprisePersist();
   }catch(error){alert(`Workspace not restored.\n\n${error.message||'The file could not be read.'}`);}
 }
 function safeGet(key){try{return localStorage.getItem(key);}catch{return null;}}
@@ -834,6 +846,8 @@ function applySampleChrome(sampleId, persist=true){
   branding=nextBrand; applyBranding(); setPalette(sample.palette,false); setTheme(sample.theme,false);
 }
 function replaceWorkspace(next,{brandingNext=null,palette='indigo',theme='light',view=null,sampleId='',message=''}={}){
+  if(enterpriseBlocksWrite())throw new Error('You can view this organization but you cannot replace it.');
+  if(window.OrgFlowEnterprise?.enabled && !window.OrgFlowEnterprise.isAdmin)throw new Error('Only admins can replace the shared organization.');
   const previous=lastSavedPlanningText,checked=validatePlanning(next),serialized=JSON.stringify(checked);
   localStorage.setItem(PLANNING_KEY,serialized);
   lastSavedPlanningText=serialized;workspace=checked;modelLoadError='';$('#loadError').classList.add('hidden');
@@ -847,6 +861,7 @@ function replaceWorkspace(next,{brandingNext=null,palette='indigo',theme='light'
   if(view)restoreView(view);else applyDefaultFilters();
   hidePositionEditor();syncProjection();render();centerChart();updateUndoButtons();
   const aside=document.querySelector('aside');if(aside)aside.scrollTop=0;
+  afterEnterprisePersist();
 }
 function loadSampleWorkspace(sampleId,{empty=false,skipConfirm=false}={}){
   if(modelLoadError){toast('Restore your workspace before loading an example.');return;}
@@ -931,7 +946,7 @@ $('#brandingModal').addEventListener('keydown',e=>{
   if(e.key!=='Tab')return;const focusables=$$('#brandingModal button:not([disabled]),#brandingModal input:not([hidden]):not([disabled]),#brandingModal select:not([disabled])').filter(x=>x.getClientRects().length);
   const first=focusables[0],last=focusables.at(-1);if(e.shiftKey&&document.activeElement===first){e.preventDefault();last?.focus()}else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first?.focus()}
 });
-$('#backupBtn').onclick=exportWorkspace;$('#restoreBtn').onclick=()=>{$('#restoreInput').value='';$('#restoreInput').click()};$('#restoreInput').onchange=e=>restoreWorkspace(e.target.files[0]);
+$('#backupBtn').onclick=async()=>{if(await allowEnterpriseExport('workspace'))exportWorkspace();};$('#restoreBtn').onclick=()=>{if(enterpriseBlocksWrite()){toast('You can view this organization but you cannot restore over it.');return;}$('#restoreInput').value='';$('#restoreInput').click()};$('#restoreInput').onchange=e=>restoreWorkspace(e.target.files[0]);
 
 
 svg.addEventListener('pointerdown',e=>{const node=e.target.closest?.('.node');if(node)beginCardDrag(e,node);});
@@ -944,8 +959,8 @@ $('#search').addEventListener('input',()=>{const q=$('#search').value.trim().toL
 $('#asOf').onchange=render;$('#dateFilter').onchange=render;$('#depthSeg').onclick=e=>{const b=e.target.closest('button[data-depth]');if(!b)return;maxDepth=+b.dataset.depth;$$('#depthSeg button').forEach(x=>x.classList.toggle('active',x===b));render()};
 $('#expandBtn').onclick=()=>{collapsed.clear();maxDepth=99;$$('#depthSeg button').forEach(x=>x.classList.toggle('active',x.dataset.depth==='99'));render()};
 $('#collapseBtn').onclick=()=>{collapsed=new Set(people.filter(p=>p.type==='Team Leader').map(p=>p.id));maxDepth=2;$$('#depthSeg button').forEach(x=>x.classList.toggle('active',x.dataset.depth==='2'));render()};$('#centerBtn').onclick=fitChart;
-$('#csvBtn').onclick=exportCSV;$('#templateBtn').onclick=downloadTemplate;$('#importBtn').onclick=triggerImport;$('#sideImportBtn').onclick=triggerImport;$('#fileInput').onchange=e=>e.target.files[0]&&importFile(e.target.files[0]);
-$('#exportBtn').onclick=e=>{e.stopPropagation();$('#paletteMenu').classList.remove('open');$('#exportMenu').classList.toggle('open')};$('#exportMenu').onclick=e=>{const b=e.target.closest('button[data-export]');if(!b)return;closeMenus();if(b.dataset.export==='png')exportCurrentPNG();else if(b.dataset.export==='groups')exportGroups();else if(b.dataset.export==='pdf')exportBoardPack();else if(b.dataset.export==='html')exportShareableHTML();else if(b.dataset.export==='people')exportPeopleCSV();else if(b.dataset.export==='workspace')exportWorkspace();else if(b.dataset.export==='restore')$('#restoreBtn').click();else exportCSV()};document.addEventListener('click',e=>{if(!e.target.closest('.menu-wrap'))closeMenus()});
+$('#csvBtn').onclick=async()=>{if(await allowEnterpriseExport('csv'))exportCSV()};$('#templateBtn').onclick=downloadTemplate;$('#importBtn').onclick=()=>{if(enterpriseBlocksWrite()){toast('You can view this organization but you cannot import.');return;}triggerImport();};$('#sideImportBtn').onclick=()=>$('#importBtn').click();$('#fileInput').onchange=e=>e.target.files[0]&&importFile(e.target.files[0]);
+$('#exportBtn').onclick=e=>{e.stopPropagation();$('#paletteMenu').classList.remove('open');$('#exportMenu').classList.toggle('open')};$('#exportMenu').onclick=async e=>{const b=e.target.closest('button[data-export]');if(!b)return;closeMenus();const kind=b.dataset.export;if(kind==='restore'){if(enterpriseBlocksWrite()){toast('You can view this organization but you cannot restore over it.');return;}$('#restoreBtn').click();return;}if(!(await allowEnterpriseExport(kind)))return;if(kind==='png')exportCurrentPNG();else if(kind==='groups')exportGroups();else if(kind==='pdf')exportBoardPack();else if(kind==='html')exportShareableHTML();else if(kind==='people')exportPeopleCSV();else if(kind==='workspace')exportWorkspace();else exportCSV()};document.addEventListener('click',e=>{if(!e.target.closest('.menu-wrap'))closeMenus()});
 $('#importClose').onclick=$('#importCancel').onclick=()=>closeDialog('importModal');$('#importModal').addEventListener('click',e=>{if(e.target===$('#importModal'))$('#importModal').classList.remove('open')});$('#importConfirm').onclick=confirmImport;
 window.addEventListener('keydown',e=>{
   const tag=(e.target.tagName||'').toLowerCase();
@@ -954,7 +969,26 @@ window.addEventListener('keydown',e=>{
   if((e.metaKey||e.ctrlKey)&&e.key.toLowerCase()==='z'&&!typing){e.preventDefault();if(e.shiftKey)redoChange();else undoChange();return;}
   if(e.key==='Escape'){if($('#brandingModal').classList.contains('open')){closeBranding();return;}if($('#welcomeModal')?.classList.contains('open')){closeWelcome();return;}if($('#historyModal')?.classList.contains('open')){closeDialog('historyModal');return;}hidePositionEditor();$('#importModal').classList.remove('open');closeMenus()}
 });window.addEventListener('resize',render);
-initPlanning();loadSavedPlanningView();setupTheme();setupChips();setupPlanningEvents();updateUndoButtons();
+function paintPlanner(){
+  loadSavedPlanningView();setupTheme();setupChips();setupPlanningEvents();updateUndoButtons();
+}
+function startLocalPlanner(){
+  initPlanning();paintPlanner();
+  render();setTimeout(centerChart,0);maybeShowWelcome();
+}
+function applyEnterpriseWorkspace(doc){
+  const next=validatePlanning(doc.planning);
+  workspace=next;lastSavedPlanningText=JSON.stringify(next);modelLoadError='';$('#loadError').classList.add('hidden');
+  try{localStorage.setItem(PLANNING_KEY,lastSavedPlanningText);}catch{}
+  branding=cleanBranding(doc.branding);try{localStorage.setItem(BRANDING_KEY,JSON.stringify(branding));}catch{}
+  undoStack=[];redoStack=[];syncProjection();hidePositionEditor();
+  setPalette(doc.palette||'indigo',false);setTheme(doc.theme==='dark'?'dark':'light',false);
+  applyBranding();paintPlanner();
+  if(doc.view)restoreView(doc.view);
+  render();setTimeout(centerChart,0);
+}
+window.applyEnterpriseWorkspace=applyEnterpriseWorkspace;
+window.enterpriseWorkspacePayload=()=>({format:'orgflow.workspace',version:2,exportedAt:new Date().toISOString(),planning:workspace,branding,theme:document.documentElement.dataset.theme,palette:document.documentElement.dataset.palette,view:captureView()});
 $('#undoBtn').onclick=undoChange;$('#redoBtn').onclick=redoChange;$('#helpBtn').onclick=()=>openWelcome(true);
 $('#historyBtn').onclick=openHistory;$('#historyClose').onclick=()=>closeDialog('historyModal');
 $('#historyRows').onclick=e=>{const b=e.target.closest('[data-history]');if(b)restoreHistoryIndex(Number(b.dataset.history));};
@@ -973,4 +1007,4 @@ $('#exampleCedarBtn').onclick=()=>loadStarterTemplate('cedar-kind');
 
 $('#zoomOut').onclick=()=>setZoom(zoom-.1);$('#zoomIn').onclick=()=>setZoom(zoom+.1);
 $$('input[name="importMode"]').forEach(input=>input.onchange=renderImportReview);
-render();setTimeout(centerChart,0);maybeShowWelcome();
+

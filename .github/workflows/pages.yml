@@ -5,10 +5,11 @@ on:
     branches: [main]
   workflow_dispatch:
 
+# Official actions/deploy-pages cannot create a Pages site: GITHUB_TOKEN is
+# not allowed to call the Pages enablement API. Publish the static site to
+# the gh-pages branch instead; Settings → Pages can then serve that branch.
 permissions:
-  contents: read
-  pages: write
-  id-token: write
+  contents: write
 
 concurrency:
   group: pages
@@ -17,25 +18,27 @@ concurrency:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
       - name: Assemble public site
         run: |
           mkdir -p site
           : > site/.nojekyll
-          cp -a index.html app.html 404.html robots.txt manifest.webmanifest LICENSE css js assets examples site/
+          cp -a index.html app.html 404.html robots.txt manifest.webmanifest LICENSE README.md css js assets examples site/
           test -f site/index.html
           test -f site/app.html
           test -f site/js/templates.js
           test -f site/.nojekyll
-      - uses: actions/configure-pages@v5
-        with:
-          enablement: true
-      - uses: actions/upload-pages-artifact@v3
-        with:
-          path: site
-      - id: deployment
-        uses: actions/deploy-pages@v4
+      - name: Publish gh-pages branch
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cd site
+          git init
+          git checkout -b gh-pages
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Publish OrgFlow site"
+          git remote add origin "https://github.com/${GITHUB_REPOSITORY}.git"
+          git -c http.extraheader="AUTHORIZATION: bearer ${GITHUB_TOKEN}" push -f origin gh-pages

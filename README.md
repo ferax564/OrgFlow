@@ -107,7 +107,15 @@ More detail: [`examples/README.md`](examples/README.md).
 
 ## GitHub Pages
 
-Pushing to `main` runs `.github/workflows/pages.yml`. It enables GitHub Pages for the repository if it is not already on, copies `index.html`, `app.html`, CSS, JS, assets and examples into a `site/` folder with `.nojekyll`, and deploys that folder. Asset paths are relative so the site works at `https://ferax564.github.io/OrgFlow/`.
+Pushing to `main` runs `.github/workflows/pages.yml`. That job copies `index.html`, `app.html`, CSS, JS, assets, examples and `.nojekyll` into a `gh-pages` branch. Asset paths are relative so the site works at `https://ferax564.github.io/OrgFlow/` once Pages is serving that branch.
+
+The Actions `GITHUB_TOKEN` cannot turn Pages on (the Pages create API is an admin operation). One-time, in the GitHub UI:
+
+1. **Settings → Pages**
+2. **Build and deployment → Source:** Deploy from a branch
+3. **Branch:** `gh-pages` / `/ (root)` → Save
+
+Until that is saved, `has_pages` stays false and `ferax564.github.io/OrgFlow` 404s even though the `gh-pages` branch has the site.
 
 ## Tests
 

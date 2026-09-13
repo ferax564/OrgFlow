@@ -107,6 +107,7 @@
     <div class="scenario-select-wrap"><label for="scenarioSelect">Organization / scenario</label><select id="scenarioSelect" aria-label="Active scenario"></select></div>
     <button class="btn" id="newScenarioBtn" title="Create a scenario" aria-label="Create a scenario">＋ <span class="scenario-button-label">Scenario</span></button>
     <button class="iconbtn" id="scenarioSettingsBtn" title="Scenario details" aria-label="Scenario details">⋯</button>
+    <button class="iconbtn" id="filterToggle" aria-label="Open filters" title="Filters" aria-expanded="false">☷</button>
   </div>
   <nav class="plan-tabs" aria-label="Workspace views"><button data-view="chart" class="active" aria-pressed="true">Org chart</button><button data-view="positions" aria-pressed="false">Positions</button><button data-view="compare" aria-pressed="false">Compare</button></nav>
 </div>
@@ -131,7 +132,7 @@
 
   <div class="toolbar">
     <div class="crumb"><strong id="chartTitle">Organization</strong><span>/ Positions</span><span class="date-pill" id="datePill"></span></div>
-    <div class="toolbar-actions"><button class="iconbtn" id="filterToggle" aria-label="Open chart filters" title="Filters">☷</button><button class="iconbtn" id="zoomOut" aria-label="Zoom out" title="Zoom out">−</button><span class="zoom-label" id="zoomLabel">100%</span><button class="iconbtn" id="zoomIn" aria-label="Zoom in" title="Zoom in">＋</button>
+    <div class="toolbar-actions"><button class="iconbtn" id="zoomOut" aria-label="Zoom out" title="Zoom out">−</button><span class="zoom-label" id="zoomLabel">100%</span><button class="iconbtn" id="zoomIn" aria-label="Zoom in" title="Zoom in">＋</button>
       <button class="iconbtn" id="centerBtn" title="Fit chart" aria-label="Fit chart"><svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="8" stroke="currentColor" stroke-width="2"/></svg></button>
       <button class="iconbtn" id="expandBtn" title="Expand all" aria-label="Expand all"><svg viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>
       <button class="iconbtn" id="collapseBtn" title="Collapse to team leaders" aria-label="Collapse to team leaders"><svg viewBox="0 0 24 24" fill="none"><path d="M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>

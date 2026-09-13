@@ -135,3 +135,13 @@ test('example CSV files round-trip through import', () => {
     assert.ok(merged.positions.length >= 14);
   }
 });
+
+test('sanitizeChipFilters keeps new role types when every legacy type was selected', () => {
+  const all = OrgFlow.ROLE_TYPES;
+  const legacy = OrgFlow.LEGACY_ROLE_TYPES;
+  assert.deepEqual(OrgFlow.sanitizeChipFilters(undefined, all, legacy), all);
+  assert.deepEqual(OrgFlow.sanitizeChipFilters(legacy, all, legacy), all);
+  assert.deepEqual(OrgFlow.sanitizeChipFilters(['Head'], all, legacy), ['Head']);
+  assert.deepEqual(OrgFlow.sanitizeChipFilters(['Head', 'Specialist'], all, legacy), ['Head', 'Specialist']);
+  assert.equal(OrgFlow.sanitizeChipFilters(legacy, all, legacy).includes('Specialist'), true);
+});

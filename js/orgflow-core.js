@@ -386,6 +386,16 @@
     Object.assign(s, validateScenarioData(s));
     return s;
   }
+  // Pre-Specialist chips. A saved “every type on” view from that era should gain Specialist.
+  const LEGACY_ROLE_TYPES = ['Head', 'Team Leader', 'Engineer', 'Graduate', 'Intern'];
+  function sanitizeChipFilters(saved, all, previousAll = all) {
+    if (!Array.isArray(saved)) return all.slice();
+    const picked = new Set(saved.filter(x => all.includes(x)));
+    if (previousAll.every(x => saved.includes(x))) {
+      for (const x of all) if (!previousAll.includes(x)) picked.add(x);
+    }
+    return all.filter(x => picked.has(x));
+  }
   function emptyWorkspace(today, stamp = new Date().toISOString()) {
     return validatePlanning({
       version: 2,
@@ -399,10 +409,10 @@
   }
 
   return {
-    ROLE_TYPES, STATUSES, HIRING_STATES, POSITION_FIELDS, DIFF_FIELDS, POSITION_CSV_COLUMNS, ALIASES,
+    ROLE_TYPES, STATUSES, HIRING_STATES, LEGACY_ROLE_TYPES, POSITION_FIELDS, DIFF_FIELDS, POSITION_CSV_COLUMNS, ALIASES,
     esc, slug, makeId, isISODate, cleanString, fmtDate, fteText, csvEscape, csvRows, positionCSVValues,
     detectDelimiter, parseCSV, normHeader, headerMap, normalizeType, normalizeStatus, normalizeDate,
     validatePeopleData, validateScenarioData, validatePlanning, migrateLegacy, projection, totals,
-    scenarioChanges, fieldValue, prepareImport, makeImportScenario, emptyWorkspace
+    scenarioChanges, fieldValue, prepareImport, makeImportScenario, emptyWorkspace, sanitizeChipFilters
   };
 });

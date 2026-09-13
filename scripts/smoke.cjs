@@ -46,6 +46,8 @@ async function serve(root, port) {
     assert.equal(brand, 'Harbor & Co');
     const count = await page.$eval('#countVisible', el => el.textContent);
     assert.equal(count, '17');
+    const dateFilter = await page.$eval('#dateFilter', el => el.checked);
+    assert.equal(dateFilter, false);
     await page.click('#search');
     await page.type('#search', 'Maya Chen');
     await page.waitForSelector('#chart .node.search-hit');
@@ -81,6 +83,14 @@ async function serve(root, port) {
     assert.equal(emptyBrand, 'OrgFlow');
     const headActive = await page.evaluate(() => [...document.querySelectorAll('#roleChips .chip')].find(b => b.dataset.value === 'Head')?.classList.contains('active'));
     assert.equal(headActive, true);
+    await page.setViewport({ width: 390, height: 844 });
+    await page.click('.plan-tabs [data-view="positions"]');
+    await page.waitForSelector('#positionsPanel:not(.hidden)');
+    const mobileFilters = await page.$eval('#filterToggle', el => {
+      const r = el.getBoundingClientRect();
+      return { display: getComputedStyle(el).display, visible: getComputedStyle(el).display !== 'none' && r.width > 0 && r.height > 0 };
+    });
+    assert.equal(mobileFilters.visible, true, 'mobile Positions view should expose filters');
     console.log('browser smoke ok');
   } finally {
     await browser.close();

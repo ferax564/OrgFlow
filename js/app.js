@@ -1,12 +1,12 @@
 /* OrgFlow UI. Domain rules live in orgflow-core.js. */
 const {
-  ROLE_TYPES, STATUSES, HIRING_STATES, POSITION_FIELDS, DIFF_FIELDS,
+  ROLE_TYPES, STATUSES, HIRING_STATES, LEGACY_ROLE_TYPES, POSITION_FIELDS, DIFF_FIELDS,
   POSITION_CSV_COLUMNS, ALIASES, esc, slug, makeId, isISODate, cleanString,
   fmtDate, fteText, csvEscape, csvRows, positionCSVValues, detectDelimiter,
   parseCSV, headerMap, normalizeType, normalizeStatus, normalizeDate,
   validatePeopleData, validateScenarioData, validatePlanning, migrateLegacy,
   projection: projectScenario, totals, scenarioChanges, fieldValue,
-  emptyWorkspace
+  emptyWorkspace, sanitizeChipFilters
 } = OrgFlow;
 
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
@@ -283,7 +283,7 @@ let lastEditorFocus=null;
 function openDrawer(id,newPosition=false){
   if(modelLoadError){toast('Restore your workspace before editing.');return;}
   lastEditorFocus=document.activeElement;selectedId=newPosition?null:id;selectedSourceScenario=workspace.activeScenarioId;
-  const p=activeScenario().positions.find(x=>x.id===id)||{id:'POS-'+makeId('').slice(-8).toUpperCase(),title:'',type:'Engineer',group:'',managerId:'',fte:1,status:'Not approved',hiringState:'Vacant',personId:'',startDate:$('#asOf').value||today,endDate:''};
+  const p=activeScenario().positions.find(x=>x.id===id)||{id:'POS-'+makeId('').slice(-8).toUpperCase(),title:'',type:'Engineer',group:'',managerId:'',fte:1,status:'Not approved',hiringState:'Vacant',personId:'',startDate:($('#dateFilter').checked&&$('#asOf').value)||today,endDate:''};
   $('#formValidation').classList.remove('show');$('#drawerTitle').textContent=newPosition?'New position':p.title;
   $('#drawerScenario').textContent=`${activeScenario().name} / ${newPosition?'new position':'position details'}`;
   $('#fPositionId').value=p.id;$('#fPositionId').readOnly=!newPosition;$('#fTitle').value=p.title;$('#fGroup').value=p.group;$('#fFte').value=p.fte;
@@ -314,7 +314,8 @@ function saveDrawer(){
       if(p.personId){if(!name)throw new Error('A filled position requires a person name.');const existing=s.employees.find(x=>x.id===p.personId);if(existing)existing.name=name;else s.employees.push({id:p.personId,name});}
       const index=s.positions.findIndex(x=>x.id===selectedId);if(index>=0)s.positions[index]=p;else s.positions.push(p);
     },'Position saved');
-    hidePositionEditor();
+    activeRoles.add(p.type);activeStatuses.add(p.status);activeHiring.add(p.hiringState);setupChips();
+    hidePositionEditor();render();
   }catch(error){showValidation(error.message);}
 }
 function deleteSelected(){
@@ -400,13 +401,20 @@ function saveScenarioDialog(){
   try{const name=$('#scenarioName').value.trim(),description=$('#scenarioDescription').value.trim();if(scenarioDialogMode==='create')createScenario(name,$('#scenarioSource').value,description);else updateScenario(s=>{s.name=name;s.description=description;},'Scenario details saved');closeDialog('scenarioModal');}
   catch(error){$('#scenarioValidation').textContent=error.message;$('#scenarioValidation').classList.add('show');}
 }
+function setFiltersOpen(open){
+  $('.layout')?.classList.toggle('filters-open',!!open);
+  const btn=$('#filterToggle');if(!btn)return;
+  btn.setAttribute('aria-expanded',String(!!open));
+  btn.title=open?'Close filters':'Filters';
+  btn.setAttribute('aria-label',open?'Close filters':'Open filters');
+}
 function applyDefaultFilters(){
   activeRoles=new Set(ROLE_TYPES);activeStatuses=new Set(STATUSES);activeHiring=new Set(HIRING_STATES);
   $('#search').value='';$('#compareSearch').value='';$('#dateFilter').checked=false;$('#asOf').value=today;
   maxDepth=99;collapsed.clear();zoom=1;showChartChanges=true;compareKind='all';currentView='chart';
   compareBaselineId='current';compareTargetId=workspace?.scenarios.find(s=>s.id!=='current')?.id||'current';
   $$('#depthSeg button').forEach(b=>b.classList.toggle('active',b.dataset.depth==='99'));
-  $('.layout')?.classList.remove('filters-open');
+  setFiltersOpen(false);
   setupChips();
 }
 function resetFilters(){
@@ -431,7 +439,8 @@ function setupPlanningEvents(){
   $('#comparisonRows').onclick=e=>{const b=e.target.closest('[data-diff-toggle]');if(!b)return;const row=$$('[data-detail-id]').find(r=>r.dataset.detailId===b.dataset.diffToggle);const expanded=row.classList.contains('hidden');row.classList.toggle('hidden',!expanded);b.setAttribute('aria-expanded',String(expanded));b.textContent=expanded?'Hide':'Details';};
   $('#comparisonCSVBtn').onclick=exportComparisonCSV;$('#comparisonPNGBtn').onclick=exportComparisonPNG;
   $('#resetFilters').onclick=resetFilters;
-  $('#filterToggle').onclick=()=>$('.layout').classList.toggle('filters-open');$('#closeFilters').onclick=()=>$('.layout').classList.remove('filters-open');
+  $('#filterToggle').onclick=()=>setFiltersOpen(!$('.layout').classList.contains('filters-open'));
+  $('#closeFilters').onclick=()=>setFiltersOpen(false);
   $('#directoryClose').onclick=()=>closeDialog('directoryModal');
   for(const id of ['scenarioModal','directoryModal']){
     $('#'+id).addEventListener('click',e=>{if(e.target===$('#'+id))closeDialog(id);});
@@ -594,7 +603,7 @@ function exportWorkspace(){
 }
 function sanitizeView(view={},planning=workspace){
   const ids=new Set(planning.scenarios.find(s=>s.id===planning.activeScenarioId).positions.map(p=>p.id));
-  return {roles:Array.isArray(view.roles)?view.roles.filter(r=>ROLE_TYPES.includes(r)):ROLE_TYPES,statuses:Array.isArray(view.statuses)?view.statuses.filter(r=>STATUSES.includes(r)):STATUSES,hiring:Array.isArray(view.hiring)?view.hiring.filter(r=>HIRING_STATES.includes(r)):HIRING_STATES,maxDepth:[1,2,3,99].includes(view.maxDepth)?view.maxDepth:99,collapsed:Array.isArray(view.collapsed)?view.collapsed.filter(id=>ids.has(id)):[],search:String(view.search||'').slice(0,1000),asOf:isISODate(view.asOf||'')?view.asOf:today,dateFilter:view.dateFilter!==false,view:['chart','positions','compare'].includes(view.view)?view.view:'chart',zoom:typeof view.zoom==='number'&&view.zoom>=.15&&view.zoom<=1.75?view.zoom:1,showChartChanges:view.showChartChanges!==false,compareBaselineId:String(view.compareBaselineId||'current').slice(0,150),compareTargetId:String(view.compareTargetId||'').slice(0,150),compareKind:['all','added','removed','changed','unchanged'].includes(view.compareKind)?view.compareKind:'all',compareSearch:String(view.compareSearch||'').slice(0,200)};
+  return {roles:sanitizeChipFilters(view.roles,ROLE_TYPES,LEGACY_ROLE_TYPES),statuses:sanitizeChipFilters(view.statuses,STATUSES),hiring:sanitizeChipFilters(view.hiring,HIRING_STATES),maxDepth:[1,2,3,99].includes(view.maxDepth)?view.maxDepth:99,collapsed:Array.isArray(view.collapsed)?view.collapsed.filter(id=>ids.has(id)):[],search:String(view.search||'').slice(0,1000),asOf:isISODate(view.asOf||'')?view.asOf:today,dateFilter:view.dateFilter===true,view:['chart','positions','compare'].includes(view.view)?view.view:'chart',zoom:typeof view.zoom==='number'&&view.zoom>=.15&&view.zoom<=1.75?view.zoom:1,showChartChanges:view.showChartChanges!==false,compareBaselineId:String(view.compareBaselineId||'current').slice(0,150),compareTargetId:String(view.compareTargetId||'').slice(0,150),compareKind:['all','added','removed','changed','unchanged'].includes(view.compareKind)?view.compareKind:'all',compareSearch:String(view.compareSearch||'').slice(0,200)};
 }
 async function validateWorkspace(input){
   if(!input||input.format!=='orgflow.workspace'||![1,2].includes(input.version))throw new Error('This is not a supported OrgFlow workspace backup. Use Import CSV for spreadsheets.');

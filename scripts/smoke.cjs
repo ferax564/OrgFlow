@@ -91,6 +91,50 @@ async function serve(root, port) {
     assert.equal(emptyBrand, 'OrgFlow');
     const headActive = await page.evaluate(() => [...document.querySelectorAll('#roleChips .chip')].find(b => b.dataset.value === 'Head')?.classList.contains('active'));
     assert.equal(headActive, true);
+    await page.click('#exampleFirstLightBtn');
+    await page.waitForFunction(() => document.querySelector('#brandName')?.textContent === 'First Light');
+    assert.equal(await page.$eval('#countVisible', el => el.textContent), '8');
+    const dotted = await page.$$eval('#chart .dotted-connector', ns => ns.length);
+    assert.ok(dotted >= 1, 'startup template should draw a dotted line');
+    await page.click('#chart .node');
+    await page.waitForSelector('#drawer.open');
+    const location = await page.$eval('#fLocation', el => el.value);
+    assert.ok(location.length, 'cards should expose a location field');
+    await page.click('#drawerClose');
+    const beforeManager = await page.evaluate(() => {
+      const s = JSON.parse(localStorage.getItem('orgflow.planning.v2')).scenarios[0];
+      return s.positions.find(p => p.id === 'POS-004').managerId;
+    });
+    assert.equal(beforeManager, 'POS-002');
+    await page.evaluate(() => reparentPosition('POS-004', 'POS-001'));
+    await page.waitForFunction(() => {
+      const s = JSON.parse(localStorage.getItem('orgflow.planning.v2')).scenarios[0];
+      return s.positions.find(p => p.id === 'POS-004').managerId === 'POS-001';
+    });
+    assert.equal(await page.$eval('#undoBtn', el => el.disabled), false);
+    await page.click('#undoBtn');
+    await page.waitForFunction(() => {
+      const s = JSON.parse(localStorage.getItem('orgflow.planning.v2')).scenarios[0];
+      return s.positions.find(p => p.id === 'POS-004').managerId === 'POS-002';
+    });
+    const htmlExport = await page.evaluate(async () => {
+      const orig = downloadBlob; let captured = null;
+      downloadBlob = (blob, name) => { captured = { size: blob.size, type: blob.type, name }; };
+      await exportShareableHTML();
+      downloadBlob = orig;
+      return captured;
+    });
+    assert.match(htmlExport.name, /snapshot\.html$/);
+    assert.ok(htmlExport.size > 1000);
+    const pdfExport = await page.evaluate(async () => {
+      const orig = downloadBlob; let captured = null;
+      downloadBlob = (blob, name) => { captured = { size: blob.size, type: blob.type, name }; };
+      await exportBoardPack();
+      downloadBlob = orig;
+      return captured;
+    });
+    assert.match(pdfExport.name, /board-pack-.*\.pdf$/);
+    assert.ok(pdfExport.size > 1000, 'board pack should be a non-empty PDF');
     await page.setViewport({ width: 390, height: 844 });
     await page.click('.plan-tabs [data-view="positions"]');
     await page.waitForSelector('#positionsPanel:not(.hidden)');

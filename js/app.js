@@ -846,6 +846,7 @@ function replaceWorkspace(next,{brandingNext=null,palette='indigo',theme='light'
   setPalette(palette,false);setTheme(theme,false);
   if(view)restoreView(view);else applyDefaultFilters();
   hidePositionEditor();syncProjection();render();centerChart();updateUndoButtons();
+  const aside=document.querySelector('aside');if(aside)aside.scrollTop=0;
 }
 function loadSampleWorkspace(sampleId,{empty=false,skipConfirm=false}={}){
   if(modelLoadError){toast('Restore your workspace before loading an example.');return;}

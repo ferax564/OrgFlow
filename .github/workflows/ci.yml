@@ -1,0 +1,25 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Run domain tests
+        run: npm test
+      - name: Check example screenshots exist
+        run: |
+          test -f examples/harbor-and-co/chart.png
+          test -f examples/harbor-and-co/positions.png
+          test -f examples/harbor-and-co/compare.png
+          test -f examples/northstar-commerce/chart.png
+          test -f examples/northstar-commerce/positions.png
+          test -f examples/northstar-commerce/compare.png

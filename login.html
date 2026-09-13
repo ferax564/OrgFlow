@@ -20,7 +20,7 @@
   <div class="login-card">
     <p class="kicker" style="letter-spacing:.08em;text-transform:uppercase;font-size:11px;font-weight:700;color:#4f46e5">OrgFlow enterprise</p>
     <h1>Sign in</h1>
-    <p id="lead">This host stores one shared organization. Access is decided after login — Keycloak says who you are; OrgFlow decides what you may see.</p>
+    <p id="lead">Local sign-in does not need Keycloak. Use any email. The first person becomes admin; later people pick editor or viewer, or an admin adds them.</p>
     <p class="err" id="err" hidden></p>
     <div id="oidc">
       <a class="btn primary" href="/auth/login">Continue with Keycloak</a>
@@ -50,7 +50,7 @@
       if (meta.auth === 'dev') {
         document.getElementById('oidc').hidden = true;
         document.getElementById('dev').hidden = false;
-        document.getElementById('lead').textContent = 'Development sign-in is enabled (AUTH_MODE=dev). Use Keycloak in production.';
+        document.getElementById('lead').textContent = 'Local sign-in (no Keycloak). Use any email. The first person is always admin, even if another role is selected.';
       }
     }).catch(() => {});
     document.getElementById('dev').onsubmit = async e => {

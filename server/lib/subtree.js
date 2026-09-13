@@ -138,6 +138,7 @@ function pickIncomingMeta(incoming, stored) {
 
 function mergeDocument(stored, incoming, scopePositionId) {
   if (!scopePositionId) return structuredClone(incoming);
+  if (!incoming || !incoming.planning || !Array.isArray(incoming.planning.scenarios)) return structuredClone(stored);
   const storedById = new Map(stored.planning.scenarios.map(s => [s.id, s]));
   const incomingById = new Map((incoming.planning?.scenarios || []).map(s => [s.id, s]));
   const scenarios = stored.planning.scenarios.map(s => mergeScenario(s, incomingById.get(s.id) || s, scopePositionId));

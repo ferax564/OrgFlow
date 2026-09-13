@@ -95,7 +95,12 @@ test('enterprise API: roles, export flag, subtree, audit, MCP', async (t) => {
   const deniedExport = await api(base, viewer.cookie, '/api/exports', { method: 'POST', body: JSON.stringify({ kind: 'pdf' }) });
   assert.equal(deniedExport.res.status, 403);
 
-  const exporter = await login(base, { email: 'view@example.com', role: 'viewer', canExport: true });
+  const granted = await api(base, admin.cookie, '/api/members', {
+    method: 'PUT',
+    body: JSON.stringify({ email: 'view@example.com', role: 'viewer', canExport: true })
+  });
+  assert.equal(granted.res.status, 200, granted.json.error);
+  const exporter = await login(base, { email: 'view@example.com' });
   const allowedExport = await api(base, exporter.cookie, '/api/exports', { method: 'POST', body: JSON.stringify({ kind: 'pdf' }) });
   assert.equal(allowedExport.res.status, 200);
 

@@ -119,22 +119,26 @@ Until that is saved, `has_pages` stays false and `ferax564.github.io/OrgFlow` 40
 
 ## Enterprise host (optional)
 
-The Pages / here.now site stays private and local. For a shared organization behind **Keycloak** (or a local dev login), run the Node host:
+## Enterprise host (optional)
+
+The Pages / here.now site stays private and local. For a **shared** organization on your machine or AWS, run the Node host. **Keycloak is not required locally.**
 
 ```bash
 npm run start:enterprise
 ```
 
-That process serves the planner plus:
+Open http://127.0.0.1:8787/login.html — any email, first person is admin. The process binds to localhost.
+
+That host also provides:
 
 - Workspace API (save/load the existing `orgflow.workspace` JSON; one org per tenant)
-- OIDC login (Keycloak) with an **httpOnly** session cookie — or `AUTH_MODE=dev` for local tests
+- Optional Keycloak OIDC in production (`AUTH_MODE=oidc`) with an **httpOnly** session cookie
 - Members: **admin / editor / viewer**, plus a separate **export** permission
 - Optional **subtree scope** (a position id): the API never sends seats outside that branch
 - Audit log of load, save and export
-- MCP read tools for Cursor / Claude (`node server/mcp-stdio.js` with a member token)
+- MCP read tools for Cursor / Claude (`npm run mcp` with a member token)
 
-Details, Docker Keycloak, AWS notes and the MCP snippet: [`server/README.md`](server/README.md).
+Details, hardening notes, Docker Keycloak, AWS: [`server/README.md`](server/README.md).
 
 ## Tests
 
@@ -142,7 +146,7 @@ Details, Docker Keycloak, AWS notes and the MCP snippet: [`server/README.md`](se
 npm test
 ```
 
-The suite covers CSV parsing, spreadsheet-formula escaping, scenario validation, dotted-line rules, custom-field CSV round-trips, starter templates, comparison diffs, example workspaces and filter-set migration (including Specialist after older saved views).
+The suite covers CSV parsing, spreadsheet-formula escaping, scenario validation, dotted-line rules, custom-field CSV round-trips, starter templates, comparison diffs, example workspaces, filter-set migration, and enterprise ACL/stress cases (forged cookies, path traversal, oversized bodies, last-admin protection, concurrent saves).
 
 With Chrome and `puppeteer-core` installed locally:
 

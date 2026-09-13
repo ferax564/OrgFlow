@@ -1,9 +1,25 @@
 #!/usr/bin/env node
 'use strict';
 
-const { createApp } = require('./lib/app');
+const { createApp, assertProductionConfig } = require('./lib/app');
 
 const { server, config } = createApp();
-server.listen(config.port, () => {
-  console.log(`OrgFlow enterprise listening on ${config.publicUrl} (${config.authMode})`);
+try {
+  assertProductionConfig(config);
+} catch (err) {
+  console.error(err.message);
+  process.exit(1);
+}
+
+server.listen(config.port, config.host, () => {
+  const local = `http://127.0.0.1:${config.port}`;
+  console.log(`OrgFlow enterprise on ${local} (bound ${config.host}:${config.port})`);
+  if (config.authMode === 'dev') {
+    console.log('Local sign-in is on — Keycloak is not required.');
+    console.log(`Open ${local}/login.html  (first email becomes admin)`);
+    console.log('Do not expose this port. AUTH_MODE=dev lets anyone on this machine create a session.');
+  } else {
+    console.log(`OIDC issuer ${config.issuer}`);
+    console.log(`Login ${config.publicUrl}/auth/login`);
+  }
 });

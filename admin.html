@@ -47,6 +47,9 @@
     <table><thead><tr><th>When</th><th>Who</th><th>Action</th><th>Detail</th></tr></thead><tbody id="audit"></tbody></table>
   </main>
   <script>
+    function esc(s) {
+      return String(s ?? '').replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
+    }
     async function api(path, opts) {
       const res = await fetch(path, { credentials: 'same-origin', headers: { accept: 'application/json', ...(opts?.body ? { 'content-type': 'application/json' } : {}) }, ...opts });
       const body = await res.json().catch(() => ({}));
@@ -59,15 +62,15 @@
       if (!session.isAdmin) { document.querySelector('main').innerHTML = '<p>Admin only. <a href="app.html">Back</a></p>'; return; }
       const members = await api('/api/members');
       document.getElementById('members').innerHTML = members.members.map(m =>
-        `<tr><td>${m.email}<br><span class="muted">${m.name || ''}</span></td><td>${m.role}</td><td>${m.can_export ? 'yes' : 'no'}</td><td>${m.scope_position_id || 'whole org'}</td><td><button data-del="${m.user_id}">Remove</button></td></tr>`
+        `<tr><td>${esc(m.email)}<br><span class="muted">${esc(m.name || '')}</span></td><td>${esc(m.role)}</td><td>${m.can_export ? 'yes' : 'no'}</td><td>${esc(m.scope_position_id || 'whole org')}</td><td><button data-del="${esc(m.user_id)}">Remove</button></td></tr>`
       ).join('');
       const tokens = await api('/api/tokens');
       document.getElementById('tokens').innerHTML = tokens.tokens.map(t =>
-        `<tr><td>${t.name}</td><td>${t.token_prefix}</td><td>${t.created_at.slice(0,19).replace('T',' ')}</td><td><button data-tok="${t.id}">Revoke</button></td></tr>`
+        `<tr><td>${esc(t.name)}</td><td>${esc(t.token_prefix)}</td><td>${esc((t.created_at || '').slice(0,19).replace('T',' '))}</td><td><button data-tok="${esc(t.id)}">Revoke</button></td></tr>`
       ).join('');
       const audit = await api('/api/audit?limit=50');
       document.getElementById('audit').innerHTML = audit.events.map(e =>
-        `<tr><td>${e.created_at.slice(0,19).replace('T',' ')}</td><td>${e.email}</td><td>${e.action}</td><td>${e.detail}</td></tr>`
+        `<tr><td>${esc((e.created_at || '').slice(0,19).replace('T',' '))}</td><td>${esc(e.email)}</td><td>${esc(e.action)}</td><td>${esc(e.detail)}</td></tr>`
       ).join('');
     }
     document.getElementById('add').onsubmit = async e => {
@@ -92,7 +95,7 @@
       if (del) { await api('/api/members/' + del.dataset.del, { method: 'DELETE' }); refresh(); }
       if (tok) { await api('/api/tokens/' + tok.dataset.tok, { method: 'DELETE' }); refresh(); }
     });
-    refresh().catch(err => { if (err.message !== 'auth') document.querySelector('main').insertAdjacentHTML('afterbegin', '<p class="err">' + err.message + '</p>'); });
+    refresh().catch(err => { if (err.message !== 'auth') document.querySelector('main').insertAdjacentHTML('afterbegin', '<p class="err">' + esc(err.message) + '</p>'); });
   </script>
 </body>
 </html>

@@ -23,6 +23,8 @@ function send(res, status, body, headers = {}) {
     'content-length': payload.length,
     'cache-control': headers['cache-control'] || 'no-store',
     'x-content-type-options': 'nosniff',
+    'x-frame-options': 'DENY',
+    'referrer-policy': 'no-referrer',
     ...headers
   });
   res.end(payload);
@@ -36,18 +38,36 @@ function readBody(req, limit = MAX_BYTES) {
   return new Promise((resolve, reject) => {
     const chunks = [];
     let size = 0;
+    let done = false;
+    const fail = err => { if (!done) { done = true; reject(err); } };
     req.on('data', chunk => {
       size += chunk.length;
       if (size > limit) {
-        reject(Object.assign(new Error('Request is too large.'), { status: 413 }));
+        fail(Object.assign(new Error('Request is too large.'), { status: 413 }));
         req.destroy();
         return;
       }
       chunks.push(chunk);
     });
-    req.on('end', () => resolve(Buffer.concat(chunks)));
-    req.on('error', reject);
+    req.on('end', () => { if (!done) { done = true; resolve(Buffer.concat(chunks)); } });
+    req.on('error', fail);
   });
+}
+
+async function readJson(req, res, limit = 16 * 1024) {
+  const raw = await readBody(req, limit);
+  if (!raw.length) return {};
+  try {
+    const parsed = JSON.parse(raw.toString('utf8'));
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      sendError(res, 400, 'JSON object required.');
+      return null;
+    }
+    return parsed;
+  } catch {
+    sendError(res, 400, 'Body must be JSON.');
+    return null;
+  }
 }
 
 function mime(file) {
@@ -70,24 +90,33 @@ function mime(file) {
 }
 
 function safeStatic(urlPath) {
-  const decoded = decodeURIComponent(urlPath.split('?')[0]);
+  let decoded;
+  try { decoded = decodeURIComponent((urlPath || '').split('?')[0]); }
+  catch { return null; }
   let rel = decoded === '/' ? 'index.html' : decoded.replace(/^\/+/, '');
   if (!rel || rel.endsWith('/')) rel += 'index.html';
-  if (rel.includes('\0') || rel.split('/').some(p => p === '..')) return null;
+  if (rel.includes('\0') || rel.split(/[/\\]/).some(p => p === '..')) return null;
   const top = rel.split('/')[0];
-  if (['server', 'data', 'node_modules', '.git', '.env', '.herenow'].includes(top)) return null;
+  if (!top || top.startsWith('.') || ['server', 'data', 'node_modules', 'tests', 'Dockerfile', 'docker-compose.yml'].includes(top)) return null;
   const abs = path.normalize(path.join(ROOT, rel));
   if (!abs.startsWith(ROOT + path.sep) && abs !== ROOT) return null;
+  const relToRoot = path.relative(ROOT, abs);
+  if (!relToRoot || relToRoot.startsWith('..') || path.isAbsolute(relToRoot)) return null;
   return abs;
 }
 
+const INSECURE_SECRET = 'dev-insecure-orgflow-secret-change-me';
+
 function loadConfig(env = process.env) {
   const authMode = (env.AUTH_MODE || 'dev').toLowerCase() === 'oidc' ? 'oidc' : 'dev';
+  const port = Number(env.PORT || 8787);
+  const host = env.HOST || (authMode === 'dev' ? '127.0.0.1' : '0.0.0.0');
   return {
     authMode,
-    port: Number(env.PORT || 8787),
-    publicUrl: (env.PUBLIC_URL || `http://127.0.0.1:${env.PORT || 8787}`).replace(/\/$/, ''),
-    sessionSecret: env.SESSION_SECRET || 'dev-insecure-orgflow-secret-change-me',
+    host,
+    port,
+    publicUrl: (env.PUBLIC_URL || `http://127.0.0.1:${port}`).replace(/\/$/, ''),
+    sessionSecret: env.SESSION_SECRET || INSECURE_SECRET,
     secureCookies: env.SECURE_COOKIES === '1' || env.SECURE_COOKIES === 'true',
     issuer: env.KEYCLOAK_ISSUER || '',
     clientId: env.KEYCLOAK_CLIENT_ID || 'orgflow',
@@ -97,6 +126,14 @@ function loadConfig(env = process.env) {
     tenantSlug: env.TENANT_SLUG || 'default',
     dataDir: env.DATA_DIR || path.join(ROOT, 'data')
   };
+}
+
+function assertProductionConfig(cfg) {
+  if (cfg.authMode !== 'oidc') return;
+  if (!cfg.issuer) throw new Error('KEYCLOAK_ISSUER is required when AUTH_MODE=oidc.');
+  if (!cfg.sessionSecret || cfg.sessionSecret === INSECURE_SECRET) {
+    throw new Error('SESSION_SECRET must be set to a long random value when AUTH_MODE=oidc.');
+  }
 }
 
 function visibleDocument(store, membership) {
@@ -261,31 +298,49 @@ function createApp(options = {}) {
           sendError(res, 404, 'Dev sign-in is disabled.');
           return;
         }
-        const body = JSON.parse((await readBody(req, 64 * 1024)).toString('utf8') || '{}');
+        const body = await readJson(req, res, 64 * 1024);
+        if (!body) return;
         const email = String(body.email || '').trim().toLowerCase();
-        if (!email || !email.includes('@')) {
+        if (!email || !email.includes('@') || email.length > 200) {
           sendError(res, 400, 'A valid email is required.');
           return;
         }
         const user = store.upsertUser({
           issuerSub: 'dev:' + email,
           email,
-          name: body.name || email
+          name: String(body.name || email).slice(0, 120)
         });
-        let membership = store.ensureMembership(user, {
-          role: body.role,
-          canExport: body.canExport,
-          scopePositionId: body.scopePositionId || ''
-        });
-        if (!membership || body.role || body.canExport != null || body.scopePositionId) {
-          membership = store.putMembership({
-            email,
-            name: body.name || email,
-            role: body.role || membership?.role || (store.listMembers().length ? 'viewer' : 'admin'),
-            canExport: body.canExport,
-            scopePositionId: body.scopePositionId || membership?.scope_position_id || '',
-            issuerSub: 'dev:' + email
-          });
+        const existing = store.getMembership(user.id);
+        if (!existing) {
+          const count = store.listMembers().length;
+          if (count === 0) {
+            store.putMembership({
+              email,
+              name: user.name,
+              role: 'admin',
+              canExport: true,
+              scopePositionId: '',
+              issuerSub: 'dev:' + email
+            });
+          } else {
+            const requested = body.role;
+            if (requested === 'admin') {
+              sendError(res, 403, 'The first local sign-in is admin. Later admin access is granted on the Admin page.');
+              return;
+            }
+            if (requested && !['editor', 'viewer'].includes(requested)) {
+              sendError(res, 400, 'Role must be editor or viewer.');
+              return;
+            }
+            store.putMembership({
+              email,
+              name: user.name,
+              role: requested || 'viewer',
+              canExport: body.canExport,
+              scopePositionId: String(body.scopePositionId || '').slice(0, 150),
+              issuerSub: 'dev:' + email
+            });
+          }
         }
         const cookie = setSessionCookie(res, store, user.id, cfg);
         store.audit({ userId: user.id, action: 'login', detail: { via: 'dev' } });
@@ -317,18 +372,31 @@ function createApp(options = {}) {
             return;
           }
           const raw = await readBody(req);
-          let parsed;
-          try { parsed = JSON.parse(raw.toString('utf8')); }
-          catch { sendError(res, 400, 'Body must be JSON.'); return; }
+          const parsed = (() => {
+            try { return JSON.parse(raw.toString('utf8') || '{}'); }
+            catch { return null; }
+          })();
+          if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+            sendError(res, 400, 'Body must be JSON.');
+            return;
+          }
           let incoming;
           try { incoming = validateDocument(parsed.workspace || parsed, raw.length); }
           catch (err) { sendError(res, 400, err.message); return; }
           const row = store.getWorkspaceRow();
-          const stored = JSON.parse(row.document);
+          let stored;
+          try { stored = JSON.parse(row.document); }
+          catch { sendError(res, 500, 'Stored workspace is unreadable.'); return; }
           const expected = parsed.version != null ? parsed.version : (req.headers['if-match'] ? Number(String(req.headers['if-match']).replace(/"/g, '')) : row.version);
-          const next = membership.scope_position_id
-            ? validateDocument(mergeDocument(stored, incoming, membership.scope_position_id))
-            : incoming;
+          let next;
+          try {
+            next = membership.scope_position_id
+              ? validateDocument(mergeDocument(stored, incoming, membership.scope_position_id))
+              : incoming;
+          } catch (err) {
+            sendError(res, 400, err.message);
+            return;
+          }
           try {
             const saved = store.saveWorkspace(next, user.id, expected);
             store.audit({ userId: user.id, action: 'save', detail: { version: saved.version, scoped: Boolean(membership.scope_position_id) } });
@@ -349,7 +417,8 @@ function createApp(options = {}) {
             sendError(res, 403, 'You are not allowed to export this organization.');
             return;
           }
-          const body = JSON.parse((await readBody(req, 16 * 1024)).toString('utf8') || '{}');
+          const body = await readJson(req, res);
+          if (!body) return;
           const kind = EXPORT_KINDS.includes(body.kind) ? body.kind : 'workspace';
           store.audit({ userId: user.id, action: 'export', detail: { kind } });
           send(res, 200, { ok: true, kind });
@@ -366,12 +435,14 @@ function createApp(options = {}) {
         }
         if (p.startsWith('/api/org/people/') && method === 'GET') {
           const id = decodeURIComponent(p.slice('/api/org/people/'.length));
+          if (!id) { sendError(res, 400, 'Person id required.'); return; }
           try { send(res, 200, query.getPerson(visibleDocument(store, membership).doc, id, url.searchParams.get('scenario'))); }
           catch (err) { sendError(res, 404, err.message); }
           return;
         }
         if (p.startsWith('/api/org/span/') && method === 'GET') {
           const id = decodeURIComponent(p.slice('/api/org/span/'.length));
+          if (!id) { sendError(res, 400, 'Position id required.'); return; }
           try { send(res, 200, query.spanOfControl(visibleDocument(store, membership).doc, id, url.searchParams.get('scenario'))); }
           catch (err) { sendError(res, 404, err.message); }
           return;
@@ -404,15 +475,15 @@ function createApp(options = {}) {
         }
         if (p === '/api/members' && method === 'PUT') {
           if (membership.role !== 'admin') { sendError(res, 403, 'Only admins can change members.'); return; }
-          const body = JSON.parse((await readBody(req, 16 * 1024)).toString('utf8') || '{}');
+          const body = await readJson(req, res);
+          if (!body) return;
           try {
             const member = store.putMembership({
               email: body.email,
               name: body.name,
               role: body.role,
               canExport: body.canExport,
-              scopePositionId: body.scopePositionId || '',
-              issuerSub: body.issuerSub
+              scopePositionId: body.scopePositionId || ''
             });
             store.audit({ userId: user.id, action: 'member.update', detail: { email: member.email, role: member.role, canExport: member.can_export, scopePositionId: member.scope_position_id } });
             send(res, 200, { member });
@@ -422,6 +493,7 @@ function createApp(options = {}) {
         if (p.startsWith('/api/members/') && method === 'DELETE') {
           if (membership.role !== 'admin') { sendError(res, 403, 'Only admins can remove members.'); return; }
           const userId = decodeURIComponent(p.slice('/api/members/'.length));
+          if (!userId) { sendError(res, 400, 'Member id required.'); return; }
           try {
             store.deleteMembership(userId);
             store.audit({ userId: user.id, action: 'member.remove', detail: { userId } });
@@ -441,7 +513,8 @@ function createApp(options = {}) {
           return;
         }
         if (p === '/api/tokens' && method === 'POST') {
-          const body = JSON.parse((await readBody(req, 16 * 1024)).toString('utf8') || '{}');
+          const body = await readJson(req, res);
+          if (!body) return;
           const created = store.createApiToken(user.id, body.name || 'MCP');
           store.audit({ userId: user.id, action: 'token.create', detail: { id: created.id, name: body.name || 'MCP' } });
           send(res, 201, { id: created.id, token: created.token, prefix: created.prefix, warning: 'Copy this token now. It is not shown again.' });
@@ -449,6 +522,7 @@ function createApp(options = {}) {
         }
         if (p.startsWith('/api/tokens/') && method === 'DELETE') {
           const id = decodeURIComponent(p.slice('/api/tokens/'.length));
+          if (!id) { sendError(res, 400, 'Token id required.'); return; }
           store.deleteToken(id, user.id, membership.role === 'admin');
           store.audit({ userId: user.id, action: 'token.revoke', detail: { id } });
           send(res, 200, { ok: true });
@@ -456,7 +530,8 @@ function createApp(options = {}) {
         }
 
         if (p === '/api/mcp' && method === 'POST') {
-          const body = JSON.parse((await readBody(req, 1024 * 1024)).toString('utf8') || '{}');
+          const body = await readJson(req, res, 1024 * 1024);
+          if (!body) return;
           send(res, 200, handleMcp(body, () => visibleDocument(store, membership).doc));
           return;
         }
@@ -475,6 +550,18 @@ function createApp(options = {}) {
         return;
       }
       const buf = fs.readFileSync(file);
+      if (method === 'HEAD') {
+        res.writeHead(200, {
+          'content-type': mime(file),
+          'content-length': buf.length,
+          'cache-control': path.extname(file) === '.html' ? 'no-store' : 'public, max-age=300',
+          'x-content-type-options': 'nosniff',
+          'x-frame-options': 'DENY',
+          'referrer-policy': 'no-referrer'
+        });
+        res.end();
+        return;
+      }
       send(res, 200, buf, { 'content-type': mime(file), 'cache-control': path.extname(file) === '.html' ? 'no-store' : 'public, max-age=300' });
     } catch (err) {
       if (err.status) {
@@ -538,4 +625,4 @@ function handleMcp(message, getDoc) {
   return { jsonrpc: '2.0', id, error: { code: -32601, message: 'Method not found' } };
 }
 
-module.exports = { createApp, loadConfig, mcpTools, callMcpTool, handleMcp, emptyDocument };
+module.exports = { createApp, loadConfig, assertProductionConfig, mcpTools, callMcpTool, handleMcp, emptyDocument, safeStatic };

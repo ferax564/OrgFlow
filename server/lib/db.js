@@ -115,12 +115,18 @@ function createStore(db, options = {}) {
   }
 
   function upsertUser({ issuerSub, email, name }) {
-    const existing = db.prepare('SELECT * FROM users WHERE issuer_sub = ?').get(issuerSub);
-    if (existing) {
-      db.prepare('UPDATE users SET email = ?, name = ? WHERE id = ?').run(email, name || existing.name, existing.id);
-      return db.prepare('SELECT * FROM users WHERE id = ?').get(existing.id);
+    const normalizedEmail = String(email || '').trim().toLowerCase();
+    const existingSub = db.prepare('SELECT * FROM users WHERE issuer_sub = ?').get(issuerSub);
+    if (existingSub) {
+      db.prepare('UPDATE users SET email = ?, name = ? WHERE id = ?').run(normalizedEmail, name || existingSub.name, existingSub.id);
+      return db.prepare('SELECT * FROM users WHERE id = ?').get(existingSub.id);
     }
-    const user = { id: newId('usr'), issuer_sub: issuerSub, email, name: name || email, created_at: nowIso() };
+    const existingEmail = db.prepare('SELECT * FROM users WHERE email = ?').get(normalizedEmail);
+    if (existingEmail) {
+      db.prepare('UPDATE users SET name = ? WHERE id = ?').run(name || existingEmail.name, existingEmail.id);
+      return db.prepare('SELECT * FROM users WHERE id = ?').get(existingEmail.id);
+    }
+    const user = { id: newId('usr'), issuer_sub: issuerSub, email: normalizedEmail, name: name || normalizedEmail, created_at: nowIso() };
     db.prepare('INSERT INTO users (id, issuer_sub, email, name, created_at) VALUES (?, ?, ?, ?, ?)')
       .run(user.id, user.issuer_sub, user.email, user.name, user.created_at);
     return user;
@@ -163,14 +169,20 @@ function createStore(db, options = {}) {
 
   function putMembership({ email, name, role, canExport, scopePositionId, issuerSub }) {
     if (!['admin', 'editor', 'viewer'].includes(role)) throw new Error('Role must be admin, editor or viewer.');
+    const normalizedEmail = String(email || '').trim().toLowerCase();
+    if (!normalizedEmail || !normalizedEmail.includes('@') || normalizedEmail.length > 200) throw new Error('A valid email is required.');
     const user = upsertUser({
-      issuerSub: issuerSub || 'local:' + String(email).trim().toLowerCase(),
-      email: String(email).trim().toLowerCase(),
-      name: name || email
+      issuerSub: issuerSub || 'local:' + normalizedEmail,
+      email: normalizedEmail,
+      name: String(name || normalizedEmail).slice(0, 120)
     });
     const existing = getMembership(user.id);
+    if (existing?.role === 'admin' && role !== 'admin') {
+      const admins = db.prepare("SELECT COUNT(*) AS n FROM memberships WHERE tenant_id = ? AND role = 'admin'").get(tenantId).n;
+      if (admins <= 1) throw new Error('Cannot demote the last admin.');
+    }
     const exportFlag = canExport == null ? (role === 'viewer' ? 0 : 1) : (canExport ? 1 : 0);
-    const scope = scopePositionId || '';
+    const scope = String(scopePositionId || '').slice(0, 150);
     if (existing) {
       db.prepare('UPDATE memberships SET role = ?, can_export = ?, scope_position_id = ? WHERE tenant_id = ? AND user_id = ?')
         .run(role, exportFlag, scope, tenantId, user.id);

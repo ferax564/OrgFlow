@@ -20,6 +20,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
       - name: Assemble public site
         run: |
           mkdir -p site
@@ -30,15 +32,16 @@ jobs:
           test -f site/js/templates.js
           test -f site/.nojekyll
       - name: Publish gh-pages branch
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          cd site
-          git init
-          git checkout -b gh-pages
+          set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A
-          git commit -m "Publish OrgFlow site"
-          git remote add origin "https://github.com/${GITHUB_REPOSITORY}.git"
-          git -c http.extraheader="AUTHORIZATION: bearer ${GITHUB_TOKEN}" push -f origin gh-pages
+          git -C site init
+          git -C site checkout -b gh-pages
+          git -C site config user.name "github-actions[bot]"
+          git -C site config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git -C site add -A
+          git -C site commit -m "Publish OrgFlow site"
+          # Push through this checkout so we reuse its Actions credentials.
+          git fetch "$PWD/site" gh-pages
+          git push -f origin FETCH_HEAD:refs/heads/gh-pages

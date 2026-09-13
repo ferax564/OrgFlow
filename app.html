@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light" data-palette="indigo">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<meta name="color-scheme" content="light dark" />
+<meta name="theme-color" content="#4f46e5" />
+<meta name="description" content="OrgFlow is a private, in-browser organization chart and workforce-planning app. Positions stay separate from people, with scenario comparison, CSV import and branded PNG exports." />
+<meta name="application-name" content="OrgFlow" />
+<meta property="og:title" content="OrgFlow — Interactive org chart" />
+<meta property="og:description" content="Plan headcount, compare scenarios and export branded org charts. All data stays in your browser." />
+<meta property="og:type" content="website" />
+<meta property="og:image" content="examples/harbor-and-co/chart.png" />
+<meta name="twitter:card" content="summary_large_image" />
+<title>OrgFlow — App</title>
+<link rel="canonical" href="app.html" />
+<link rel="icon" href="assets/favicon.svg" type="image/svg+xml" />
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.svg" />
+<link rel="manifest" href="manifest.webmanifest" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'" />
+<link rel="stylesheet" href="css/app.css" />
+</head>
+<body>
+<a class="skip-link" href="#chart">Skip to organization chart</a>
+<noscript><p class="noscript-banner">OrgFlow needs JavaScript to draw the chart. Enable JavaScript or restore a workspace backup from another browser.</p></noscript>
+<div class="app">
+<header>
+  <div class="brand">
+    <div class="logo" id="companyLogo"><svg viewBox="0 0 24 24" fill="none"><path d="M12 4v4M5 20v-5h14v5M5 15v-3h14v3M8 8h8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></div>
+    <div class="brand-title"><span id="brandName">OrgFlow</span><small id="brandSubline">Interactive organization map</small></div>
+  </div>
+  <div class="head-actions">
+    <button class="btn" id="brandingBtn" title="Company branding" aria-label="Company branding"><svg viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="18" height="18" rx="4" stroke="currentColor" stroke-width="1.8"/><path d="m4 16 5-5 4 4 3-3 5 5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><circle cx="15.5" cy="7.5" r="1.5" fill="currentColor"/></svg><span class="label">Branding</span></button>
+    <div class="menu-wrap">
+      <button class="iconbtn" id="paletteBtn" title="Choose colour palette" aria-label="Choose colour palette"><span class="palette-icon" aria-hidden="true"><i></i><i></i><i></i></span></button>
+      <div class="menu palette-menu" id="paletteMenu">
+        <div class="palette-menu-head"><strong>Colour palette</strong><span>Independent from light / dark mode</span></div>
+        <button class="palette-option" data-palette="indigo"><span class="palette-name"><span class="palette-swatches"><i style="background:#4f46e5"></i><i style="background:#7c3aed"></i><i style="background:#eef2ff"></i></span><span><b>OrgFlow Indigo</b><small>Original palette</small></span></span></button>
+        <button class="palette-option" data-palette="crimson"><span class="palette-name"><span class="palette-swatches"><i style="background:#f50537"></i><i style="background:#1a1a1a"></i><i style="background:#b3b3b3"></i></span><span><b>Crimson</b><small>Red · black · functional grey</small></span></span></button>
+        <button class="palette-option" data-palette="graphite"><span class="palette-name"><span class="palette-swatches"><i style="background:#20252b"></i><i style="background:#7d8793"></i><i style="background:#d9dde2"></i></span><span><b>Graphite</b><small>Neutral engineering workspace</small></span></span></button>
+        <button class="palette-option" data-palette="ocean"><span class="palette-name"><span class="palette-swatches"><i style="background:#0284c7"></i><i style="background:#38bdf8"></i><i style="background:#e9f6fd"></i></span><span><b>Ocean</b><small>Cool blue technical palette</small></span></span></button>
+        <button class="palette-option" data-palette="emerald"><span class="palette-name"><span class="palette-swatches"><i style="background:#059669"></i><i style="background:#34d399"></i><i style="background:#eafaf4"></i></span><span><b>Emerald</b><small>Calm green palette</small></span></span></button>
+      </div>
+    </div>
+    <button class="iconbtn" id="themeBtn" title="Toggle dark mode" aria-label="Toggle dark mode"></button>
+    <button class="iconbtn" id="undoBtn" title="Undo" aria-label="Undo last change" disabled>↺</button>
+    <button class="iconbtn" id="redoBtn" title="Redo" aria-label="Redo" disabled>↻</button>
+    <button class="iconbtn" id="helpBtn" title="Tour" aria-label="Show tour">?</button>
+    <a class="btn ghost site-home" href="index.html">Home</a>
+    <button class="btn" id="importBtn" aria-label="Import CSV" title="Import CSV"><svg viewBox="0 0 24 24" fill="none"><path d="M12 3v12m0 0 4-4m-4 4-4-4M5 20h14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="label">Import CSV</span></button>
+    <input id="fileInput" type="file" accept=".csv,text/csv" hidden />
+    <button class="btn" id="addBtn" aria-label="Add position" title="Add position"><svg viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg><span class="label">Add position</span></button>
+    <div class="menu-wrap">
+      <button class="btn primary" id="exportBtn" aria-label="Export chart or workspace" title="Export chart or workspace"><svg viewBox="0 0 24 24" fill="none"><path d="M12 4v11m0 0 4-4m-4 4-4-4M5 20h14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="label">Export</span><span>⌄</span></button>
+      <div class="menu" id="exportMenu">
+        <button data-export="png">Current view as PNG</button>
+        <button data-export="groups">One PNG per group (ZIP)</button>
+        <button data-export="pdf">Board pack (PDF)</button>
+        <button data-export="html">Shareable HTML snapshot</button>
+        <div class="sep"></div>
+        <button data-export="csv">Positions + assignments (CSV)</button>
+        <button data-export="people">People directory (CSV)</button>
+        <button data-export="workspace">Workspace backup (JSON)</button>
+        <button data-export="restore">Restore workspace…</button>
+      </div>
+    </div>
+  </div>
+</header>
+<div class="layout">
+<aside><button class="btn filter-mobile-close" id="closeFilters" style="display:none;margin-bottom:12px">Close filters</button><div class="scenario-note" id="scenarioNote"></div><div class="comparison-help">Compare uses the complete scenarios, including all dates and levels. Chart filters do not apply.</div>
+  <div class="section">
+    <div class="search"><svg viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="6" stroke="currentColor" stroke-width="2"/><path d="m16 16 4 4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg><input id="search" placeholder="Find a person or position…" aria-label="Find a person or position" autocomplete="off"/><span class="kbd">⌘ K</span></div>
+    <div class="hint">Highlights the chart; filters the register. Opens matching reporting paths.</div>
+  </div>
+  <div class="section">
+    <h3>View depth</h3>
+    <div class="seg" id="depthSeg"><button data-depth="1">Heads</button><button data-depth="2">Leads</button><button data-depth="3">Team</button><button data-depth="99" class="active">All</button></div>
+  </div>
+  <div class="section"><h3>Position type</h3><div class="chips" id="roleChips"></div></div>
+  <div class="section"><h3>Hiring state</h3><div class="chips" id="hiringChips"></div></div>
+<div class="section"><h3>Approval</h3><div class="chips" id="statusChips"></div></div>
+  <div class="section">
+    <h3>Active on date</h3>
+    <div class="field"><input id="asOf" type="date" /></div>
+    <label class="check"><input type="checkbox" id="dateFilter" /> Respect position start / end dates</label>
+  </div>
+  <div class="section"><h3>Matching position capacity</h3><div class="stats"><div class="stat"><b id="countVisible">0</b><span>Positions</span></div><div class="stat"><b id="countTotal">0</b><span>Filled</span></div><div class="stat"><b id="countApproved">0</b><span>Open</span></div><div class="stat"><b id="countOpen">0</b><span>Recruiting</span></div><div class="stat"><b id="countFte">0</b><span>Total FTE</span></div><div class="stat"><b id="countApprovedFte">0</b><span>Approved FTE</span></div></div><p class="hint" id="visibleCardsHint"></p><button class="btn ghost sidebar-reset" id="resetFilters">Reset filters · all dates</button></div>
+  <div class="section always-available">
+    <h3>Data</h3>
+    <div class="data-actions">
+      <button class="btn" id="sideImportBtn">Import CSV</button>
+      <button class="btn" id="csvBtn">Export CSV</button>
+      <button class="btn ghost" id="templateBtn">Download CSV template</button>
+      <div class="data-divider"></div>
+      <button class="btn" id="backupBtn">Back up workspace</button>
+      <button class="btn ghost" id="restoreBtn">Restore workspace</button>
+      <button class="btn ghost" id="historyBtn">Earlier versions</button>
+      <input id="restoreInput" type="file" accept=".json,application/json" hidden />
+    </div>
+    <div class="hint">CSV updates the active scenario. JSON backup keeps all scenarios, unassigned people, branding and your view.</div>
+  </div>
+  <div class="section always-available">
+    <h3>Example companies</h3>
+    <div class="example-actions">
+      <button class="btn" id="exampleHarborBtn" type="button">Load Harbor &amp; Co</button>
+      <button class="btn" id="exampleNorthstarBtn" type="button">Load Northstar Commerce</button>
+      <button class="btn ghost" id="exampleEmptyBtn" type="button">Start blank organization</button>
+      <button class="btn ghost" id="exampleFirstLightBtn" type="button">Load First Light (startup)</button>
+      <button class="btn ghost" id="exampleLumenBtn" type="button">Load Lumen Studio (agency)</button>
+      <button class="btn ghost" id="exampleCedarBtn" type="button">Load Cedar &amp; Kind (nonprofit)</button>
+    </div>
+    <p class="privacy-note">Samples are generic companies. Drag a card onto another to change reporting. Data stays in this browser.</p>
+  </div>
+</aside>
+<main>
+<div class="planning-bar">
+  <div class="scenario-switch">
+    <div class="scenario-select-wrap"><label for="scenarioSelect">Organization / scenario</label><select id="scenarioSelect" aria-label="Active scenario"></select></div>
+    <button class="btn" id="newScenarioBtn" title="Create a scenario" aria-label="Create a scenario">＋ <span class="scenario-button-label">Scenario</span></button>
+    <button class="iconbtn" id="scenarioSettingsBtn" title="Scenario details" aria-label="Scenario details">⋯</button>
+    <button class="iconbtn" id="filterToggle" aria-label="Open filters" title="Filters" aria-expanded="false">☷</button>
+  </div>
+  <nav class="plan-tabs" aria-label="Workspace views"><button data-view="chart" class="active" aria-pressed="true">Org chart</button><button data-view="positions" aria-pressed="false">Positions</button><button data-view="compare" aria-pressed="false">Compare</button></nav>
+</div>
+<section class="plan-panel hidden" id="positionsPanel" aria-labelledby="positionsTitle">
+  <div class="panel-heading"><div><div class="eyebrow">Position register</div><h2 id="positionsTitle">Structure first. People second.</h2><p>Keep approved headcount visible, even before someone joins.</p></div><button class="btn primary" id="registerAddBtn">＋ Add position</button></div>
+  <div class="register-summary" id="registerSummary"></div>
+  <div class="planning-table-wrap"><table class="planning-table"><thead><tr><th>Position</th><th>Assigned person</th><th>Group</th><th>Location</th><th>Hiring</th><th>Approval</th><th>FTE</th><th>Reports to</th><th>Active dates</th><th><span class="hidden">Edit</span></th></tr></thead><tbody id="positionsRows"></tbody></table></div>
+  <p class="table-footnote" id="registerFootnote"></p>
+</section>
+<section class="plan-panel hidden" id="comparePanel" aria-labelledby="compareTitle">
+  <div id="compareWelcome" class="compare-welcome hidden"><div class="welcome-mark">⇄</div><div class="eyebrow" style="margin-top:20px">Make room for what’s next</div><h2>Plan without changing Current.</h2><p>Create a scenario, then add positions, move teams or change assignments. Compare the result with Current or the snapshot you started from.</p><button class="btn primary" id="compareCreateBtn">Create your first scenario</button><p style="font-size:11px">Copies are independent. There is no automatic merge or approval workflow.</p></div>
+  <div id="compareContent">
+    <div class="panel-heading"><div><div class="eyebrow">Scenario comparison</div><h2 id="compareTitle">See exactly what changes.</h2><p>Position-by-position differences, matched by stable IDs.</p></div><div class="right"><button class="btn" id="comparisonCSVBtn">Export CSV</button><button class="btn" id="comparisonPNGBtn">Export PNG</button></div></div>
+    <div class="compare-controls"><div class="field"><label for="compareBaseline">Baseline · before</label><select id="compareBaseline"></select></div><div class="compare-arrow" aria-hidden="true">→</div><div class="field"><label for="compareTarget">Scenario · after</label><select id="compareTarget"></select></div></div>
+    <div class="comparison-metrics" id="comparisonMetrics"></div>
+    <div class="comparison-scope"><div><b>Full snapshots · all dates.</b> Chart filters and collapsed levels do not affect this comparison.<br>Filled means a person is assigned. FTE is position capacity, not salary or attendance.</div><div id="baselineContext"></div></div>
+    <div class="comparison-filters"><div class="chips" id="changeChips"></div><div class="search"><input id="compareSearch" aria-label="Filter comparison results" placeholder="Find a position, person or group…" /></div></div>
+    <div class="planning-table-wrap"><table class="planning-table"><thead><tr><th>Change</th><th>Position</th><th>What changed</th><th>Details</th></tr></thead><tbody id="comparisonRows"></tbody></table></div>
+    <p class="table-footnote" id="comparisonFootnote"></p>
+  </div>
+</section>
+
+  <div class="toolbar">
+    <div class="crumb"><strong id="chartTitle">Organization</strong><span>/ Positions</span><span class="date-pill" id="datePill"></span></div>
+    <div class="toolbar-actions"><button class="iconbtn" id="zoomOut" aria-label="Zoom out" title="Zoom out">−</button><span class="zoom-label" id="zoomLabel">100%</span><button class="iconbtn" id="zoomIn" aria-label="Zoom in" title="Zoom in">＋</button>
+      <button class="iconbtn" id="centerBtn" title="Fit chart" aria-label="Fit chart"><svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="8" stroke="currentColor" stroke-width="2"/></svg></button>
+      <button class="iconbtn" id="expandBtn" title="Expand all" aria-label="Expand all"><svg viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>
+      <button class="iconbtn" id="collapseBtn" title="Collapse to team leaders" aria-label="Collapse to team leaders"><svg viewBox="0 0 24 24" fill="none"><path d="M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>
+    </div>
+  </div>
+  <div class="canvas-wrap" id="canvasWrap"><div class="chart-stage" id="chartStage"><svg id="chart" aria-label="Organization chart"></svg></div></div>
+  <div class="empty" id="empty"><div class="empty-card"><h2>No positions match these filters</h2><p>Re-enable a position type or approval state, or change the active date.</p></div></div>
+<section class="drawer" id="drawer" aria-label="Edit position" inert>
+  <div class="drawer-head"><div><div class="eyebrow" id="drawerScenario">Current / position</div><h2 id="drawerTitle">Position</h2><p>Reporting lines belong to positions, not people.</p></div><button class="iconbtn" id="drawerClose" aria-label="Close position editor">×</button></div>
+  <div class="drawer-body">
+    <div class="validation" id="formValidation" role="alert"></div>
+    <div class="field"><label for="fPositionId">Position ID <span style="font-weight:400">· stable across scenarios</span></label><input id="fPositionId" maxlength="150" /></div>
+    <div class="field"><label for="fTitle">Position title *</label><input id="fTitle" maxlength="200" placeholder="e.g. Senior product manager" /></div>
+    <div class="filter-row"><div class="field"><label for="fType">Position type</label><select id="fType"></select></div><div class="field"><label for="fStatus">Approval</label><select id="fStatus"></select></div></div>
+    <div class="filter-row"><div class="field"><label for="fGroup">Group / team</label><input id="fGroup" maxlength="200" list="groupSuggestions" /><datalist id="groupSuggestions"></datalist></div><div class="field"><label for="fFte">Position FTE *</label><input id="fFte" type="number" step="0.01" min="0.01" max="1" /><div class="hint">0.5 = half-time; 1 = full-time.</div></div></div>
+    <div class="filter-row"><div class="field"><label for="fLocation">Location / site</label><input id="fLocation" maxlength="200" list="locationSuggestions" placeholder="e.g. London" /><datalist id="locationSuggestions"></datalist></div><div class="field"><label for="fCostCenter">Cost center</label><input id="fCostCenter" maxlength="80" placeholder="e.g. ENG" /></div></div>
+    <div class="field"><label for="fJobFamily">Job family</label><input id="fJobFamily" maxlength="200" list="familySuggestions" placeholder="e.g. Engineering" /><datalist id="familySuggestions"></datalist></div>
+    <div class="field"><label for="fManager">Reports to position</label><select id="fManager"></select><div class="hint">Drag a card onto another manager on the chart, or pick here. A vacant position can still lead a team.</div></div>
+    <div class="field"><label for="fSecondary">Dotted-line to (optional)</label><select id="fSecondary"></select><div class="hint">Matrix / secondary manager. Drawn dashed; not used for the tree layout.</div></div>
+    <div class="filter-row"><div class="field"><label for="fStart">Position start</label><input id="fStart" type="date" /></div><div class="field"><label for="fEnd">Position end (optional)</label><input id="fEnd" type="date" /></div></div>
+    <div class="form-divider">Person assignment</div>
+    <div class="field"><label for="fHiring">Hiring state</label><select id="fHiring"><option>Vacant</option><option>Recruiting</option><option>Filled</option></select><div class="hint">Separate from approval. Only Filled has an assigned person.</div></div>
+    <div class="assignment-fields hidden" id="assignmentFields"><div class="field"><label for="fPerson">Assign a person</label><select id="fPerson"></select></div><div class="field"><label for="fName">Person name *</label><input id="fName" maxlength="150" autocomplete="off" /></div><div class="field"><label for="fEmployeeNo">Employee number</label><input id="fEmployeeNo" maxlength="80" placeholder="Optional staff / badge ID" /></div><div class="field"><label>Photo</label><div class="logo-actions"><button class="btn" type="button" id="uploadPhotoBtn">Upload photo</button><button class="btn ghost" type="button" id="removePhotoBtn">Remove</button></div><input type="file" id="photoInput" accept=".png,.jpg,.jpeg,.webp,.svg,image/png,image/jpeg,image/webp,image/svg+xml" hidden /><p class="assignment-note" id="photoNote">Optional. Processed locally to a small PNG.</p></div><p class="assignment-note" id="assignmentNote">A person can occupy one position per scenario.</p></div>
+    <p class="assignment-note" id="vacancyNote">No placeholder employee is needed. Unassigning a person preserves their record, so you can place them in another position.</p>
+    <p class="assignment-note">Dates describe the position’s lifecycle. Scenarios capture assignments; this is not a historical employment record.</p>
+  </div>
+  <div class="drawer-foot"><button class="btn danger" id="deleteBtn">Remove position</button><button class="btn primary" id="saveBtn">Save position</button></div>
+</section>
+</main>
+</div>
+</div>
+<div id="loadError" class="load-error hidden" role="alert"></div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<div class="modal-backdrop" id="importModal">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="importTitle">
+    <div class="modal-head"><div><h2 id="importTitle">Review CSV import</h2><p id="importFileName">Validate the file before changing the chart.</p></div><button class="iconbtn" id="importClose" aria-label="Close">×</button></div>
+    <div class="modal-body">
+      <div class="import-summary"><div class="summary-box"><b id="impRows">0</b><span>Positions</span></div><div class="summary-box"><b id="impWarnings">0</b><span>Warnings</span></div><div class="summary-box"><b id="impErrors">0</b><span>Errors</span></div></div>
+      <p class="scope-warning">Only the active scenario changes. Update by ID preserves fields whose columns are omitted; blank cells clear values or apply defaults. Replace replaces all positions and retains the people directory. Back up the workspace first.</p><div class="issues" id="importIssues"></div>
+      <div class="preview"><table><thead><tr><th>Position ID</th><th>Title</th><th>Person</th><th>Group</th><th>Hiring</th><th>Approval</th><th>FTE</th><th>Reports to</th></tr></thead><tbody id="importPreview"></tbody></table></div>
+    </div>
+    <div class="modal-foot">
+      <div class="mode-switch"><label><input type="radio" name="importMode" value="replace"> Replace positions</label><label><input type="radio" name="importMode" value="append"> Append new</label><label><input type="radio" name="importMode" value="update" checked> Update by ID</label></div>
+      <div class="right"><button class="btn" id="importCancel">Cancel</button><button class="btn primary" id="importConfirm">Import positions</button></div>
+    </div>
+  </div>
+</div>
+
+
+<div class="modal-backdrop" id="brandingModal">
+  <div class="modal branding-modal" role="dialog" aria-modal="true" aria-labelledby="brandingTitle" aria-describedby="brandingDescription">
+    <div class="modal-head"><div><div class="settings-kicker">Workspace / identity</div><h2 id="brandingTitle">Company branding</h2><p id="brandingDescription">Your company, on the canvas and in every presentation.</p></div><button class="iconbtn" id="brandingClose" aria-label="Close company branding">×</button></div>
+    <div class="modal-body">
+      <div class="settings-error" id="brandingError" role="alert"></div>
+      <div class="branding-fields">
+        <div class="field"><label for="brandCompany">Company name</label><input id="brandCompany" maxlength="80" placeholder="Your company" autocomplete="organization" /></div>
+        <div class="field"><label for="brandChartTitle">Chart title</label><input id="brandChartTitle" maxlength="100" placeholder="Organization" /></div>
+      </div>
+      <h3 class="settings-heading">Company logos</h3>
+      <p class="settings-subtitle">Keep the original colours and proportions. Add a second version for dark mode, or use the same logo in both.</p>
+      <div class="logo-grid">
+        <div class="logo-upload" data-logo-slot="primary">
+          <h3>Primary logo</h3>
+          <div class="logo-preview" id="primaryPreview"></div>
+          <div class="logo-file" id="primaryFile">No logo uploaded</div>
+          <div class="logo-actions"><button class="btn" id="uploadPrimary">Upload logo</button><button class="btn ghost" id="removePrimary">Remove</button></div>
+          <input type="file" id="primaryLogoInput" accept=".png,.jpg,.jpeg,.webp,.svg,image/png,image/jpeg,image/webp,image/svg+xml" hidden />
+          <div class="field"><label for="primarySurface">Background</label><select id="primarySurface"><option value="auto">Match theme</option><option value="light">White</option><option value="dark">Black</option><option value="transparent">Transparent</option></select></div>
+        </div>
+        <div class="logo-upload" data-logo-slot="dark">
+          <h3>Dark-mode logo <span>optional</span></h3>
+          <div class="logo-preview dark-preview" id="darkPreview"></div>
+          <div class="logo-file" id="darkFile">Uses primary logo when empty</div>
+          <div class="logo-actions"><button class="btn" id="uploadDark">Upload dark version</button><button class="btn ghost" id="removeDark">Remove</button></div>
+          <input type="file" id="darkLogoInput" accept=".png,.jpg,.jpeg,.webp,.svg,image/png,image/jpeg,image/webp,image/svg+xml" hidden />
+          <div class="field"><label for="darkSurface">Background</label><select id="darkSurface"><option value="auto">Match theme</option><option value="light">White</option><option value="dark">Black</option><option value="transparent">Transparent</option></select></div>
+        </div>
+      </div>
+      <p class="settings-note">PNG, JPG, WebP or static SVG · up to 2 MB each. Drag a file onto either panel or use Upload. Transparent artwork works best. Logos are processed locally and saved as optimized PNGs; nothing is uploaded to a server.</p>
+      <div class="export-settings">
+        <label class="check"><input type="checkbox" id="brandExports" /> Brand exported charts</label>
+        <div class="hint">Add your logo, company name, chart title and active-date context to PNG and per-group exports.</div>
+        <div class="field"><label for="brandFooter">Export footer <span>(optional; shown with branding)</span></label><input id="brandFooter" maxlength="100" placeholder="e.g. Confidential · Internal use only" /></div>
+      </div>
+    </div>
+    <div class="modal-foot"><span class="settings-save-note">Stored in this browser. Use a workspace backup to keep a portable copy of your people and branding.</span><div class="right"><button class="btn" id="brandingCancel">Cancel</button><button class="btn primary" id="brandingSave">Save branding</button></div></div>
+  </div>
+</div>
+
+<div class="modal-backdrop" id="scenarioModal"><div class="modal scenario-modal" role="dialog" aria-modal="true" aria-labelledby="scenarioModalTitle">
+  <div class="modal-head"><div><div class="settings-kicker">Workspace / planning</div><h2 id="scenarioModalTitle">Create a scenario</h2><p id="scenarioModalSubtitle">Explore a new structure without changing your source.</p></div><button class="iconbtn" id="scenarioClose" aria-label="Close scenario dialog">×</button></div>
+  <div class="modal-body"><div class="validation" id="scenarioValidation" role="alert"></div><div class="field" id="scenarioSourceField"><label for="scenarioSource">Copy from</label><select id="scenarioSource"></select></div><div class="field"><label for="scenarioName">Scenario name *</label><input id="scenarioName" maxlength="80" placeholder="e.g. 2027 proposed" /></div><div class="field"><label for="scenarioDescription">Notes (optional)</label><textarea id="scenarioDescription" maxlength="1000" placeholder="What are you exploring?"></textarea></div><p class="settings-note" id="scenarioModalNote">Copies keep position IDs and include a frozen source snapshot for comparison. Edits stay in the new scenario. Approval labels are not an authorization workflow.</p></div>
+  <div class="modal-foot"><button class="btn danger hidden" id="scenarioDelete">Delete scenario</button><div class="right"><button class="btn" id="scenarioCancel">Cancel</button><button class="btn primary" id="scenarioSave">Create scenario</button></div></div>
+</div></div>
+
+<div class="modal-backdrop" id="directoryModal"><div class="modal scenario-modal" role="dialog" aria-modal="true" aria-labelledby="directoryTitle"><div class="modal-head"><div><h2 id="directoryTitle">Unassigned people</h2><p>Select a person here from any filled position’s assignment menu.</p></div><button class="iconbtn" id="directoryClose" aria-label="Close directory">×</button></div><div class="modal-body"><div class="planning-table-wrap"><table class="planning-table"><thead><tr><th>Name</th><th>Person ID</th></tr></thead><tbody id="directoryRows"></tbody></table></div><p class="table-footnote">These people are not counted as filled positions. Workspace backup retains this directory.</p></div></div></div>
+
+<div class="modal-backdrop" id="welcomeModal"><div class="modal branding-modal" role="dialog" aria-modal="true" aria-labelledby="welcomeTitle">
+  <div class="modal-head"><div><div class="settings-kicker">Welcome</div><h2 id="welcomeTitle">Plan an organization without uploading it.</h2><p>Positions stay separate from people. Everything stays in this browser until you export a file.</p></div><button class="iconbtn" id="welcomeClose" aria-label="Close tour">×</button></div>
+  <div class="modal-body">
+    <p class="settings-subtitle">Drag a card onto a new manager to re-parent. Undo with ⌘Z. Export a board-pack PDF or a shareable HTML snapshot that opens without OrgFlow.</p>
+    <h3 class="settings-heading">Start from a shape</h3>
+    <div class="template-grid" id="templateGrid"></div>
+    <p class="settings-note">Harbor &amp; Co and Northstar Commerce are the full product and retail samples. First Light, Lumen Studio and Cedar &amp; Kind are smaller starter orgs.</p>
+  </div>
+  <div class="modal-foot"><button class="btn" id="welcomeSkip">Skip</button><div class="right"><button class="btn primary" id="welcomeHarbor">Open Harbor &amp; Co</button></div></div>
+</div></div>
+
+<div class="modal-backdrop" id="historyModal"><div class="modal scenario-modal" role="dialog" aria-modal="true" aria-labelledby="historyTitle">
+  <div class="modal-head"><div><div class="settings-kicker">This browser</div><h2 id="historyTitle">Earlier versions</h2><p>Local snapshots of Current from this device. Photos and logos are not stored in this list.</p></div><button class="iconbtn" id="historyClose" aria-label="Close history">×</button></div>
+  <div class="modal-body"><div class="planning-table-wrap"><table class="planning-table"><thead><tr><th>When</th><th>Note</th><th></th></tr></thead><tbody id="historyRows"></tbody></table></div></div>
+</div></div>
+
+<script src="js/orgflow-core.js"></script>
+<script src="js/examples.js"></script>
+<script src="js/templates.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>

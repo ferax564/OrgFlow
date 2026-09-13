@@ -38,9 +38,17 @@ async function serve(root, port) {
     page.on('pageerror', err => { throw err; });
     page.on('dialog', async dialog => { await dialog.accept(); });
     await page.setViewport({ width: 1280, height: 800 });
-    await page.goto(`http://127.0.0.1:${port}/index.html`, { waitUntil: 'networkidle0' });
+    await page.goto(`http://127.0.0.1:${port}/`, { waitUntil: 'networkidle0' });
+    const home = await page.$eval('h1', el => el.textContent);
+    assert.match(home, /See the company/);
+    const cta = await page.$eval('a.btn.primary', el => el.getAttribute('href'));
+    assert.equal(cta, 'app.html');
+    await page.goto(`http://127.0.0.1:${port}/app.html`, { waitUntil: 'networkidle0' });
     await page.evaluate(() => localStorage.clear());
     await page.reload({ waitUntil: 'networkidle0' });
+    await page.waitForSelector('#welcomeModal.open');
+    await page.click('#welcomeSkip');
+    await page.waitForFunction(() => !document.querySelector('#welcomeModal.open'));
     await page.waitForSelector('#chart .node');
     const brand = await page.$eval('#brandName', el => el.textContent);
     assert.equal(brand, 'Harbor & Co');

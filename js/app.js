@@ -6,7 +6,7 @@ const {
   parseCSV, headerMap, normalizeType, normalizeStatus, normalizeDate,
   validatePeopleData, validateScenarioData, validatePlanning, migrateLegacy,
   projection: projectScenario, totals, scenarioChanges, fieldValue,
-  emptyWorkspace, sanitizeChipFilters
+  emptyWorkspace, sanitizeChipFilters, wouldCreateCycle, validPersonPhoto
 } = OrgFlow;
 
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
@@ -70,6 +70,73 @@ function makeZip(files){
   }
   const end=new Uint8Array(22),e=new DataView(end.buffer);e.setUint32(0,0x06054b50,true);e.setUint16(8,files.length,true);e.setUint16(10,files.length,true);e.setUint32(12,directorySize,true);e.setUint32(16,offset,true);
   return new Blob([...chunks,...directory,end],{type:'application/zip'});
+}
+function makeJpegPdf(pages){
+  const encoder=new TextEncoder(),chunks=[],offsets=[0];let pos=0;
+  const write=bytes=>{if(typeof bytes==='string')bytes=encoder.encode(bytes);chunks.push(bytes);pos+=bytes.length};
+  write('%PDF-1.4\n%\x80\x81\x82\x83\n');
+  const obj=(id,dict,stream)=>{offsets[id]=pos;write(`${id} 0 obj\n${dict}`);if(stream){write('stream\n');write(stream);write('\nendstream\n');}write('endobj\n');};
+  const pageW=842,pageH=595,kids=[];
+  pages.forEach((page,i)=>{
+    const pageId=3+i*3,contentId=pageId+1,imgId=pageId+2;kids.push(`${pageId} 0 R`);
+    const maxW=pageW-72,maxH=pageH-72;const k=Math.min(maxW/page.width,maxH/page.height);const w=page.width*k,h=page.height*k;const x=(pageW-w)/2,y=(pageH-h)/2;
+    const content=`q ${w.toFixed(2)} 0 0 ${h.toFixed(2)} ${x.toFixed(2)} ${y.toFixed(2)} cm /Im0 Do Q`;
+    const contentBytes=encoder.encode(content);
+    obj(pageId,`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${pageW} ${pageH}] /Contents ${contentId} 0 R /Resources << /XObject << /Im0 ${imgId} 0 R >> >> >>\n`);
+    obj(contentId,`<< /Length ${contentBytes.length} >>\n`,contentBytes);
+    obj(imgId,`<< /Type /XObject /Subtype /Image /Width ${page.width} /Height ${page.height} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${page.jpeg.length} >>\n`,page.jpeg);
+  });
+  obj(1,'<< /Type /Catalog /Pages 2 0 R >>\n');
+  obj(2,`<< /Type /Pages /Kids [${kids.join(' ')}] /Count ${pages.length} >>\n`);
+  const xref=pos;write(`xref\n0 ${offsets.length}\n`);write('0000000000 65535 f \n');
+  for(let i=1;i<offsets.length;i++)write(String(offsets[i]||0).padStart(10,'0')+' 00000 n \n');
+  write(`trailer << /Size ${offsets.length} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF`);
+  return new Blob(chunks,{type:'application/pdf'});
+}
+async function jpegFromArt(art){
+  const blob=await pngFromExport(art),image=await readImage(blob);
+  const max=1800,scale=Math.min(1,max/image.naturalWidth,max/image.naturalHeight);
+  const canvas=document.createElement('canvas');canvas.width=Math.max(1,Math.round(image.naturalWidth*scale));canvas.height=Math.max(1,Math.round(image.naturalHeight*scale));
+  const ctx=canvas.getContext('2d');if(!ctx)throw new Error('PDF export is not supported by this browser.');
+  ctx.fillStyle=cssVar('--bg')||'#ffffff';ctx.fillRect(0,0,canvas.width,canvas.height);ctx.drawImage(image,0,0,canvas.width,canvas.height);
+  const jpeg=await new Promise((resolve,reject)=>canvas.toBlob(b=>b?resolve(b):reject(new Error('JPEG generation failed.')),'image/jpeg',0.86));
+  return {jpeg:new Uint8Array(await jpeg.arrayBuffer()),width:canvas.width,height:canvas.height};
+}
+function buildCoverSVG(){
+  const s=activeScenario(),t=totals(s),bg=cssVar('--bg'),panel=cssVar('--panel'),ink=cssVar('--ink'),muted=cssVar('--muted'),line=cssVar('--line'),accent=cssVar('--accent-ink');
+  const w=1100,h=620,xml=[`<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}"><rect width="100%" height="100%" fill="${bg}"/>`];
+  let titleX=48;const logo=branding.includeExports?logoForTheme(branding):null;
+  if(logo){const k=Math.min(120/logo.width,40/logo.height),lw=logo.width*k,lh=logo.height*k,surface=logo.surface==='light'?'#fff':logo.surface==='dark'?'#151515':null;if(surface)xml.push(`<rect x="42" y="36" width="${lw+12}" height="52" rx="6" fill="${surface}"/>`);xml.push(`<image x="48" y="${42+(40-lh)/2}" width="${lw}" height="${lh}" xlink:href="${esc(logo.data)}"/>`);titleX=lw+70;}
+  xml.push(`<text x="${titleX}" y="58" fill="${ink}" style="font:700 18px Arial,sans-serif">${esc(exportText(branding.companyName||'OrgFlow',70))}</text>`);
+  xml.push(`<text x="48" y="140" fill="${ink}" style="font:800 36px Arial,sans-serif">Board pack</text>`);
+  xml.push(`<text x="48" y="176" fill="${accent}" style="font:600 16px Arial,sans-serif">${esc(exportText((branding.chartTitle||'Organization')+' · '+s.name,90))}</text>`);
+  xml.push(`<text x="48" y="206" fill="${muted}" style="font:500 13px Arial,sans-serif">${esc(today)} · ${t.positions} positions · ${fteText(t.approvedFte)} approved FTE · private local snapshot</text>`);
+  [['positions','Positions',t.positions],['filled','Filled',t.filled],['open','Open',t.open],['approvedFte','Approved FTE',fteText(t.approvedFte)]].forEach(([_,label,value],i)=>{
+    const x=48+i*256;xml.push(`<rect x="${x}" y="250" width="240" height="110" rx="12" fill="${panel}" stroke="${line}"/><text x="${x+18}" y="278" fill="${muted}" style="font:700 11px Arial,sans-serif">${label.toUpperCase()}</text><text x="${x+18}" y="324" fill="${ink}" style="font:800 32px Arial,sans-serif">${esc(String(value))}</text>`);
+  });
+  xml.push(`<text x="48" y="430" fill="${muted}" style="font:500 13px Arial,sans-serif;width:900px">Following pages: current org chart, then scenario comparison when more than one scenario exists.</text>`);
+  xml.push(`<text x="48" y="${h-36}" fill="${muted}" style="font:500 11px Arial,sans-serif">${esc(exportText(branding.footer||'Confidential · generated in-browser by OrgFlow',120))}</text></svg>`);
+  return {xml:xml.join(''),width:w,height:h,nodeCount:1};
+}
+async function exportBoardPack(){
+  try{
+    toast('Preparing board pack…');
+    const pages=[await jpegFromArt(buildCoverSVG())];
+    const chart=buildExportSVG();if(chart)pages.push(await jpegFromArt(chart));
+    if(workspace.scenarios.length>1)pages.push(await jpegFromArt(buildComparisonSVG()));
+    downloadBlob(makeJpegPdf(pages),`orgflow-board-pack-${today}.pdf`);toast('Board pack exported as PDF');
+  }catch(error){toast(error.message||'PDF export failed');}
+}
+const SNAPSHOT_CSS=`body{margin:0;font:14px/1.5 ui-sans-serif,system-ui,sans-serif;background:#f3f5f9;color:#0f172a}main{max-width:1100px;margin:0 auto;padding:28px 20px}h1{font-size:28px;letter-spacing:-.03em;margin:0 0 8px}p{color:#475569}.metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:22px 0}.metric{border:1px solid #e2e8f0;border-radius:12px;padding:14px;background:#fff}.metric b{display:block;font-size:22px}.chart{overflow:auto;border:1px solid #e2e8f0;border-radius:16px;background:#fff;padding:16px}pre{white-space:pre-wrap;background:#0f172a;color:#e2e8f0;padding:14px;border-radius:12px;font-size:11px}`;
+async function exportShareableHTML(){
+  try{
+    const art=buildExportSVG();if(!art){toast('Nothing to export');return;}
+    const s=activeScenario(),t=totals(s);
+    let css=SNAPSHOT_CSS;try{const fetched=await (await fetch('css/app.css')).text();if(fetched)css=fetched;}catch{}
+    const payload={format:'orgflow.workspace',version:2,exportedAt:new Date().toISOString(),planning:workspace,branding,theme:document.documentElement.dataset.theme,palette:document.documentElement.dataset.palette};
+    const html=`<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><title>${esc(branding.companyName||'OrgFlow')} · ${esc(s.name)} snapshot</title><style>${css.replace(/<\//g,'<\\/')}</style></head><body><main class="snapshot"><p class="eyebrow">OrgFlow snapshot · opens without the app</p><h1>${esc(branding.companyName||'Organization')} — ${esc(s.name)}</h1><p>${esc(branding.chartTitle||'Organization')} · ${esc(today)} · ${t.positions} positions · ${fteText(t.approvedFte)} approved FTE. Data in this file was exported locally.</p><div class="metrics"><div class="metric"><b>${t.positions}</b><span>Positions</span></div><div class="metric"><b>${t.filled}</b><span>Filled</span></div><div class="metric"><b>${t.open}</b><span>Open</span></div><div class="metric"><b>${fteText(t.approvedFte)}</b><span>Approved FTE</span></div></div><div class="chart">${art.xml}</div><h2>Restore in OrgFlow</h2><p>Open the app, choose Export → Restore workspace, and paste the JSON below or save it as a .json file first.</p><pre id="workspace-json">${esc(JSON.stringify(payload,null,2))}</pre><script type="application/json" id="orgflow-workspace">${JSON.stringify(payload).replace(/</g,'\\u003c')}</script></main></body></html>`;
+    downloadBlob(new Blob([html],{type:'text/html;charset=utf-8'}),`orgflow-${slug(s.name)}-snapshot.html`);toast('Shareable HTML snapshot exported');
+  }catch(error){toast(error.message||'HTML export failed');}
 }
 let exportingGroupPack=false;
 async function exportGroups(){
@@ -206,9 +273,16 @@ function saveBranding(){
   branding=candidate;applyBranding();closeBranding();toast('Company branding saved');
 }
 const PLANNING_KEY = 'orgflow.planning.v2';
+const HISTORY_KEY = 'orgflow.history.v1';
+const WELCOME_KEY = 'orgflow.welcome.v1';
 let workspace = null;
 let modelLoadError = '';
 let lastSavedPlanningText = null;
+let undoStack = [];
+let redoStack = [];
+let skipNodeClick = false;
+let photoDraft = null;
+let welcomeFirstRun = false;
 let currentView = 'chart';
 let activeHiring = new Set(HIRING_STATES);
 let compareBaselineId = 'current';
@@ -242,13 +316,66 @@ function initPlanning(){
   }
   syncProjection();
 }
-function commitPlanning(next,message=''){
+function updateUndoButtons(){
+  const undo=$('#undoBtn'),redo=$('#redoBtn');
+  if(undo)undo.disabled=!undoStack.length;
+  if(redo)redo.disabled=!redoStack.length;
+}
+function stripPlanningMedia(planning){
+  const copy=structuredClone(planning);
+  for(const s of copy.scenarios||[]){
+    for(const e of s.employees||[])e.photo=null;
+    for(const e of s.baseSnapshot?.employees||[])e.photo=null;
+  }
+  return copy;
+}
+function persistLocalHistory(planningText,note){
+  try{
+    let list=JSON.parse(localStorage.getItem(HISTORY_KEY)||'[]');
+    if(!Array.isArray(list))list=[];
+    list.unshift({at:new Date().toISOString(),note:String(note||'Saved').slice(0,80),planning:stripPlanningMedia(JSON.parse(planningText))});
+    list=list.slice(0,10);
+    while(list.length){
+      try{localStorage.setItem(HISTORY_KEY,JSON.stringify(list));break;}
+      catch{list.pop();}
+    }
+  }catch{}
+}
+function applyPlanningSnapshot(text,message){
+  const checked=validatePlanning(JSON.parse(text));
+  const serialized=JSON.stringify(checked);
+  try{localStorage.setItem(PLANNING_KEY,serialized);}catch{throw new Error('Browser storage is full or unavailable. The change was not applied.');}
+  lastSavedPlanningText=serialized;workspace=checked;modelLoadError='';$('#loadError').classList.add('hidden');
+  syncProjection();hidePositionEditor();render();updateUndoButtons();if(message)toast(message);
+}
+function undoChange(){
+  if(!undoStack.length)return;
+  redoStack.push(lastSavedPlanningText);
+  try{applyPlanningSnapshot(undoStack.pop(),'Undone');}catch(error){redoStack.pop();toast(error.message);}
+}
+function redoChange(){
+  if(!redoStack.length)return;
+  undoStack.push(lastSavedPlanningText);
+  try{applyPlanningSnapshot(redoStack.pop(),'Redone');}catch(error){undoStack.pop();toast(error.message);}
+}
+function recordUndoFrom(previousText,note){
+  if(!previousText||previousText===lastSavedPlanningText)return;
+  undoStack.push(previousText);
+  if(undoStack.length>50)undoStack.shift();
+  redoStack=[];
+  persistLocalHistory(previousText,note);
+  updateUndoButtons();
+}
+function commitPlanning(next,message='',opts={}){
   if(modelLoadError)throw new Error('Saved workspace could not be loaded. Restore a backup or reopen in a browser with local storage before editing.');
   const checked=validatePlanning(next);
   const serialized=JSON.stringify(checked);let stale=false;
   try{stale=localStorage.getItem(PLANNING_KEY)!==lastSavedPlanningText;if(stale)throw new Error('stale');localStorage.setItem(PLANNING_KEY,serialized);}catch{throw new Error(stale?'Another tab changed this workspace. Reload before editing; your unsaved change was not applied.':'Browser storage is full or unavailable. The change was not applied. Back up the workspace before continuing.');}
+  const previous=lastSavedPlanningText;
   lastSavedPlanningText=serialized;
-  workspace=checked;syncProjection();render();if(message)toast(message);return true;
+  workspace=checked;syncProjection();
+  if(opts.recordUndo!==false)recordUndoFrom(previous,opts.historyNote||message||'Edit');
+  render();updateUndoButtons();if(message)toast(message);return true;
 }
 function updateScenario(mutator,message=''){
   const next=structuredClone(workspace),scenario=next.scenarios.find(s=>s.id===next.activeScenarioId);
@@ -283,20 +410,31 @@ let lastEditorFocus=null;
 function openDrawer(id,newPosition=false){
   if(modelLoadError){toast('Restore your workspace before editing.');return;}
   lastEditorFocus=document.activeElement;selectedId=newPosition?null:id;selectedSourceScenario=workspace.activeScenarioId;
-  const p=activeScenario().positions.find(x=>x.id===id)||{id:'POS-'+makeId('').slice(-8).toUpperCase(),title:'',type:'Engineer',group:'',managerId:'',fte:1,status:'Not approved',hiringState:'Vacant',personId:'',startDate:($('#dateFilter').checked&&$('#asOf').value)||today,endDate:''};
+  const p=activeScenario().positions.find(x=>x.id===id)||{id:'POS-'+makeId('').slice(-8).toUpperCase(),title:'',type:'Engineer',group:'',managerId:'',secondaryManagerId:'',fte:1,status:'Not approved',hiringState:'Vacant',personId:'',startDate:($('#dateFilter').checked&&$('#asOf').value)||today,endDate:'',location:'',costCenter:'',jobFamily:''};
   $('#formValidation').classList.remove('show');$('#drawerTitle').textContent=newPosition?'New position':p.title;
   $('#drawerScenario').textContent=`${activeScenario().name} / ${newPosition?'new position':'position details'}`;
   $('#fPositionId').value=p.id;$('#fPositionId').readOnly=!newPosition;$('#fTitle').value=p.title;$('#fGroup').value=p.group;$('#fFte').value=p.fte;
+  $('#fLocation').value=p.location||'';$('#fCostCenter').value=p.costCenter||'';$('#fJobFamily').value=p.jobFamily||'';
   $('#fStart').value=p.startDate;$('#fEnd').value=p.endDate;$('#fHiring').value=p.hiringState;
   $('#fType').innerHTML=ROLE_TYPES.map(x=>`<option ${x===p.type?'selected':''}>${esc(x)}</option>`).join('');
   $('#fStatus').innerHTML=STATUSES.map(x=>`<option ${x===p.status?'selected':''}>${esc(x)}</option>`).join('');
   const blocked=newPosition?new Set():descendantsOf(id);
-  $('#fManager').innerHTML='<option value="">— Top level —</option>'+people.filter(x=>x.id!==id&&!blocked.has(x.id)).sort((a,b)=>a.title.localeCompare(b.title)).map(x=>`<option value="${esc(x.id)}" ${x.id===p.managerId?'selected':''}>${esc(x.title)} · ${esc(x.personName||x.hiringState)}</option>`).join('');
+  const managerOptions=people.filter(x=>x.id!==id&&!blocked.has(x.id)).sort((a,b)=>a.title.localeCompare(b.title));
+  $('#fManager').innerHTML='<option value="">— Top level —</option>'+managerOptions.map(x=>`<option value="${esc(x.id)}" ${x.id===p.managerId?'selected':''}>${esc(x.title)} · ${esc(x.personName||x.hiringState)}</option>`).join('');
+  $('#fSecondary').innerHTML='<option value="">— None —</option>'+people.filter(x=>x.id!==id).sort((a,b)=>a.title.localeCompare(b.title)).map(x=>`<option value="${esc(x.id)}" ${x.id===p.secondaryManagerId?'selected':''}>${esc(x.title)} · ${esc(x.personName||x.hiringState)}</option>`).join('');
   const assigned=new Set(activeScenario().positions.filter(x=>x.id!==id).map(x=>x.personId).filter(Boolean));
   $('#fPerson').innerHTML='<option value="__new__">＋ Add a new person</option>'+activeScenario().employees.filter(x=>!assigned.has(x.id)).sort((a,b)=>a.name.localeCompare(b.name)).map(x=>`<option value="${esc(x.id)}">${esc(x.name)} · ${esc(x.id)}</option>`).join('');
-  $('#fPerson').value=p.personId||'__new__';$('#fName').value=activeScenario().employees.find(x=>x.id===p.personId)?.name||'';
+  const person=activeScenario().employees.find(x=>x.id===p.personId);
+  $('#fPerson').value=p.personId||'__new__';$('#fName').value=person?.name||'';$('#fEmployeeNo').value=person?.employeeNumber||'';
+  photoDraft=person?.photo||null;updatePhotoNote();
   $('#groupSuggestions').innerHTML=[...new Set(people.map(p=>p.group).filter(Boolean))].sort().map(g=>`<option value="${esc(g)}"></option>`).join('');
+  $('#locationSuggestions').innerHTML=[...new Set(people.map(p=>p.location).filter(Boolean))].sort().map(g=>`<option value="${esc(g)}"></option>`).join('');
+  $('#familySuggestions').innerHTML=[...new Set(people.map(p=>p.jobFamily).filter(Boolean))].sort().map(g=>`<option value="${esc(g)}"></option>`).join('');
   $('#deleteBtn').classList.toggle('hidden',newPosition);$('#drawer').inert=false;$('#drawer').classList.add('open');updateAssignmentFields();setTimeout(()=>$('#fTitle').focus(),100);
+}
+function updatePhotoNote(){
+  const note=$('#photoNote');if(!note)return;
+  note.textContent=photoDraft?'Photo attached. Processed locally to a small PNG.':'Optional. Processed locally to a small PNG.';
 }
 function updateAssignmentFields(){
   const filled=$('#fHiring').value==='Filled';$('#assignmentFields').classList.toggle('hidden',!filled);$('#vacancyNote').classList.toggle('hidden',filled);
@@ -309,9 +447,15 @@ function saveDrawer(){
     const id=$('#fPositionId').value.trim();if(selectedId&&id!==selectedId)throw new Error('Position IDs cannot be changed. They preserve comparison history.');
     if(!selectedId&&activeScenario().positions.some(p=>p.id===id))throw new Error('This position ID already exists.');
     const hiringState=$('#fHiring').value,personChoice=$('#fPerson').value,name=$('#fName').value.trim();
-    const p={id,managerId:$('#fManager').value,title:$('#fTitle').value.trim(),type:$('#fType').value,status:$('#fStatus').value,group:$('#fGroup').value.trim(),fte:Number($('#fFte').value),hiringState,personId:hiringState==='Filled'?(personChoice==='__new__'?makeId('person'):personChoice):'',startDate:$('#fStart').value,endDate:$('#fEnd').value};
+    const managerId=$('#fManager').value,secondaryManagerId=$('#fSecondary').value;
+    if(secondaryManagerId&&secondaryManagerId===id)throw new Error('A position cannot have a dotted line to itself.');
+    if(secondaryManagerId&&secondaryManagerId===managerId)throw new Error('Dotted-line manager must differ from the solid reporting line.');
+    if(!selectedId?false:wouldCreateCycle(activeScenario().positions,id,managerId))throw new Error('That reporting line would create a cycle.');
+    if(!selectedId&&managerId&&wouldCreateCycle([...activeScenario().positions,{id,managerId}],id,managerId))throw new Error('That reporting line would create a cycle.');
+    const p={id,managerId,secondaryManagerId,title:$('#fTitle').value.trim(),type:$('#fType').value,status:$('#fStatus').value,group:$('#fGroup').value.trim(),fte:Number($('#fFte').value),hiringState,personId:hiringState==='Filled'?(personChoice==='__new__'?makeId('person'):personChoice):'',startDate:$('#fStart').value,endDate:$('#fEnd').value,location:$('#fLocation').value.trim(),costCenter:$('#fCostCenter').value.trim(),jobFamily:$('#fJobFamily').value.trim()};
+    const employeeNumber=$('#fEmployeeNo').value.trim();
     updateScenario(s=>{
-      if(p.personId){if(!name)throw new Error('A filled position requires a person name.');const existing=s.employees.find(x=>x.id===p.personId);if(existing)existing.name=name;else s.employees.push({id:p.personId,name});}
+      if(p.personId){if(!name)throw new Error('A filled position requires a person name.');const existing=s.employees.find(x=>x.id===p.personId);if(existing){existing.name=name;existing.employeeNumber=employeeNumber;existing.photo=photoDraft?validPersonPhoto(photoDraft):null;}else s.employees.push({id:p.personId,name,employeeNumber,photo:photoDraft?validPersonPhoto(photoDraft):null});}
       const index=s.positions.findIndex(x=>x.id===selectedId);if(index>=0)s.positions[index]=p;else s.positions.push(p);
     },'Position saved');
     activeRoles.add(p.type);activeStatuses.add(p.status);activeHiring.add(p.hiringState);setupChips();
@@ -322,7 +466,7 @@ function deleteSelected(){
   if(!selectedId)return;const p=activeScenario().positions.find(x=>x.id===selectedId);if(!p)return;
   const direct=activeScenario().positions.filter(x=>x.managerId===p.id).length;
   if(!confirm(`Remove “${p.title}” from ${activeScenario().name}?\n\n${direct?`${direct} direct reporting position(s) will move to this position’s parent.`:'No reporting positions will be removed.'}${p.personId?' The assigned person will stay available for reassignment.':''}\n\nOther scenarios are not affected.`))return;
-  try{updateScenario(s=>{s.positions=s.positions.filter(x=>x.id!==p.id);s.positions.forEach(x=>{if(x.managerId===p.id)x.managerId=p.managerId;});},'Position removed; people records preserved');hidePositionEditor();}catch(error){showValidation(error.message);}
+  try{updateScenario(s=>{s.positions=s.positions.filter(x=>x.id!==p.id);s.positions.forEach(x=>{if(x.managerId===p.id)x.managerId=p.managerId;if(x.secondaryManagerId===p.id)x.secondaryManagerId='';});},'Position removed; people records preserved');hidePositionEditor();}catch(error){showValidation(error.message);}
 }
 function setView(view){
   if(!['chart','positions','compare'].includes(view))return;
@@ -340,13 +484,13 @@ function renderPlanningHeader(){
   $('#highlightChanges')?.addEventListener('change',e=>{showChartChanges=e.target.checked;render();});
   if(modelLoadError){$('#loadError').classList.remove('hidden');$('#loadError').textContent=`Workspace could not be loaded: ${modelLoadError} Saved data has not been overwritten. Restore a backup from the Export menu.`;}
 }
-function matchesSearch(p,q){return `${p.id} ${p.name||''} ${p.personName||''} ${p.title} ${p.group} ${p.hiringState}`.toLowerCase().includes(q);}
+function matchesSearch(p,q){return `${p.id} ${p.name||''} ${p.personName||''} ${p.title} ${p.group} ${p.hiringState} ${p.location||''} ${p.costCenter||''} ${p.jobFamily||''} ${p.employeeNumber||''}`.toLowerCase().includes(q);}
 function statusPill(text,kind){return `<span class="state-label ${kind||text.toLowerCase()}">${esc(text)}</span>`;}
 function renderPositionTable(){
   const q=$('#search').value.trim().toLowerCase(),rows=people.filter(p=>baseVisible(p)&&(!q||matchesSearch(p,q))).sort((a,b)=>a.group.localeCompare(b.group)||a.title.localeCompare(b.title));
   const data={positions:rows},t=totals(data),byId=new Map(people.map(p=>[p.id,p]));
   $('#registerSummary').innerHTML=`<span><b>${t.positions}</b> matching positions</span><span><b>${t.filled}</b> filled</span><span><b>${t.open}</b> open</span><span><b>${fteText(t.approvedFte)}</b> approved FTE</span>`;
-  $('#positionsRows').innerHTML=rows.length?rows.map(p=>`<tr><td class="title-cell">${esc(p.title)}<span class="sub">${esc(p.id)} · ${esc(p.type)}</span></td><td>${p.personName?esc(p.personName):'<span style="color:var(--muted)">Unassigned</span>'}</td><td>${esc(p.group||'—')}</td><td>${statusPill(p.hiringState)}</td><td>${statusPill(p.status,p.status==='Approved'?'approved':'unapproved')}</td><td>${fteText(p.fte)}</td><td>${esc(byId.get(p.managerId)?.title||'Top level')}</td><td style="white-space:nowrap">${esc(p.startDate||'No start')}<span class="sub">${p.endDate?'Until '+esc(p.endDate):'No end date'}</span></td><td><button class="btn compact-btn" data-edit-position="${esc(p.id)}" aria-label="Edit ${esc(p.title)}">Edit</button></td></tr>`).join(''):'<tr><td colspan="9" class="empty-row">No matching positions. Clear the search or reset chart filters.</td></tr>';
+  $('#positionsRows').innerHTML=rows.length?rows.map(p=>`<tr><td class="title-cell">${esc(p.title)}<span class="sub">${esc(p.id)} · ${esc(p.type)}</span></td><td>${p.personName?esc(p.personName):'<span style="color:var(--muted)">Unassigned</span>'}</td><td>${esc(p.group||'—')}</td><td>${esc(p.location||'—')}</td><td>${statusPill(p.hiringState)}</td><td>${statusPill(p.status,p.status==='Approved'?'approved':'unapproved')}</td><td>${fteText(p.fte)}</td><td>${esc(byId.get(p.managerId)?.title||'Top level')}</td><td style="white-space:nowrap">${esc(p.startDate||'No start')}<span class="sub">${p.endDate?'Until '+esc(p.endDate):'No end date'}</span></td><td><button class="btn compact-btn" data-edit-position="${esc(p.id)}" aria-label="Edit ${esc(p.title)}">Edit</button></td></tr>`).join(''):'<tr><td colspan="10" class="empty-row">No matching positions. Clear the search or reset chart filters.</td></tr>';
   const unassigned=activeScenario().employees.filter(e=>!activeScenario().positions.some(p=>p.personId===e.id));
   $('#registerFootnote').innerHTML=`Positions and people are separate. <b>${unassigned.length} unassigned ${unassigned.length===1?'person':'people'}</b> remain in this scenario’s directory and can be selected when filling a position. ${unassigned.length?`<button class="small-link" id="showUnassigned">View names</button>`:''}<br>Search and sidebar filters apply here; collapsed chart levels do not.`;
   $('#showUnassigned')?.addEventListener('click',()=>showPeopleDirectory());
@@ -433,7 +577,7 @@ function setupPlanningEvents(){
   $('#registerAddBtn').onclick=()=>openDrawer('',true);$('#positionsRows').onclick=e=>{const b=e.target.closest('[data-edit-position]');if(b)openDrawer(b.dataset.editPosition);};
   $('#scenarioClose').onclick=$('#scenarioCancel').onclick=()=>closeDialog('scenarioModal');$('#scenarioSave').onclick=saveScenarioDialog;
   $('#scenarioDelete').onclick=()=>{const id=workspace.activeScenarioId;if(confirm(`Delete “${activeScenario().name}”? This cannot be undone. Current and other scenarios will be kept.`)){try{deleteScenario(id);closeDialog('scenarioModal');}catch(error){$('#scenarioValidation').textContent=error.message;$('#scenarioValidation').classList.add('show');}}};
-  $('#fHiring').onchange=updateAssignmentFields;$('#fPerson').onchange=()=>{$('#fName').value=activeScenario().employees.find(p=>p.id===$('#fPerson').value)?.name||'';updateAssignmentFields();};
+  $('#fHiring').onchange=updateAssignmentFields;$('#fPerson').onchange=()=>{const emp=activeScenario().employees.find(p=>p.id===$('#fPerson').value);$('#fName').value=emp?.name||'';$('#fEmployeeNo').value=emp?.employeeNumber||'';photoDraft=emp?.photo||null;updatePhotoNote();updateAssignmentFields();};
   $('#compareBaseline').onchange=e=>{compareBaselineId=e.target.value;renderComparison();rememberPlanningView();};$('#compareTarget').onchange=e=>{compareTargetId=e.target.value;renderComparison();rememberPlanningView();};
   $('#compareSearch').oninput=renderComparison;$('#changeChips').onclick=e=>{const b=e.target.closest('[data-change-kind]');if(b){compareKind=b.dataset.changeKind;renderComparison();rememberPlanningView();}};
   $('#comparisonRows').onclick=e=>{const b=e.target.closest('[data-diff-toggle]');if(!b)return;const row=$$('[data-detail-id]').find(r=>r.dataset.detailId===b.dataset.diffToggle);const expanded=row.classList.contains('hidden');row.classList.toggle('hidden',!expanded);b.setAttribute('aria-expanded',String(expanded));b.textContent=expanded?'Hide':'Details';};
@@ -442,13 +586,14 @@ function setupPlanningEvents(){
   $('#filterToggle').onclick=()=>setFiltersOpen(!$('.layout').classList.contains('filters-open'));
   $('#closeFilters').onclick=()=>setFiltersOpen(false);
   $('#directoryClose').onclick=()=>closeDialog('directoryModal');
-  for(const id of ['scenarioModal','directoryModal']){
+  for(const id of ['scenarioModal','directoryModal','welcomeModal','historyModal']){
+    if(!$('#'+id))continue;
     $('#'+id).addEventListener('click',e=>{if(e.target===$('#'+id))closeDialog(id);});
     $('#'+id).addEventListener('keydown',e=>trapDialogFocus(e,id));
   }
   $('#importModal').addEventListener('keydown',e=>trapDialogFocus(e,'importModal'));
   $('#drawer').addEventListener('keydown',e=>{if(e.key==='Escape'){e.stopPropagation();hidePositionEditor();}if((e.metaKey||e.ctrlKey)&&e.key==='Enter'){e.preventDefault();saveDrawer();}});
-  window.addEventListener('keydown',e=>{if(e.key==='Escape')for(const id of ['scenarioModal','directoryModal'])if($('#'+id).classList.contains('open'))closeDialog(id);});
+  window.addEventListener('keydown',e=>{if(e.key==='Escape')for(const id of ['scenarioModal','directoryModal','welcomeModal','historyModal'])if($('#'+id)?.classList.contains('open')){if(id==='welcomeModal')markWelcomeSeen();closeDialog(id);}});
   // Ignore unrelated keys; desktop shortcuts do not fire while writing in forms.
   svg.addEventListener('keydown',e=>{if(['Enter',' '].includes(e.key)&&e.target.closest('.node')){e.preventDefault();e.target.dispatchEvent(new MouseEvent('click',{bubbles:true}));}});
 }
@@ -460,7 +605,7 @@ let zoom=1;
 let chartBounds={width:600,height:400};
 function baseVisible(p){return activeRoles.has(p.type)&&activeStatuses.has(p.status)&&activeHiring.has(p.hiringState)&&dateOk(p);}
 function layoutTree(nodes){
-  const cardW=244,cardH=110,xGap=32,yGap=66;let cursor=0;
+  const cardW=248,cardH=124,xGap=32,yGap=52;let cursor=0;
   function rec(n,depth){if(!n.children.length)n._x=cursor++*(cardW+xGap);else{n.children.forEach(c=>rec(c,depth+1));n._x=(n.children[0]._x+n.children.at(-1)._x)/2;}n._y=depth*(cardH+yGap);n._depth=depth;}
   nodes.forEach(n=>rec(n,0));const all=flatten(nodes,[]);if(!all.length)return{all,width:0,height:0,cardW,cardH};const minX=Math.min(...all.map(n=>n._x)),maxX=Math.max(...all.map(n=>n._x));all.forEach(n=>n._x-=minX);return{all,width:maxX-minX+cardW,height:Math.max(...all.map(n=>n._y))+cardH,cardW,cardH};
 }
@@ -475,19 +620,31 @@ function positionCardSVG(n,{x=0,y=0,interactive=false,hit=false,children=0,expan
   const initials=vacant?'+':label.split(/\s+/).filter(Boolean).map(x=>x[0]).join('').slice(0,2).toUpperCase();
   const roleW=Math.min(100,Math.max(51,n.type.length*5.3+16)),stateColor=n.hiringState==='Recruiting'?cssVar('--warn'):vacant?muted:cssVar('--good');
   const inlineName=`font:750 13px Arial,sans-serif;fill:${ink}`,inlineRole=`font:500 10px Arial,sans-serif;fill:${muted}`,inlineMeta=`font:600 9px Arial,sans-serif;fill:${muted}`,inlineBadge='font:700 8.5px Arial,sans-serif';
+  const clipId=`ph-${String(n.id).replace(/[^a-zA-Z0-9_-]/g,'_')}`;
+  const photo=n.photo?.data?`<defs><clipPath id="${clipId}"><circle cx="28" cy="32" r="15"/></clipPath></defs><image href="${esc(n.photo.data)}" xlink:href="${esc(n.photo.data)}" x="13" y="17" width="30" height="30" preserveAspectRatio="xMidYMid slice" clip-path="url(#${clipId})"/>`:`<circle cx="28" cy="32" r="15" fill="${vacant?cssVar('--panel-3'):bf}"/><text x="28" y="36" text-anchor="middle" fill="${vacant?muted:bi}" style="${inlineBadge}${vacant?';font-size:16px':''}">${esc(initials)}</text>`;
   return `<g ${interactive?`class="node ${hit?'search-hit':''}" data-id="${esc(n.id)}" tabindex="0" role="button" aria-label="${esc(n.title+', '+label+', '+n.hiringState+', '+n.status+'. Edit position.')}"`:''} transform="translate(${x},${y})">
-    <title>${esc(n.title+' ['+n.id+']\n'+label+' · '+n.hiringState+' · '+n.status+'\n'+n.type+' · '+(n.group||'No group')+' · '+fteText(n.fte)+' FTE'+(changeColor?'\n'+change.toUpperCase()+' vs original baseline':''))}</title>
-    <rect ${interactive?'class="card"':''} width="244" height="110" rx="12" fill="${panel}" stroke="${hit?accent:changeColor||line}" stroke-width="${hit?2.5:1.2}" style="stroke:${hit?accent:changeColor||line};stroke-width:${hit?2.5:1.2}" ${vacant?'stroke-dasharray="5 3"':''}/>
+    <title>${esc(n.title+' ['+n.id+']\n'+label+' · '+n.hiringState+' · '+n.status+'\n'+n.type+' · '+(n.group||'No group')+(n.location?' · '+n.location:'')+' · '+fteText(n.fte)+' FTE'+(changeColor?'\n'+change.toUpperCase()+' vs original baseline':''))}</title>
+    <rect ${interactive?'class="card"':''} width="248" height="124" rx="12" fill="${panel}" stroke="${hit?accent:changeColor||line}" stroke-width="${hit?2.5:1.2}" style="stroke:${hit?accent:changeColor||line};stroke-width:${hit?2.5:1.2}" ${vacant?'stroke-dasharray="5 3"':''}/>
     ${changeColor?`<rect x="16" y="-7" width="62" height="14" rx="4" fill="${changeColor}"/><text x="47" y="3" text-anchor="middle" fill="${cssVar('--bg')}" style="${inlineBadge};font-size:8px">${change.toUpperCase()}</text>`:''}
-    <circle cx="24" cy="26" r="13" fill="${vacant?cssVar('--panel-3'):bf}"/><text x="24" y="29" text-anchor="middle" fill="${vacant?muted:bi}" style="${inlineBadge}${vacant?';font-size:16px':''}">${esc(initials)}</text>
-    <text x="45" y="23" style="${inlineName}">${esc(exportText(label,26))}</text>
-    <text x="45" y="40" style="${inlineRole}">${esc(exportText(n.title,33))}</text>
-    <text x="13" y="58" style="${inlineMeta}">${esc(exportText(n.group||'No group',35))}</text>
-    <rect x="12" y="68" width="${roleW}" height="16" rx="5" fill="${bf}"/><text x="${12+roleW/2}" y="79" text-anchor="middle" fill="${bi}" style="${inlineBadge}">${esc(n.type)}</text>
-    <rect x="152" y="68" width="80" height="16" rx="5" fill="${sf}"/><text x="192" y="79" text-anchor="middle" fill="${si}" style="${inlineBadge}">${n.status==='Approved'?'Approved':'Unapproved'}</text>
-    <circle cx="16" cy="98" r="2.5" fill="${stateColor}"/><text x="23" y="101" fill="${stateColor}" style="font:650 9px Arial,sans-serif">${esc(n.hiringState)}</text><text x="232" y="101" text-anchor="end" style="${inlineMeta}">${fteText(n.fte)} FTE</text>
-    ${interactive&&children?`<circle class="collapse-btn" cx="122" cy="115" r="10"/><circle class="collapse-hit" data-action="collapse" tabindex="0" role="button" aria-label="${expanded?'Collapse':'Expand'} team under ${esc(n.title)}" aria-expanded="${expanded}" cx="122" cy="115" r="16"/><text x="122" y="118.5" text-anchor="middle" class="collapseText">${expanded?'−':'+'}</text>`:''}
+    ${photo}
+    <text x="50" y="27" style="${inlineName}">${esc(exportText(label,24))}</text>
+    <text x="50" y="44" style="${inlineRole}">${esc(exportText(n.title,32))}</text>
+    <text x="13" y="64" style="${inlineMeta}">${esc(exportText(n.group||'No group',36))}</text>
+    <text x="13" y="78" style="${inlineMeta}">${esc(exportText(n.location||'No site',36))}</text>
+    <rect x="12" y="86" width="${roleW}" height="16" rx="5" fill="${bf}"/><text x="${12+roleW/2}" y="97" text-anchor="middle" fill="${bi}" style="${inlineBadge}">${esc(n.type)}</text>
+    <rect x="156" y="86" width="80" height="16" rx="5" fill="${sf}"/><text x="196" y="97" text-anchor="middle" fill="${si}" style="${inlineBadge}">${n.status==='Approved'?'Approved':'Unapproved'}</text>
+    <circle cx="16" cy="114" r="2.5" fill="${stateColor}"/><text x="23" y="117" fill="${stateColor}" style="font:650 9px Arial,sans-serif">${esc(n.hiringState)}</text><text x="236" y="117" text-anchor="end" style="${inlineMeta}">${fteText(n.fte)} FTE</text>
+    ${interactive&&children?`<circle class="collapse-btn" cx="124" cy="129" r="10"/><circle class="collapse-hit" data-action="collapse" tabindex="0" role="button" aria-label="${expanded?'Collapse':'Expand'} team under ${esc(n.title)}" aria-expanded="${expanded}" cx="124" cy="129" r="16"/><text x="124" y="132.5" text-anchor="middle" class="collapseText">${expanded?'−':'+'}</text>`:''}
   </g>`;
+}
+function dottedConnectors(lay,offX,offY,stroke){
+  const byId=new Map(lay.all.map(n=>[n.id,n]));let out='';
+  for(const n of lay.all){
+    const m=byId.get(n.secondaryManagerId);if(!m)continue;
+    const x1=m._x+offX+lay.cardW/2,y1=m._y+offY+lay.cardH/2,x2=n._x+offX+lay.cardW/2,y2=n._y+offY+lay.cardH/2,mid=(x1+x2)/2;
+    out+=`<path class="dotted-connector" d="M${x1},${y1} C${mid},${y1} ${mid},${y2} ${x2},${y2}" fill="none" stroke="${stroke||'currentColor'}" stroke-width="1.3" stroke-dasharray="5 4"/>`;
+  }
+  return out;
 }
 function render(){
   if(!workspace)return;
@@ -497,9 +654,10 @@ function render(){
   $('#empty').style.display=forest.length||currentView!=='chart'?'none':'grid';
   chartBounds={width:Math.max(350,lay.width+100),height:Math.max(250,lay.height+90)};
   const width=Math.max(chartBounds.width,(wrap.clientWidth-48)/zoom),height=Math.max(chartBounds.height,(wrap.clientHeight-48)/zoom),offX=(width-lay.width)/2,offY=32;
-  svg.setAttribute('viewBox',`0 0 ${width} ${height}`);svg.setAttribute('width',Math.ceil(width*zoom));svg.setAttribute('height',Math.ceil(height*zoom));
+  svg.setAttribute('viewBox',`0 0 ${width} ${height}`);svg.setAttribute('width',Math.ceil(width*zoom));svg.setAttribute('height',Math.ceil(height*zoom));svg.setAttribute('xmlns','http://www.w3.org/2000/svg');
   let content='';
   for(const n of lay.all)for(const c of n.children){const x1=n._x+offX+lay.cardW/2,y1=n._y+offY+lay.cardH,x2=c._x+offX+lay.cardW/2,y2=c._y+offY,mid=(y1+y2)/2;content+=`<path class="connector" d="M${x1},${y1} V${mid} H${x2} V${y2}"/>`;}
+  content+=dottedConnectors(lay,offX,offY);
   for(const n of lay.all)content+=positionCardSVG(n,{x:n._x+offX,y:n._y+offY,interactive:true,hit:!!search&&matchesSearch(n,search),children:childCounts.get(n.id)||0,expanded:!!n.children.length,change:diffs.get(n.id)});
   svg.innerHTML=content;
   const t=totals(activeScenario(),p=>baseVisible(p));$('#countVisible').textContent=t.positions;$('#countTotal').textContent=t.filled;$('#countApproved').textContent=t.open;$('#countOpen').textContent=t.recruiting;$('#countFte').textContent=fteText(t.fte);$('#countApprovedFte').textContent=fteText(t.approvedFte);
@@ -508,6 +666,36 @@ function render(){
   if(currentView==='positions')renderPositionTable();if(currentView==='compare')renderComparison();
   if(search&&currentView==='chart'){const hit=lay.all.find(n=>matchesSearch(n,search));if(hit)setTimeout(()=>svg.querySelector(`[data-id="${CSS.escape(hit.id)}"]`)?.scrollIntoView({behavior:'smooth',block:'center',inline:'center'}),30);}
   rememberPlanningView();
+}
+function reparentPosition(id,newManagerId){
+  const s=activeScenario(),pos=s.positions.find(p=>p.id===id);if(!pos)return;
+  if(pos.managerId===newManagerId){toast('Already reports there');return;}
+  if(wouldCreateCycle(s.positions,id,newManagerId)){toast('That reporting line would create a cycle.');return;}
+  try{updateScenario(sc=>{const p=sc.positions.find(x=>x.id===id);if(!p)return;p.managerId=newManagerId;if(p.secondaryManagerId===newManagerId)p.secondaryManagerId='';},'Reporting line updated');}
+  catch(error){toast(error.message);}
+}
+function beginCardDrag(e,node){
+  if(e.button!==0||e.target.closest?.('[data-action="collapse"]'))return;
+  const id=node.dataset.id,startX=e.clientX,startY=e.clientY;let moved=false;
+  const clearTargets=()=>$$('.node.drop-target').forEach(n=>n.classList.remove('drop-target'));
+  const onMove=ev=>{
+    if(!moved&&Math.hypot(ev.clientX-startX,ev.clientY-startY)<8)return;
+    if(!moved){moved=true;node.classList.add('dragging');document.body.classList.add('reparenting');}
+    clearTargets();
+    const over=document.elementFromPoint(ev.clientX,ev.clientY)?.closest?.('.node');
+    if(over&&over.dataset.id!==id)over.classList.add('drop-target');
+  };
+  const onUp=ev=>{
+    window.removeEventListener('pointermove',onMove);window.removeEventListener('pointerup',onUp);
+    node.classList.remove('dragging');document.body.classList.remove('reparenting');
+    const over=document.elementFromPoint(ev.clientX,ev.clientY)?.closest?.('.node');
+    clearTargets();
+    if(!moved)return;
+    skipNodeClick=true;setTimeout(()=>{skipNodeClick=false;},0);
+    if(!over||over.dataset.id===id){toast('Drop on a different card to change reporting');return;}
+    reparentPosition(id,over.dataset.id);
+  };
+  window.addEventListener('pointermove',onMove);window.addEventListener('pointerup',onUp);
 }
 function setZoom(next){zoom=Math.max(.15,Math.min(1.75,next));render();}
 function fitChart(){zoom=Math.max(.15,Math.min(1,(wrap.clientWidth-60)/chartBounds.width,(wrap.clientHeight-50)/chartBounds.height));render();centerChart();}
@@ -529,6 +717,7 @@ function buildExportSVG(filterGroup=null){
     xml.push(`<line x1="40" y1="${h-42}" x2="${w-40}" y2="${h-42}" stroke="${line}"/><text x="40" y="${h-22}" fill="${muted}" style="font:500 9px Arial,sans-serif">${esc(exportText(brand.footer,Math.floor((w-160)/5.5)))}</text><text x="${w-40}" y="${h-22}" text-anchor="end" fill="${muted}" style="font:600 9px Arial,sans-serif">OrgFlow</text>`);
   }else xml.push(`<text x="40" y="25" fill="${muted}" style="font:600 11px Arial,sans-serif">${esc(exportText(activeScenario().name+' · '+(filterGroup||'Organization tree'),80))}</text>`);
   for(const n of lay.all)for(const c of n.children){const x1=n._x+offX+lay.cardW/2,y1=n._y+offY+lay.cardH,x2=c._x+offX+lay.cardW/2,y2=c._y+offY,mid=(y1+y2)/2;xml.push(`<path d="M${x1},${y1} V${mid} H${x2} V${y2}" fill="none" stroke="${connector}" stroke-width="1.4"/>`);}
+  xml.push(dottedConnectors(lay,offX,offY,muted));
   for(const n of lay.all)xml.push(positionCardSVG(n,{x:n._x+offX,y:n._y+offY,hit:!!search&&matchesSearch(n,search),change:diffs.get(n.id)}));
   xml.push('</svg>');return{xml:xml.join(''),width:w,height:h,nodeCount:lay.all.length};
 }
@@ -555,10 +744,10 @@ async function exportComparisonPNG(){
 }
 
 function exportCSV(){const s=activeScenario();downloadBlob(csvBlob(POSITION_CSV_COLUMNS,s.positions.map(p=>positionCSVValues(p,s))),`orgflow-${slug(s.name)}-positions.csv`);toast('Positions and assignments exported; backup JSON includes every scenario');}
-function exportPeopleCSV(){const s=activeScenario();downloadBlob(csvBlob(['personId','name','positionId'],s.employees.map(p=>[p.id,p.name,s.positions.find(x=>x.personId===p.id)?.id||''])),`orgflow-${slug(s.name)}-people.csv`);}
+function exportPeopleCSV(){const s=activeScenario();downloadBlob(csvBlob(['personId','name','employeeNumber','positionId'],s.employees.map(p=>[p.id,p.name,p.employeeNumber||'',s.positions.find(x=>x.personId===p.id)?.id||''])),`orgflow-${slug(s.name)}-people.csv`);}
 function csvBlob(headers,rows){return new Blob([csvRows(headers,rows)],{type:'text/csv;charset=utf-8'});}
 function downloadTemplate(){
-  const rows=[['POS-001','','Head of Product','Head','Product',1,'Approved','Filled','EMP-001','Alex Morgan','2026-01-01',''],['POS-002','POS-001','Team Leader — Product Management','Team Leader','Product',1,'Approved','Filled','EMP-002','Sam Rivera','2026-01-01',''],['POS-003','POS-002','Senior Product Manager','Specialist','Product',1,'Approved','Recruiting','','','2027-01-01',''],['POS-004','POS-002','Graduate Product Manager','Graduate','Product',0.8,'Not approved','Vacant','','','2027-01-01','2027-12-31']];
+  const rows=[['POS-001','','','Head of Product','Head','Product',1,'Approved','Filled','EMP-001','Alex Morgan','E-101','2026-01-01','','London','PRD','Product'],['POS-002','POS-001','','Team Leader — Product Management','Team Leader','Product',1,'Approved','Filled','EMP-002','Sam Rivera','E-118','2026-01-01','','London','PRD','Product'],['POS-003','POS-002','POS-001','Senior Product Manager','Specialist','Product',1,'Approved','Recruiting','','','','2027-01-01','','Remote','PRD','Product'],['POS-004','POS-002','','Graduate Product Manager','Graduate','Product',0.8,'Not approved','Vacant','','','','2027-01-01','2027-12-31','London','PRD','Product']];
   downloadBlob(csvBlob(POSITION_CSV_COLUMNS,rows),'orgflow-positions-template.csv');
 }
 function prepareImport(text,fileName){return OrgFlow.prepareImport(text,fileName,activeScenario(),makeId);}
@@ -629,7 +818,7 @@ async function restoreWorkspace(file){
     const entries={[BRANDING_KEY]:JSON.stringify(next.branding),'orgflow.theme':next.theme,'orgflow.palette':next.palette,'orgflow.planning.view.v2':JSON.stringify(next.view),[PLANNING_KEY]:JSON.stringify(next.planning)},previous={};
     try{for(const key of Object.keys(entries))previous[key]=localStorage.getItem(key);for(const [key,value] of Object.entries(entries))localStorage.setItem(key,value);}
     catch{for(const [key,value] of Object.entries(previous)){try{value===null?localStorage.removeItem(key):localStorage.setItem(key,value);}catch{}}throw new Error('Browser storage is unavailable or full. Restore was not applied.');}
-    workspace=next.planning;lastSavedPlanningText=JSON.stringify(workspace);branding=next.branding;modelLoadError='';$('#loadError').classList.add('hidden');syncProjection();hidePositionEditor();setPalette(next.palette,false);setTheme(next.theme,false);restoreView(next.view);applyBranding();render();centerChart();toast(`Restored ${count} scenario(s)`);
+    workspace=next.planning;lastSavedPlanningText=JSON.stringify(workspace);branding=next.branding;modelLoadError='';$('#loadError').classList.add('hidden');undoStack=[];redoStack=[];updateUndoButtons();syncProjection();hidePositionEditor();setPalette(next.palette,false);setTheme(next.theme,false);restoreView(next.view);applyBranding();render();centerChart();toast(`Restored ${count} scenario(s)`);
   }catch(error){alert(`Workspace not restored.\n\n${error.message||'The file could not be read.'}`);}
 }
 function safeGet(key){try{return localStorage.getItem(key);}catch{return null;}}
@@ -644,28 +833,88 @@ function applySampleChrome(sampleId, persist=true){
   }
   branding=nextBrand; applyBranding(); setPalette(sample.palette,false); setTheme(sample.theme,false);
 }
-function loadSampleWorkspace(sampleId,{empty=false}={}){
+function replaceWorkspace(next,{brandingNext=null,palette='indigo',theme='light',view=null,sampleId='',message=''}={}){
+  const previous=lastSavedPlanningText,checked=validatePlanning(next),serialized=JSON.stringify(checked);
+  localStorage.setItem(PLANNING_KEY,serialized);
+  lastSavedPlanningText=serialized;workspace=checked;modelLoadError='';$('#loadError').classList.add('hidden');
+  recordUndoFrom(previous,message||'Loaded workspace');
+  if(brandingNext){
+    branding=cleanBranding(brandingNext);
+    try{localStorage.setItem(BRANDING_KEY,JSON.stringify(branding));if(sampleId)localStorage.setItem('orgflow.sampleId',sampleId);}catch{}
+    applyBranding();
+  }
+  setPalette(palette,false);setTheme(theme,false);
+  if(view)restoreView(view);else applyDefaultFilters();
+  hidePositionEditor();syncProjection();render();centerChart();updateUndoButtons();
+}
+function loadSampleWorkspace(sampleId,{empty=false,skipConfirm=false}={}){
   if(modelLoadError){toast('Restore your workspace before loading an example.');return;}
   const label=empty?'a blank organization':(ORGFLOW_EXAMPLES[sampleId]?.branding?.companyName||'this example');
-  if(!confirm(`Replace the current workspace with ${label}?\n\nThis overwrites scenarios, people and branding in this browser. Export a workspace backup first if you want to keep your work.`))return;
+  if(!skipConfirm&&!confirm(`Replace the current workspace with ${label}?\n\nThis overwrites scenarios, people and branding in this browser. Export a workspace backup first if you want to keep your work.`))return;
   try{
-    const next=empty?emptyWorkspace(today):validatePlanning(ORGFLOW_EXAMPLES[sampleId].planning);
-    const serialized=JSON.stringify(next);
-    localStorage.setItem(PLANNING_KEY,serialized);
-    lastSavedPlanningText=serialized; workspace=next; modelLoadError=''; $('#loadError').classList.add('hidden');
     if(empty){
-      branding=structuredClone(BRANDING_DEFAULTS);
-      try{localStorage.setItem(BRANDING_KEY,JSON.stringify(branding));localStorage.removeItem('orgflow.sampleId');}catch{}
-      applyBranding(); setPalette('indigo',false); setTheme(window.matchMedia?.('(prefers-color-scheme: dark)').matches?'dark':'light',false);
-      applyDefaultFilters();
+      replaceWorkspace(emptyWorkspace(today),{brandingNext:BRANDING_DEFAULTS,palette:'indigo',theme:window.matchMedia?.('(prefers-color-scheme: dark)').matches?'dark':'light',message:'Blank organization'});
+      try{localStorage.removeItem('orgflow.sampleId');}catch{}
+      toast('Started from a blank organization');
     }else{
-      applySampleChrome(sampleId,true);
-      restoreView(ORGFLOW_EXAMPLES[sampleId].view||{});
+      const sample=ORGFLOW_EXAMPLES[sampleId];
+      replaceWorkspace(sample.planning,{brandingNext:sample.branding,palette:sample.palette,theme:sample.theme,view:sample.view||{},sampleId,message:`Loaded ${sample.branding.companyName}`});
+      toast(`Loaded ${sample.branding.companyName}`);
     }
-    hidePositionEditor();
-    syncProjection(); render(); centerChart();
-    toast(empty?'Started from a blank organization':`Loaded ${ORGFLOW_EXAMPLES[sampleId].branding.companyName}`);
   }catch(error){toast(error.message||'Could not load the example.');}
+}
+function loadStarterTemplate(id,{skipConfirm=false}={}){
+  const t=typeof ORGFLOW_TEMPLATES==='undefined'?null:ORGFLOW_TEMPLATES[id];
+  if(!t){toast('Template was not found.');return;}
+  if(modelLoadError){toast('Restore your workspace before loading a template.');return;}
+  if(!skipConfirm&&!confirm(`Replace the current workspace with ${t.branding.companyName}?\n\nThis overwrites scenarios, people and branding in this browser.`))return;
+  try{
+    replaceWorkspace(t.planning,{brandingNext:t.branding,palette:t.palette||'indigo',theme:'light',message:`Loaded ${t.branding.companyName}`});
+    toast(`Loaded ${t.branding.companyName}`);
+  }catch(error){toast(error.message||'Could not load the template.');}
+}
+function markWelcomeSeen(){try{localStorage.setItem(WELCOME_KEY,'1');}catch{}}
+function closeWelcome(){markWelcomeSeen();welcomeFirstRun=false;closeDialog('welcomeModal');}
+function populateTemplateGrid(){
+  const host=$('#templateGrid');if(!host)return;
+  const items=[
+    {kind:'example',id:'harbor-and-co',name:'Harbor & Co',blurb:'Product company · 17 positions'},
+    {kind:'example',id:'northstar-commerce',name:'Northstar Commerce',blurb:'Retail operations · 14 positions'},
+    ...Object.entries(typeof ORGFLOW_TEMPLATES==='undefined'?{}:ORGFLOW_TEMPLATES).map(([id,t])=>({kind:'template',id,name:t.branding.companyName,blurb:t.label+' · '+t.blurb}))
+  ];
+  host.innerHTML=items.map(item=>`<button type="button" class="template-card" data-kind="${item.kind}" data-id="${esc(item.id)}"><b>${esc(item.name)}</b><small>${esc(item.blurb)}</small></button>`).join('');
+}
+function openWelcome(force=false){
+  populateTemplateGrid();
+  openDialog('welcomeModal');
+  if(force)markWelcomeSeen();
+}
+function maybeShowWelcome(){
+  try{if(localStorage.getItem(WELCOME_KEY))return;}catch{return;}
+  welcomeFirstRun=true;
+  openWelcome();
+}
+function renderHistory(){
+  let list=[];try{list=JSON.parse(localStorage.getItem(HISTORY_KEY)||'[]');}catch{list=[];}
+  $('#historyRows').innerHTML=list.length?list.map((item,i)=>`<tr><td>${esc(item.at?.replace('T',' ').slice(0,19)||'')}</td><td>${esc(item.note||'Saved')}</td><td><button class="btn compact-btn" data-history="${i}">Restore</button></td></tr>`).join(''):'<tr><td colspan="3" class="empty-row">No earlier versions in this browser yet. Edits create snapshots automatically.</td></tr>';
+}
+function openHistory(){renderHistory();openDialog('historyModal');}
+function restoreHistoryIndex(index){
+  let list=[];try{list=JSON.parse(localStorage.getItem(HISTORY_KEY)||'[]');}catch{list=[];}
+  const item=list[index];if(!item?.planning)return;
+  if(!confirm('Restore this earlier version? Current work stays in Undo for this session.'))return;
+  try{commitPlanning(item.planning,'Restored earlier version',{historyNote:'Before restoring a local version'});closeDialog('historyModal');}catch(error){toast(error.message);}
+}
+async function normalizePersonPhoto(file){
+  const logo=await normalizeLogoFile(file);
+  const image=await new Promise((resolve,reject)=>{const img=new Image();img.onload=()=>resolve(img);img.onerror=()=>reject(new Error('The photo could not be decoded.'));img.src=logo.data;});
+  const size=128,canvas=document.createElement('canvas');canvas.width=size;canvas.height=size;
+  const ctx=canvas.getContext('2d');if(!ctx)throw new Error('Your browser cannot process this photo.');
+  const k=Math.max(size/image.naturalWidth,size/image.naturalHeight),dw=image.naturalWidth*k,dh=image.naturalHeight*k;
+  ctx.drawImage(image,(size-dw)/2,(size-dh)/2,dw,dh);
+  const data=canvas.toDataURL('image/png');
+  if(data.length>160000)throw new Error('Photo is still too large after shrinking. Use a simpler image.');
+  return validPersonPhoto({data,width:size,height:size});
 }
 
 $('#brandingBtn').onclick=openBranding;$('#brandingClose').onclick=$('#brandingCancel').onclick=closeBranding;$('#brandingSave').onclick=saveBranding;
@@ -684,7 +933,8 @@ $('#brandingModal').addEventListener('keydown',e=>{
 $('#backupBtn').onclick=exportWorkspace;$('#restoreBtn').onclick=()=>{$('#restoreInput').value='';$('#restoreInput').click()};$('#restoreInput').onchange=e=>restoreWorkspace(e.target.files[0]);
 
 
-svg.addEventListener('click',e=>{const node=e.target.closest?.('.node');if(!node)return;const id=node.dataset.id;if(e.target.closest?.('[data-action="collapse"]')){const full=buildFilteredForest(),shown=flatten(applyDepthAndCollapse(full),[]).find(n=>n.id===id);if(shown?.children.length)collapsed.add(id);else{if(maxDepth!==99){for(const n of flatten(full,[]))if(n.depth===maxDepth-1&&n.children.length)collapsed.add(n.id);maxDepth=99;$$('#depthSeg button').forEach(b=>b.classList.toggle('active',b.dataset.depth==='99'))}collapsed.delete(id)}render();return}openDrawer(id)});
+svg.addEventListener('pointerdown',e=>{const node=e.target.closest?.('.node');if(node)beginCardDrag(e,node);});
+svg.addEventListener('click',e=>{if(skipNodeClick){skipNodeClick=false;return;}const node=e.target.closest?.('.node');if(!node)return;const id=node.dataset.id;if(e.target.closest?.('[data-action="collapse"]')){const full=buildFilteredForest(),shown=flatten(applyDepthAndCollapse(full),[]).find(n=>n.id===id);if(shown?.children.length)collapsed.add(id);else{if(maxDepth!==99){for(const n of flatten(full,[]))if(n.depth===maxDepth-1&&n.children.length)collapsed.add(n.id);maxDepth=99;$$('#depthSeg button').forEach(b=>b.classList.toggle('active',b.dataset.depth==='99'))}collapsed.delete(id)}render();return}openDrawer(id)});
 $('#themeBtn').onclick=()=>setTheme(document.documentElement.dataset.theme==='dark'?'light':'dark');
 $('#paletteBtn').onclick=e=>{e.stopPropagation();$('#exportMenu').classList.remove('open');$('#paletteMenu').classList.toggle('open')};
 $('#paletteMenu').onclick=e=>{const b=e.target.closest('button[data-palette]');if(!b)return;setPalette(b.dataset.palette);closeMenus();toast(`${b.querySelector('b')?.textContent||'Palette'} palette applied`)};
@@ -694,14 +944,32 @@ $('#asOf').onchange=render;$('#dateFilter').onchange=render;$('#depthSeg').oncli
 $('#expandBtn').onclick=()=>{collapsed.clear();maxDepth=99;$$('#depthSeg button').forEach(x=>x.classList.toggle('active',x.dataset.depth==='99'));render()};
 $('#collapseBtn').onclick=()=>{collapsed=new Set(people.filter(p=>p.type==='Team Leader').map(p=>p.id));maxDepth=2;$$('#depthSeg button').forEach(x=>x.classList.toggle('active',x.dataset.depth==='2'));render()};$('#centerBtn').onclick=fitChart;
 $('#csvBtn').onclick=exportCSV;$('#templateBtn').onclick=downloadTemplate;$('#importBtn').onclick=triggerImport;$('#sideImportBtn').onclick=triggerImport;$('#fileInput').onchange=e=>e.target.files[0]&&importFile(e.target.files[0]);
-$('#exportBtn').onclick=e=>{e.stopPropagation();$('#paletteMenu').classList.remove('open');$('#exportMenu').classList.toggle('open')};$('#exportMenu').onclick=e=>{const b=e.target.closest('button[data-export]');if(!b)return;closeMenus();if(b.dataset.export==='png')exportCurrentPNG();else if(b.dataset.export==='groups')exportGroups();else if(b.dataset.export==='people')exportPeopleCSV();else if(b.dataset.export==='workspace')exportWorkspace();else if(b.dataset.export==='restore')$('#restoreBtn').click();else exportCSV()};document.addEventListener('click',e=>{if(!e.target.closest('.menu-wrap'))closeMenus()});
+$('#exportBtn').onclick=e=>{e.stopPropagation();$('#paletteMenu').classList.remove('open');$('#exportMenu').classList.toggle('open')};$('#exportMenu').onclick=e=>{const b=e.target.closest('button[data-export]');if(!b)return;closeMenus();if(b.dataset.export==='png')exportCurrentPNG();else if(b.dataset.export==='groups')exportGroups();else if(b.dataset.export==='pdf')exportBoardPack();else if(b.dataset.export==='html')exportShareableHTML();else if(b.dataset.export==='people')exportPeopleCSV();else if(b.dataset.export==='workspace')exportWorkspace();else if(b.dataset.export==='restore')$('#restoreBtn').click();else exportCSV()};document.addEventListener('click',e=>{if(!e.target.closest('.menu-wrap'))closeMenus()});
 $('#importClose').onclick=$('#importCancel').onclick=()=>closeDialog('importModal');$('#importModal').addEventListener('click',e=>{if(e.target===$('#importModal'))$('#importModal').classList.remove('open')});$('#importConfirm').onclick=confirmImport;
-window.addEventListener('keydown',e=>{if((e.metaKey||e.ctrlKey)&&e.key.toLowerCase()==='k'){const tag=(e.target.tagName||'').toLowerCase();if(tag==='textarea'||(tag==='input'&&e.target.id!=='search'))return;e.preventDefault();$('#search').focus();}if(e.key==='Escape'){if($('#brandingModal').classList.contains('open')){closeBranding();return;}hidePositionEditor();$('#importModal').classList.remove('open');closeMenus()}});window.addEventListener('resize',render);
-initPlanning();loadSavedPlanningView();setupTheme();setupChips();setupPlanningEvents();
+window.addEventListener('keydown',e=>{
+  const tag=(e.target.tagName||'').toLowerCase();
+  const typing=tag==='textarea'||tag==='select'||(tag==='input'&&e.target.type!=='checkbox');
+  if((e.metaKey||e.ctrlKey)&&e.key.toLowerCase()==='k'){if(tag==='textarea'||(tag==='input'&&e.target.id!=='search'))return;e.preventDefault();$('#search').focus();return;}
+  if((e.metaKey||e.ctrlKey)&&e.key.toLowerCase()==='z'&&!typing){e.preventDefault();if(e.shiftKey)redoChange();else undoChange();return;}
+  if(e.key==='Escape'){if($('#brandingModal').classList.contains('open')){closeBranding();return;}if($('#welcomeModal')?.classList.contains('open')){closeWelcome();return;}if($('#historyModal')?.classList.contains('open')){closeDialog('historyModal');return;}hidePositionEditor();$('#importModal').classList.remove('open');closeMenus()}
+});window.addEventListener('resize',render);
+initPlanning();loadSavedPlanningView();setupTheme();setupChips();setupPlanningEvents();updateUndoButtons();
+$('#undoBtn').onclick=undoChange;$('#redoBtn').onclick=redoChange;$('#helpBtn').onclick=()=>openWelcome(true);
+$('#historyBtn').onclick=openHistory;$('#historyClose').onclick=()=>closeDialog('historyModal');
+$('#historyRows').onclick=e=>{const b=e.target.closest('[data-history]');if(b)restoreHistoryIndex(Number(b.dataset.history));};
+$('#welcomeClose').onclick=$('#welcomeSkip').onclick=closeWelcome;
+$('#welcomeHarbor').onclick=()=>{const skip=welcomeFirstRun;closeWelcome();loadSampleWorkspace('harbor-and-co',{skipConfirm:skip});};
+$('#templateGrid').onclick=e=>{const b=e.target.closest('.template-card');if(!b)return;const skip=welcomeFirstRun;closeWelcome();if(b.dataset.kind==='example')loadSampleWorkspace(b.dataset.id,{skipConfirm:skip});else loadStarterTemplate(b.dataset.id,{skipConfirm:skip});};
+$('#uploadPhotoBtn').onclick=()=>{$('#photoInput').value='';$('#photoInput').click();};
+$('#photoInput').onchange=async e=>{const file=e.target.files[0];if(!file)return;try{photoDraft=await normalizePersonPhoto(file);updatePhotoNote();toast('Photo attached');}catch(error){toast(error.message||'Could not use this photo.');}};
+$('#removePhotoBtn').onclick=()=>{photoDraft=null;updatePhotoNote();};
 $('#exampleHarborBtn').onclick=()=>loadSampleWorkspace('harbor-and-co');
 $('#exampleNorthstarBtn').onclick=()=>loadSampleWorkspace('northstar-commerce');
 $('#exampleEmptyBtn').onclick=()=>loadSampleWorkspace('',{empty:true});
+$('#exampleFirstLightBtn').onclick=()=>loadStarterTemplate('first-light');
+$('#exampleLumenBtn').onclick=()=>loadStarterTemplate('lumen-studio');
+$('#exampleCedarBtn').onclick=()=>loadStarterTemplate('cedar-kind');
 
 $('#zoomOut').onclick=()=>setZoom(zoom-.1);$('#zoomIn').onclick=()=>setZoom(zoom+.1);
 $$('input[name="importMode"]').forEach(input=>input.onchange=renderImportReview);
-render();setTimeout(centerChart,0);
+render();setTimeout(centerChart,0);maybeShowWelcome();

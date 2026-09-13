@@ -11,19 +11,22 @@
   const ROLE_TYPES = ['Head', 'Team Leader', 'Engineer', 'Specialist', 'Graduate', 'Intern'];
   const STATUSES = ['Approved', 'Not approved'];
   const HIRING_STATES = ['Filled', 'Recruiting', 'Vacant'];
-  const POSITION_FIELDS = ['id', 'managerId', 'title', 'type', 'group', 'fte', 'status', 'hiringState', 'personId', 'startDate', 'endDate'];
+  const POSITION_FIELDS = ['id', 'managerId', 'secondaryManagerId', 'title', 'type', 'group', 'fte', 'status', 'hiringState', 'personId', 'startDate', 'endDate', 'location', 'costCenter', 'jobFamily'];
   const DIFF_FIELDS = [
-    ['title', 'Position title'], ['managerId', 'Reports to'], ['type', 'Position type'],
-    ['group', 'Group / team'], ['fte', 'Position FTE'], ['status', 'Approval'],
+    ['title', 'Position title'], ['managerId', 'Reports to'], ['secondaryManagerId', 'Dotted-line to'],
+    ['type', 'Position type'], ['group', 'Group / team'], ['fte', 'Position FTE'], ['status', 'Approval'],
     ['hiringState', 'Hiring state'], ['personId', 'Assigned person'],
-    ['startDate', 'Position start'], ['endDate', 'Position end']
+    ['startDate', 'Position start'], ['endDate', 'Position end'],
+    ['location', 'Location'], ['costCenter', 'Cost center'], ['jobFamily', 'Job family']
   ];
-  const POSITION_CSV_COLUMNS = ['positionId', 'reportsToPositionId', 'title', 'type', 'group', 'fte', 'approval', 'hiringState', 'personId', 'name', 'startDate', 'endDate'];
+  const POSITION_CSV_COLUMNS = ['positionId', 'reportsToPositionId', 'secondaryManagerId', 'title', 'type', 'group', 'fte', 'approval', 'hiringState', 'personId', 'name', 'employeeNumber', 'startDate', 'endDate', 'location', 'costCenter', 'jobFamily'];
   const ALIASES = {
     id: ['positionid', 'id'],
     managerId: ['reportstopositionid', 'managerpositionid', 'managerid', 'reportstoid', 'parentid'],
+    secondaryManagerId: ['secondarymanagerid', 'dottedlineid', 'dottedlineto', 'matrixmanagerid'],
     managerName: ['manager', 'reports to', 'reportsto', 'managername', 'reportingmanager'],
-    personId: ['personid', 'employeeid', 'userid'],
+    personId: ['personid', 'userid'],
+    employeeNumber: ['employeenumber', 'employeeno', 'staffid', 'badgeid'],
     name: ['name', 'fullname', 'person', 'employee', 'employeename'],
     title: ['title', 'jobtitle', 'position', 'role'],
     type: ['type', 'positiontype', 'employmenttype', 'employeetype'],
@@ -32,7 +35,10 @@
     endDate: ['enddate', 'end', 'effectiveend', 'dateto', 'leavingdate'],
     status: ['status', 'approval', 'approved', 'approvalstatus'],
     hiringState: ['hiringstate', 'hiringstatus', 'vacancystatus', 'staffingstatus'],
-    fte: ['fte', 'fulltimeequivalent', 'positionfte']
+    fte: ['fte', 'fulltimeequivalent', 'positionfte'],
+    location: ['location', 'site', 'office', 'city'],
+    costCenter: ['costcenter', 'costcentre', 'cc'],
+    jobFamily: ['jobfamily', 'jobfunction', 'family']
   };
 
   function esc(s) {
@@ -72,7 +78,30 @@
     return '\ufeff' + [headers.map(csvEscape).join(','), ...rows.map(row => row.map(csvEscape).join(','))].join('\r\n');
   }
   function positionCSVValues(p, scenario) {
-    return [p.id, p.managerId, p.title, p.type, p.group, p.fte, p.status, p.hiringState, p.personId, scenario.employees.find(x => x.id === p.personId)?.name || '', p.startDate, p.endDate];
+    const person = scenario.employees.find(x => x.id === p.personId);
+    return [p.id, p.managerId, p.secondaryManagerId, p.title, p.type, p.group, p.fte, p.status, p.hiringState, p.personId, person?.name || '', person?.employeeNumber || '', p.startDate, p.endDate, p.location, p.costCenter, p.jobFamily];
+  }
+  function validPersonPhoto(v) {
+    if (!v) return null;
+    if (typeof v !== 'object') throw new Error('Invalid person photo.');
+    if (typeof v.data !== 'string' || v.data.length > 160000 || !/^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(v.data)) throw new Error('Person photos must be small PNG images stored in this browser.');
+    if (!Number.isFinite(v.width) || v.width < 1 || v.width > 512 || !Number.isFinite(v.height) || v.height < 1 || v.height > 512) throw new Error('Person photo dimensions are invalid.');
+    return { data: v.data, width: v.width, height: v.height };
+  }
+  function wouldCreateCycle(positions, id, newManagerId) {
+    if (!newManagerId) return false;
+    if (newManagerId === id) return true;
+    const byId = new Map(positions.map(p => [p.id, p.id === id ? { ...p, managerId: newManagerId } : p]));
+    if (!byId.has(newManagerId)) return true;
+    let cur = newManagerId;
+    const path = new Set([id]);
+    while (cur) {
+      if (path.has(cur)) return true;
+      path.add(cur);
+      cur = byId.get(cur)?.managerId || '';
+      if (path.size > 150) return true;
+    }
+    return false;
   }
   function detectDelimiter(text) {
     const counts = { ',': 0, ';': 0, '\t': 0 };
@@ -195,12 +224,12 @@
       const id = cleanString(p.id, 'Person ID', 150, true), name = cleanString(p.name, 'Person name', 150, true);
       if (personIds.has(id)) throw new Error(`Duplicate person ID: ${id}.`);
       personIds.add(id);
-      return { id, name };
+      return { id, name, employeeNumber: cleanString(p.employeeNumber || '', 'Employee number', 80), photo: validPersonPhoto(p.photo) };
     });
     const positions = data.positions.map(p => {
       if (!p || typeof p !== 'object') throw new Error('Invalid position record.');
       const out = {};
-      for (const key of POSITION_FIELDS.filter(k => k !== 'fte')) out[key] = cleanString(p[key], key === 'title' ? 'Position title' : key, ['title', 'group'].includes(key) ? 200 : 150, ['id', 'title', 'type', 'status', 'hiringState'].includes(key));
+      for (const key of POSITION_FIELDS.filter(k => k !== 'fte')) out[key] = cleanString(p[key] || '', key === 'title' ? 'Position title' : key, ['title', 'group', 'location', 'jobFamily'].includes(key) ? 200 : 150, ['id', 'title', 'type', 'status', 'hiringState'].includes(key));
       if (ids.has(out.id)) throw new Error(`Duplicate position ID: ${out.id}.`);
       ids.add(out.id);
       if (!ROLE_TYPES.includes(out.type)) throw new Error(`Unknown position type on ${out.id}.`);
@@ -218,6 +247,13 @@
     });
     const byId = new Map(positions.map(p => [p.id, p]));
     for (const p of positions) if (p.managerId && !ids.has(p.managerId)) throw new Error(`Position ${p.id} has a missing reporting position: ${p.managerId}.`);
+    for (const p of positions) {
+      if (p.secondaryManagerId) {
+        if (!ids.has(p.secondaryManagerId)) throw new Error(`Position ${p.id} has a missing dotted-line manager: ${p.secondaryManagerId}.`);
+        if (p.secondaryManagerId === p.id) throw new Error(`Position ${p.id} cannot have a dotted line to itself.`);
+        if (p.secondaryManagerId === p.managerId) throw new Error(`Position ${p.id}: dotted-line manager must differ from the solid reporting line.`);
+      }
+    }
     const done = new Set();
     for (const p of positions) {
       let id = p.id;
@@ -253,14 +289,17 @@
     return {
       version: 2, activeScenarioId: 'current', scenarios: [{
         id: 'current', name: 'Current', description: '', createdAt: stamp, updatedAt: stamp, baseScenarioId: '', baseSnapshot: null,
-        employees: roster.map(p => ({ id: p.id, name: p.name })),
-        positions: roster.map(p => ({ id: p.id, managerId: p.managerId, title: p.title.trim() || `${p.type} position`, type: p.type, group: p.group, fte: 1, status: p.status, hiringState: 'Filled', personId: p.id, startDate: p.startDate, endDate: p.endDate }))
+        employees: roster.map(p => ({ id: p.id, name: p.name, employeeNumber: '', photo: null })),
+        positions: roster.map(p => ({ id: p.id, managerId: p.managerId, secondaryManagerId: '', title: p.title.trim() || `${p.type} position`, type: p.type, group: p.group, fte: 1, status: p.status, hiringState: 'Filled', personId: p.id, startDate: p.startDate, endDate: p.endDate, location: '', costCenter: '', jobFamily: '' }))
       }]
     };
   }
   function projection(scenario) {
-    const names = new Map(scenario.employees.map(p => [p.id, p.name]));
-    return scenario.positions.map(p => ({ ...p, name: p.personId ? names.get(p.personId) : p.hiringState === 'Recruiting' ? 'Recruiting' : 'Vacant position', personName: p.personId ? names.get(p.personId) : '' }));
+    const people = new Map(scenario.employees.map(p => [p.id, p]));
+    return scenario.positions.map(p => {
+      const person = p.personId ? people.get(p.personId) : null;
+      return { ...p, name: person ? person.name : p.hiringState === 'Recruiting' ? 'Recruiting' : 'Vacant position', personName: person?.name || '', photo: person?.photo || null, employeeNumber: person?.employeeNumber || '' };
+    });
   }
   function totals(scenario, filter = () => true) {
     const rows = scenario.positions.filter(filter);
@@ -284,8 +323,8 @@
     return result.sort((a, b) => ({ added: 0, removed: 1, changed: 2, unchanged: 3 }[a.kind] - { added: 0, removed: 1, changed: 2, unchanged: 3 }[b.kind]) || (a.after || a.before).title.localeCompare((b.after || b.before).title) || (a.id.localeCompare(b.id)));
   }
   function fieldValue(key, value, scenario) {
-    if (key === 'managerId') {
-      if (!value) return 'Top level';
+    if (key === 'managerId' || key === 'secondaryManagerId') {
+      if (!value) return key === 'secondaryManagerId' ? 'None' : 'Top level';
       const p = scenario.positions.find(x => x.id === value);
       return p ? `${p.title} [${p.id}]` : String(value);
     }
@@ -334,11 +373,11 @@
         if (hiringState !== 'Filled' && personId) throw new Error(`Row ${rowNo}: ${hiringState} must not have an assigned person. Clear name/personId or select Filled.`);
         if (personId) {
           if (employeeMap.has(personId) && employeeMap.get(personId).name !== name) throw new Error(`Row ${rowNo}: conflicting names for person ${personId}.`);
-          employeeMap.set(personId, { id: personId, name });
+          employeeMap.set(personId, { id: personId, name, employeeNumber: get('employeeNumber'), photo: source.employees.find(x => x.id === personId)?.photo || null });
         }
         const type = normalizeType(get('type'), warnings, rowNo), title = get('title') || `${type} position`;
         if (!get('title')) warnings.push(`Row ${rowNo}: no title supplied. New/replaced positions use “${title}”; Update by ID keeps an existing title when its column is omitted.`);
-        positions.push({ id, managerId: get('managerId'), managerName: get('managerName'), title, type, group: get('group'), fte: get('fte') ? Number(get('fte')) : 1, status: normalizeStatus(get('status')), hiringState, personId, startDate: normalizeDate(get('startDate'), warnings, rowNo, 'position start'), endDate: normalizeDate(get('endDate'), warnings, rowNo, 'position end') });
+        positions.push({ id, managerId: get('managerId'), managerName: get('managerName'), secondaryManagerId: get('secondaryManagerId'), title, type, group: get('group'), fte: get('fte') ? Number(get('fte')) : 1, status: normalizeStatus(get('status')), hiringState, personId, startDate: normalizeDate(get('startDate'), warnings, rowNo, 'position start'), endDate: normalizeDate(get('endDate'), warnings, rowNo, 'position end'), location: get('location'), costCenter: get('costCenter'), jobFamily: get('jobFamily') });
       } catch (error) { errors.push(error.message); }
     }
     employees.push(...employeeMap.values());
@@ -375,7 +414,7 @@
       result.positions.forEach(p => {
         const next = structuredClone(p), old = byId.get(p.id);
         if (old) {
-          for (const key of ['title', 'type', 'group', 'fte', 'status', 'startDate', 'endDate']) if (!supplied.has(key)) next[key] = old[key];
+          for (const key of ['title', 'type', 'group', 'fte', 'status', 'startDate', 'endDate', 'location', 'costCenter', 'jobFamily', 'secondaryManagerId']) if (!supplied.has(key)) next[key] = old[key];
           if (!supplied.has('managerId') && !supplied.has('managerName')) next.managerId = old.managerId;
           if (!supplied.has('personId') && !supplied.has('name') && !supplied.has('hiringState')) { next.personId = old.personId; next.hiringState = old.hiringState; }
         }
@@ -403,7 +442,7 @@
       scenarios: [{
         id: 'current', name: 'Current', description: '', createdAt: stamp, updatedAt: stamp, baseScenarioId: '', baseSnapshot: null,
         employees: [],
-        positions: [{ id: 'POS-001', managerId: '', title: 'Head of organization', type: 'Head', group: 'Leadership', fte: 1, status: 'Approved', hiringState: 'Vacant', personId: '', startDate: today, endDate: '' }]
+        positions: [{ id: 'POS-001', managerId: '', secondaryManagerId: '', title: 'Head of organization', type: 'Head', group: 'Leadership', fte: 1, status: 'Approved', hiringState: 'Vacant', personId: '', startDate: today, endDate: '', location: '', costCenter: '', jobFamily: '' }]
       }]
     });
   }
@@ -413,6 +452,7 @@
     esc, slug, makeId, isISODate, cleanString, fmtDate, fteText, csvEscape, csvRows, positionCSVValues,
     detectDelimiter, parseCSV, normHeader, headerMap, normalizeType, normalizeStatus, normalizeDate,
     validatePeopleData, validateScenarioData, validatePlanning, migrateLegacy, projection, totals,
-    scenarioChanges, fieldValue, prepareImport, makeImportScenario, emptyWorkspace, sanitizeChipFilters
+    scenarioChanges, fieldValue, prepareImport, makeImportScenario, emptyWorkspace, sanitizeChipFilters,
+    wouldCreateCycle, validPersonPhoto
   };
 });

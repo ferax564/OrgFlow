@@ -145,3 +145,62 @@ test('sanitizeChipFilters keeps new role types when every legacy type was select
   assert.deepEqual(OrgFlow.sanitizeChipFilters(['Head', 'Specialist'], all, legacy), ['Head', 'Specialist']);
   assert.equal(OrgFlow.sanitizeChipFilters(legacy, all, legacy).includes('Specialist'), true);
 });
+
+test('wouldCreateCycle detects a reporting loop before it is saved', () => {
+  const positions = [
+    { id: 'A', managerId: '' },
+    { id: 'B', managerId: 'A' },
+    { id: 'C', managerId: 'B' }
+  ];
+  assert.equal(OrgFlow.wouldCreateCycle(positions, 'A', 'C'), true);
+  assert.equal(OrgFlow.wouldCreateCycle(positions, 'C', 'A'), false);
+  assert.equal(OrgFlow.wouldCreateCycle(positions, 'B', ''), false);
+  assert.equal(OrgFlow.wouldCreateCycle(positions, 'B', 'B'), true);
+});
+
+test('dotted-line managers must exist and differ from the solid line', () => {
+  const employees = [{ id: 'E1', name: 'Alex' }, { id: 'E2', name: 'Maya' }];
+  const base = (extra) => ({
+    employees,
+    positions: [
+      { id: 'A', managerId: '', secondaryManagerId: '', title: 'Head', type: 'Head', group: 'G', fte: 1, status: 'Approved', hiringState: 'Filled', personId: 'E1', startDate: '', endDate: '', location: 'London', costCenter: 'EXE', jobFamily: 'Leadership' },
+      extra
+    ]
+  });
+  const ok = OrgFlow.validateScenarioData(base({ id: 'B', managerId: 'A', secondaryManagerId: '', title: 'Lead', type: 'Team Leader', group: 'G', fte: 1, status: 'Approved', hiringState: 'Filled', personId: 'E2', startDate: '', endDate: '', location: 'London', costCenter: 'ENG', jobFamily: 'Engineering' }));
+  assert.equal(ok.positions[0].location, 'London');
+  assert.throws(() => OrgFlow.validateScenarioData(base({ id: 'B', managerId: 'A', secondaryManagerId: 'A', title: 'Lead', type: 'Team Leader', group: 'G', fte: 1, status: 'Approved', hiringState: 'Filled', personId: 'E2', startDate: '', endDate: '' })), /differ from the solid/);
+  assert.throws(() => OrgFlow.validateScenarioData(base({ id: 'B', managerId: 'A', secondaryManagerId: 'Z', title: 'Lead', type: 'Team Leader', group: 'G', fte: 1, status: 'Approved', hiringState: 'Filled', personId: 'E2', startDate: '', endDate: '' })), /missing dotted-line/);
+});
+
+test('CSV round-trip keeps location, cost center, job family and employee number', () => {
+  const source = OrgFlow.emptyWorkspace('2026-09-13').scenarios[0];
+  const csv = [
+    OrgFlow.POSITION_CSV_COLUMNS.join(','),
+    'POS-001,,,Head of Product,Head,Product,1,Approved,Filled,EMP-001,Alex Morgan,E-101,2026-01-01,,London,PRD,Product',
+    'POS-002,POS-001,,Head of Engineering,Head,Engineering,1,Approved,Filled,EMP-003,Elena Voss,E-200,2026-01-01,,Berlin,ENG,Engineering',
+    'POS-003,POS-001,POS-002,Product Manager,Specialist,Product,1,Approved,Filled,EMP-002,Sam Rivera,E-118,2026-01-01,,Remote,PRD,Product'
+  ].join('\n');
+  const prepared = OrgFlow.prepareImport(csv, 'team.csv', source);
+  assert.equal(prepared.errors.length, 0, prepared.errors.join('; '));
+  const merged = OrgFlow.makeImportScenario(prepared, 'replace', source);
+  assert.equal(merged.positions[0].location, 'London');
+  assert.equal(merged.positions[0].costCenter, 'PRD');
+  assert.equal(merged.positions[2].secondaryManagerId, 'POS-002');
+  assert.equal(merged.employees.find(e => e.id === 'EMP-001').employeeNumber, 'E-101');
+  const exported = OrgFlow.positionCSVValues(merged.positions[2], merged);
+  assert.equal(exported[2], 'POS-002');
+  assert.equal(exported[11], 'E-118');
+});
+
+test('starter templates validate as planning workspaces', () => {
+  require('../js/templates.js');
+  const templates = globalThis.ORGFLOW_TEMPLATES;
+  assert.ok(templates['first-light'] && templates['lumen-studio'] && templates['cedar-kind']);
+  for (const [id, t] of Object.entries(templates)) {
+    const planning = OrgFlow.validatePlanning(t.planning);
+    assert.equal(planning.scenarios[0].name, 'Current', id);
+    assert.ok(planning.scenarios[0].positions.some(p => p.secondaryManagerId), `${id} should demonstrate a dotted line`);
+    assert.ok(planning.scenarios[0].positions.every(p => p.location), `${id} should have locations`);
+  }
+});

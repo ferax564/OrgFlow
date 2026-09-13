@@ -20,9 +20,14 @@ async function main() {
     const page = await browser.newPage();
     await page.setViewport({ width: 1440, height: 900, deviceScaleFactor: 1 });
     page.on('dialog', async dialog => { await dialog.accept(); });
-    await page.goto(`http://127.0.0.1:${port}/index.html`, { waitUntil: 'networkidle0', timeout: 30000 });
+    await page.goto(`http://127.0.0.1:${port}/app.html`, { waitUntil: 'networkidle0', timeout: 30000 });
     await page.evaluate(() => localStorage.clear());
     await page.reload({ waitUntil: 'networkidle0' });
+    const welcome = await page.$('#welcomeModal.open');
+    if (welcome) {
+      await page.click('#welcomeSkip');
+      await page.waitForFunction(() => !document.querySelector('#welcomeModal.open'));
+    }
     await captureCompany(page, 'harbor-and-co');
     await page.click('#exampleNorthstarBtn');
     await page.waitForFunction(() => document.querySelector('#brandName')?.textContent.includes('Northstar'));

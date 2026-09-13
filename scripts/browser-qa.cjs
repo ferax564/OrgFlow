@@ -24,9 +24,14 @@ function ok(title) { findings.push({ type: 'ok', title }); console.log('OK:', ti
   page.on('pageerror', err => pageErrors.push(String(err)));
   page.on('console', msg => { if (msg.type() === 'error') consoleErrors.push(msg.text()); });
   page.on('dialog', async dialog => { await dialog.accept(); });
-  await page.goto('http://127.0.0.1:4173/index.html', { waitUntil: 'networkidle0' });
+  await page.goto('http://127.0.0.1:4173/app.html', { waitUntil: 'networkidle0' });
   await page.evaluate(() => localStorage.clear());
   await page.reload({ waitUntil: 'networkidle0' });
+  const welcome = await page.$('#welcomeModal.open');
+  if (welcome) {
+    await page.click('#welcomeSkip');
+    await page.waitForFunction(() => !document.querySelector('#welcomeModal.open'));
+  }
   await page.waitForSelector('#chart .node');
 
   const boot = await page.evaluate(() => ({

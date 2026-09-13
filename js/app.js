@@ -400,8 +400,17 @@ function saveScenarioDialog(){
   try{const name=$('#scenarioName').value.trim(),description=$('#scenarioDescription').value.trim();if(scenarioDialogMode==='create')createScenario(name,$('#scenarioSource').value,description);else updateScenario(s=>{s.name=name;s.description=description;},'Scenario details saved');closeDialog('scenarioModal');}
   catch(error){$('#scenarioValidation').textContent=error.message;$('#scenarioValidation').classList.add('show');}
 }
+function applyDefaultFilters(){
+  activeRoles=new Set(ROLE_TYPES);activeStatuses=new Set(STATUSES);activeHiring=new Set(HIRING_STATES);
+  $('#search').value='';$('#compareSearch').value='';$('#dateFilter').checked=false;$('#asOf').value=today;
+  maxDepth=99;collapsed.clear();zoom=1;showChartChanges=true;compareKind='all';currentView='chart';
+  compareBaselineId='current';compareTargetId=workspace?.scenarios.find(s=>s.id!=='current')?.id||'current';
+  $$('#depthSeg button').forEach(b=>b.classList.toggle('active',b.dataset.depth==='99'));
+  $('.layout')?.classList.remove('filters-open');
+  setupChips();
+}
 function resetFilters(){
-  activeRoles=new Set(ROLE_TYPES);activeStatuses=new Set(STATUSES);activeHiring=new Set(HIRING_STATES);$('#search').value='';$('#dateFilter').checked=false;maxDepth=99;collapsed.clear();setupChips();render();
+  applyDefaultFilters();render();
 }
 function setupHiringChips(){
   $('#hiringChips').innerHTML=HIRING_STATES.map(s=>`<button class="chip ${activeHiring.has(s)?'active':''}" data-hiring="${s}" aria-pressed="${activeHiring.has(s)}">${s}</button>`).join('');
@@ -639,9 +648,13 @@ function loadSampleWorkspace(sampleId,{empty=false}={}){
       branding=structuredClone(BRANDING_DEFAULTS);
       try{localStorage.setItem(BRANDING_KEY,JSON.stringify(branding));localStorage.removeItem('orgflow.sampleId');}catch{}
       applyBranding(); setPalette('indigo',false); setTheme(window.matchMedia?.('(prefers-color-scheme: dark)').matches?'dark':'light',false);
-    }else applySampleChrome(sampleId,true);
-    hidePositionEditor(); collapsed.clear(); currentView='chart'; compareBaselineId='current'; compareTargetId=workspace.scenarios.find(s=>s.id!=='current')?.id||'current';
-    $('#search').value=''; $('#dateFilter').checked=false; $('#asOf').value=today; setupChips(); syncProjection(); render(); centerChart();
+      applyDefaultFilters();
+    }else{
+      applySampleChrome(sampleId,true);
+      restoreView(ORGFLOW_EXAMPLES[sampleId].view||{});
+    }
+    hidePositionEditor();
+    syncProjection(); render(); centerChart();
     toast(empty?'Started from a blank organization':`Loaded ${ORGFLOW_EXAMPLES[sampleId].branding.companyName}`);
   }catch(error){toast(error.message||'Could not load the example.');}
 }

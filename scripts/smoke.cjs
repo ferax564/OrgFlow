@@ -68,10 +68,19 @@ async function serve(root, port) {
     await page.waitForFunction(() => document.querySelector('#brandName')?.textContent === 'Northstar Commerce');
     const nCount = await page.$eval('#countVisible', el => el.textContent);
     assert.equal(nCount, '14');
+    await page.click('.plan-tabs [data-view="chart"]');
+    await page.waitForSelector('#roleChips .chip');
+    await page.evaluate(() => {
+      const head = [...document.querySelectorAll('#roleChips .chip')].find(b => b.dataset.value === 'Head');
+      if (head && head.classList.contains('active')) head.click();
+    });
+    await page.waitForFunction(() => document.querySelector('#countVisible')?.textContent !== '14');
     await page.click('#exampleEmptyBtn');
     await page.waitForFunction(() => document.querySelector('#countVisible')?.textContent === '1');
     const emptyBrand = await page.$eval('#brandName', el => el.textContent);
     assert.equal(emptyBrand, 'OrgFlow');
+    const headActive = await page.evaluate(() => [...document.querySelectorAll('#roleChips .chip')].find(b => b.dataset.value === 'Head')?.classList.contains('active'));
+    assert.equal(headActive, true);
     console.log('browser smoke ok');
   } finally {
     await browser.close();

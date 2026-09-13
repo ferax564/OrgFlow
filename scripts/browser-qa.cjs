@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 'use strict';
+// Full UI pass against a server already running at http://127.0.0.1:4173
+// (python3 -m http.server 4173). Needs Chrome and puppeteer-core.
 const fs = require('node:fs');
 const path = require('node:path');
 const puppeteer = require('puppeteer-core');

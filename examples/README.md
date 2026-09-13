@@ -13,7 +13,7 @@ Each folder contains:
 
 A product company with Leadership, Product, Engineering, Design and Customer Success. The **FY27 growth** scenario approves a pending engineer, fills a vacant platform role, restores a designer to full-time and opens a second customer-success seat.
 
-Load it from **Example companies → Load Harbor & Co**, or restore `workspace.json` from the Export menu.
+Load it from **Example companies → Load Harbor & Co**, or restore `workspace.json` from the Export menu. Loading the sample resets chart filters (including the date filter) so the full 17-position tree is visible. Tom Becker’s Senior Software Engineer role starts 2026-10-01; enabling **Respect position start / end dates** before that day hides it.
 
 ## Northstar Commerce
 

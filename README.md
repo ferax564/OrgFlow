@@ -57,13 +57,29 @@ Then open http://localhost:4173/. Opening `index.html` as a file may block some 
 
 OrgFlow does not need a backend. Clearing site data removes the local workspace; export a JSON backup first.
 
+## Using the app
+
+- **Default sample** is Harbor & Co (17 positions). The sidebar can replace it with Northstar Commerce or a blank organization. Loading a sample overwrites this browser’s scenarios, people and branding — export a workspace backup first if you want to keep work.
+- **Date filter** is off by default, so future-dated roles stay visible. Turn on **Respect position start / end dates** to hide roles that have not started (or have already ended) relative to the as-of date. New positions use today’s start date unless that filter is on.
+- **Chart filters** (type, hiring, approval, depth, search) apply to the org chart and the Positions register. Compare uses full snapshots and ignores those filters. Loading an example or a blank organization resets filters so leftover chips cannot hide the new chart.
+- **Narrow screens** hide the sidebar. Open it with the ☷ **Filters** control in the planning bar (next to scenario settings). It stays available on Org chart, Positions and Compare.
+- **Workspace JSON** backups include every scenario, unassigned people, branding, palette and the current view. Restoring replaces all of that. A backup that omits `dateFilter` keeps all dates visible rather than turning the date filter on.
+
 ## Tests
 
 ```bash
 npm test
 ```
 
-The suite covers CSV parsing, spreadsheet-formula escaping, scenario validation, comparison diffs and the example workspaces.
+The suite covers CSV parsing, spreadsheet-formula escaping, scenario validation, comparison diffs, example workspaces and filter-set migration (including Specialist after older saved views).
+
+With Chrome and `puppeteer-core` installed locally:
+
+```bash
+python3 -m http.server 4173   # in one terminal
+node scripts/browser-qa.cjs   # full UI pass against that server
+node scripts/smoke.cjs        # shorter pass; starts its own server on 4174
+```
 
 ## Privacy
 

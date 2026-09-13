@@ -5,9 +5,9 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <meta name="color-scheme" content="light" />
   <meta name="theme-color" content="#4338ca" />
-  <meta name="description" content="OrgFlow is a private, in-browser organization chart and workforce-planning app. Positions stay separate from people. Drag reporting lines, compare scenarios, and export board-pack PDFs or shareable HTML — nothing is uploaded unless you download a file." />
+  <meta name="description" content="OrgFlow is a private, in-browser organization chart and workforce-planning app. Positions stay separate from people. Drag reporting lines, compare scenarios, and export board-pack PDFs or shareable HTML. The public site never uploads your roster. An optional Node host can share one org among signed-in members." />
   <meta property="og:title" content="OrgFlow — Private org charts, in the browser" />
-  <meta property="og:description" content="Plan headcount, compare scenarios and export branded charts. All data stays in this browser until you export." />
+  <meta property="og:description" content="Plan headcount, compare scenarios and export branded charts. On the public site, data stays in this browser until you export." />
   <meta property="og:type" content="website" />
   <meta property="og:image" content="examples/harbor-and-co/chart.png" />
   <title>OrgFlow — Private org charts, in the browser</title>
@@ -18,6 +18,7 @@
   <link rel="stylesheet" href="css/site.css" />
 </head>
 <body>
+  <a class="skip" href="#how">Skip to content</a>
   <div class="wrap">
     <nav class="site-nav sans">
       <a class="mark" href="./"><span aria-hidden="true">▦</span>OrgFlow</a>
@@ -25,20 +26,26 @@
         <a href="#how">How it works</a>
         <a href="#features">Features</a>
         <a href="#examples">Examples</a>
+        <a href="#run">Run it</a>
         <a href="app.html">Open app</a>
       </div>
     </nav>
 
     <header class="hero">
       <div>
-        <p class="kicker">Workforce planning without a backend</p>
+        <p class="kicker">Private org charts · positions stay seats</p>
         <h1>See the company.<br>Keep the names on this device.</h1>
         <p class="lede">OrgFlow is an interactive org chart for positions, people and scenarios. Drag a card onto a new manager, undo the last change, then export a board pack or a shareable HTML snapshot — all in the browser you already have open.</p>
         <div class="hero-actions">
           <a class="btn primary" href="app.html">Open the planner</a>
           <a class="btn" href="#examples">Look at the samples</a>
         </div>
-        <p class="hero-note">No account. Harbor &amp; Co loads as a local sample. After Pages is pointed at the <span class="sans">gh-pages</span> branch, this site is at <a href="https://ferax564.github.io/OrgFlow/">ferax564.github.io/OrgFlow</a>. Clearing site data removes the workspace, so export a JSON backup first.</p>
+        <p class="hero-note">No account on the public site. Harbor &amp; Co loads as a local sample. Clearing site data removes the workspace, so export a JSON backup first.</p>
+        <p class="live-row sans">
+          <a class="live-chip" href="https://deep-quinoa-tbf2.here.now/">Live demo</a>
+          <a class="live-chip" href="https://ferax564.github.io/OrgFlow/">GitHub Pages</a>
+          <a class="live-chip" href="https://github.com/ferax564/OrgFlow">Source</a>
+        </p>
       </div>
       <figure class="frame">
         <img src="examples/harbor-and-co/chart.png" alt="Harbor &amp; Co organization chart with product, engineering and design teams" />
@@ -48,7 +55,7 @@
 
     <section id="how">
       <h2 class="section-title">How a planning session goes</h2>
-      <p class="section-copy">The landing page is documentation. The planner is <a href="app.html">app.html</a>. Nothing is posted to a server unless you download a file and send it yourself.</p>
+      <p class="section-copy">This page is the product documentation. The planner is <a href="app.html">app.html</a>. On GitHub Pages and here.now the app is static: nothing is posted unless you download a file. A separate Node host can share one org among signed-in members.</p>
       <div class="steps">
         <article class="step">
           <h3>1. Load a shape</h3>
@@ -103,7 +110,7 @@
         </article>
         <article class="card">
           <h3>Private by default</h3>
-          <p>Logos and photos are resized locally. GitHub Pages hosts the program only — not your roster.</p>
+          <p>Logos and photos are resized locally. The public site hosts the program only — not your roster.</p>
         </article>
       </div>
     </section>
@@ -149,22 +156,41 @@
       </div>
     </section>
 
+    <section id="run">
+      <h2 class="section-title">Two ways to run OrgFlow</h2>
+      <p class="section-copy">The public site never sees your roster. The Node host is optional, and it is a different process — not GitHub Pages and not here.now.</p>
+      <div class="modes">
+        <article class="mode">
+          <p class="tag">This site</p>
+          <h3>In the browser</h3>
+          <p>Open <a href="app.html">app.html</a> here, on <a href="https://deep-quinoa-tbf2.here.now/app.html">here.now</a>, or on <a href="https://ferax564.github.io/OrgFlow/app.html">GitHub Pages</a>. Names, photos and reporting lines stay in <span class="sans">localStorage</span> on this device. No login. No backend.</p>
+          <p class="mode-cmd sans">python3 -m http.server 4173</p>
+        </article>
+        <article class="mode">
+          <p class="tag">Optional</p>
+          <h3>Enterprise host</h3>
+          <p>One shared workspace on your machine or in a VPC. Sign-in, admin / editor / viewer, optional subtree scope, audit log, and MCP read tools. Keycloak is not required locally.</p>
+          <p class="mode-cmd sans">npm run start:enterprise</p>
+        </article>
+      </div>
+    </section>
+
     <aside class="privacy">
       <h2>Your roster does not need to leave the laptop.</h2>
-      <p>OrgFlow is static HTML, CSS and JavaScript. GitHub Pages only hosts the program. People names, photos and reporting lines stay in <span class="sans">localStorage</span> on this device until you export CSV, JSON, PNG, PDF or HTML.</p>
+      <p>On this public site, OrgFlow is static HTML, CSS and JavaScript. GitHub Pages and here.now host the program only. People names, photos and reporting lines stay in <span class="sans">localStorage</span> until you export CSV, JSON, PNG, PDF or HTML. The optional enterprise host is separate: after sign-in it stores one shared workspace on that machine.</p>
     </aside>
 
     <div class="cta-band">
       <div>
         <h2>Open the planner in this origin.</h2>
-        <p>Same folder as this page. Data stays in this browser. Use Export → Workspace backup before you clear site data.</p>
+        <p>Same folder as this page. On the public site, data stays in this browser. Use Export → Workspace backup before you clear site data.</p>
       </div>
       <a class="btn primary" href="app.html">Open the planner</a>
     </div>
 
     <footer>
       <span>OrgFlow · MIT license · <a href="https://github.com/ferax564/OrgFlow">Source and README</a></span>
-      <span><a href="app.html">Planner</a> · <a href="https://ferax564.github.io/OrgFlow/">Published site</a></span>
+      <span><a href="app.html">Planner</a> · <a href="https://deep-quinoa-tbf2.here.now/">here.now</a> · <a href="https://ferax564.github.io/OrgFlow/">GitHub Pages</a></span>
     </footer>
   </div>
   <script src="js/site-enterprise.js"></script>

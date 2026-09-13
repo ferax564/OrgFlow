@@ -2,7 +2,9 @@
 
 Private organization charts and workforce planning in the browser. Positions stay separate from people. Scenarios copy Current instead of overwriting it. Names, photos and logos stay on the device that opened the page until you export a file.
 
-**Live site:** [ferax564.github.io/OrgFlow](https://ferax564.github.io/OrgFlow/) · **Planner:** [app.html](https://ferax564.github.io/OrgFlow/app.html)
+**Live demo:** [deep-quinoa-tbf2.here.now](https://deep-quinoa-tbf2.here.now/) · **Planner:** [app.html](https://deep-quinoa-tbf2.here.now/app.html)
+
+**GitHub Pages:** [ferax564.github.io/OrgFlow](https://ferax564.github.io/OrgFlow/) (after Settings → Pages points at the `gh-pages` branch)
 
 ![Harbor & Co organization chart](examples/harbor-and-co/chart.png)
 
@@ -12,8 +14,9 @@ The repository root is a static site:
 
 | Path | What it is |
 | --- | --- |
-| `index.html` | Product landing page |
+| `index.html` | Product landing page (public docs + two ways to run) |
 | `app.html` | The planner |
+| `login.html` / `admin.html` | Enterprise sign-in and members (not on GitHub Pages) |
 | `css/`, `js/`, `assets/`, `examples/` | Styles, logic, icons and samples |
 
 Serve the root over HTTP (GitHub Pages does this in production):
@@ -24,7 +27,7 @@ python3 -m http.server 4173
 
 Then open http://localhost:4173/ or http://localhost:4173/app.html. Opening the files as `file://` may block image processing and some exports.
 
-There is no backend. Clearing site data removes the workspace; export a JSON backup first.
+On this public site there is no backend. Clearing site data removes the workspace; export a JSON backup first. An optional Node host can share one org — see [Enterprise host](#enterprise-host-optional).
 
 ## Using the planner
 
@@ -117,11 +120,11 @@ The Actions `GITHUB_TOKEN` cannot turn Pages on (the Pages create API is an admi
 
 Until that is saved, `has_pages` stays false and `ferax564.github.io/OrgFlow` 404s even though the `gh-pages` branch has the site.
 
-## Enterprise host (optional)
+The always-on demo is [here.now](https://deep-quinoa-tbf2.here.now/). `login.html` and `admin.html` are not copied onto Pages; they belong to the optional Node host.
 
 ## Enterprise host (optional)
 
-The Pages / here.now site stays private and local. For a **shared** organization on your machine or AWS, run the Node host. **Keycloak is not required locally.**
+The Pages / here.now site stays private and local. For a **shared** organization on your machine or AWS, run the Node host. **Keycloak is not required locally.** The landing page (`index.html`) documents both modes; when that host is running it rewrites Open-app links to `login.html`.
 
 ```bash
 npm run start:enterprise
@@ -158,7 +161,9 @@ node scripts/smoke.cjs        # landing page plus planner; starts its own server
 
 ## Privacy
 
-People names, reporting lines, photos and logos never leave the browser unless you export a file. Logos and photos are processed locally; SVG uploads are sanitized before conversion to PNG. GitHub Pages hosts only the program, not your roster.
+On GitHub Pages and here.now, people names, reporting lines, photos and logos never leave the browser unless you export a file. Logos and photos are processed locally; SVG uploads are sanitized before conversion to PNG. Those hosts serve only the program, not your roster.
+
+The optional enterprise host stores one workspace in SQLite on that machine after sign-in. Roles and subtree scope decide who can load, save or export.
 
 ## License
 

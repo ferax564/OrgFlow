@@ -45,8 +45,14 @@ async function serve(root, port) {
     assert.equal(cta, 'app.html');
     assert.ok(await page.$('#how'));
     assert.ok(await page.$('#using'));
+    assert.ok(await page.$('#run'));
     const how = await page.$eval('#how h2', el => el.textContent);
     assert.match(how, /planning session/);
+    const run = await page.$eval('#run h2', el => el.textContent);
+    assert.match(run, /Two ways to run OrgFlow/);
+    assert.match(await page.$eval('footer', el => el.textContent), /here\.now/);
+    const live = await page.$eval('a.live-chip', el => el.getAttribute('href'));
+    assert.match(live, /here\.now/);
     await page.goto(`http://127.0.0.1:${port}/app.html`, { waitUntil: 'networkidle0' });
     await page.evaluate(() => localStorage.clear());
     await page.reload({ waitUntil: 'networkidle0' });

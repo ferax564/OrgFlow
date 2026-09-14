@@ -8,7 +8,7 @@ Load a sample from **Example companies** in the planner sidebar, from the first-
 
 Each folder contains:
 
-- `workspace.json` — full OrgFlow backup (scenarios, people, branding, palette)
+- `workspace.json` — full OrgFlow backup (scenarios, people, branding, palette, named views)
 - `positions.csv` — Current-scenario export
 - `logo.png` — company mark used in the header and PNG exports
 - `chart.png`, `positions.png`, `compare.png` — captured from the running app

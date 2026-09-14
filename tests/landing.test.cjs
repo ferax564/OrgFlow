@@ -16,6 +16,9 @@ test('landing keeps public CTAs and documents both hosts', () => {
   assert.match(html, /https:\/\/deep-quinoa-tbf2\.here\.now\//);
   assert.match(html, /https:\/\/ferax564\.github\.io\/OrgFlow\//);
   assert.match(html, /npm run start:enterprise/);
+  assert.match(html, /Named views/);
+  assert.match(html, /Print \/ A3/);
+  assert.match(html, /Group and site chips/);
   assert.doesNotMatch(html, /nothing is uploaded unless you download a file and send it yourself/i);
 });
 

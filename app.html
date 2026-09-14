@@ -57,11 +57,15 @@
         <button data-export="png">Current view as PNG</button>
         <button data-export="groups">One PNG per group (ZIP)</button>
         <button data-export="pdf">Board pack (PDF)</button>
+        <button data-export="a3">Print / A3 pages (PDF)</button>
+        <button data-export="print">Print this view…</button>
         <button data-export="html">Shareable HTML snapshot</button>
         <div class="sep"></div>
         <button data-export="csv">Positions + assignments (CSV)</button>
         <button data-export="people">People directory (CSV)</button>
         <button data-export="workspace">Workspace backup (JSON)</button>
+        <button data-export="save">Save workspace</button>
+        <button data-export="saveAs">Save workspace as…</button>
         <button data-export="restore">Restore workspace…</button>
       </div>
     </div>
@@ -71,7 +75,7 @@
 <aside><button class="btn filter-mobile-close" id="closeFilters" style="display:none;margin-bottom:12px">Close filters</button><div class="scenario-note" id="scenarioNote"></div><div class="comparison-help">Compare uses the complete scenarios, including all dates and levels. Chart filters do not apply.</div>
   <div class="section">
     <div class="search"><svg viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="6" stroke="currentColor" stroke-width="2"/><path d="m16 16 4 4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg><input id="search" placeholder="Find a person or position…" aria-label="Find a person or position" autocomplete="off"/><span class="kbd">⌘ K</span></div>
-    <div class="hint">Highlights the chart; filters the register. Opens matching reporting paths.</div>
+    <div class="hint">Highlights the chart and the path to the top. Filters the register. Opens matching reporting paths.</div>
   </div>
   <div class="section">
     <h3>View depth</h3>
@@ -86,6 +90,7 @@
     <label class="check"><input type="checkbox" id="showHiring" checked /> Hiring state</label>
     <label class="check"><input type="checkbox" id="showFte" checked /> FTE</label>
     <label class="check"><input type="checkbox" id="showCumulative" /> Cumulative people on Head and Team Leader cards</label>
+    <label class="check"><input type="checkbox" id="showSpan" checked /> Direct reports and vacancies</label>
     <div class="field gap-field"><label for="groupGap">Horizontal space between groups</label><input id="groupGap" type="range" min="16" max="96" step="4" value="32" /><div class="hint" id="groupGapValue">32 px</div></div>
     <label class="check"><input type="checkbox" id="chartDots" checked /> Dotted chart background</label>
   </div>
@@ -95,8 +100,23 @@
     <div class="level-add"><input id="newLevelName" maxlength="40" placeholder="e.g. Engineer, Graduate, Intern" aria-label="New position tag" /><button class="btn" id="addLevelBtn" type="button">Add tag</button></div>
     <ul class="level-list" id="customLevels"></ul>
   </div>
+  <div class="section"><h3>Group / team</h3>
+    <div class="chips" id="groupChips"></div>
+    <p class="hint">Hide a group to take it off the chart and the register.</p>
+  </div>
+  <div class="section"><h3>Location / site</h3>
+    <div class="chips" id="siteChips"></div>
+    <p class="hint">Same idea as groups. Positions with no site sit under No site.</p>
+  </div>
   <div class="section"><h3>Hiring state</h3><div class="chips" id="hiringChips"></div></div>
 <div class="section"><h3>Approval</h3><div class="chips" id="statusChips"></div></div>
+  <div class="section">
+    <h3>Saved views</h3>
+    <p class="hint">Store filter, zoom and card-display presets in this workspace. They travel with the JSON backup.</p>
+    <div class="field"><label for="namedViewSelect">Apply a view</label><select id="namedViewSelect" aria-label="Saved views"><option value="">— Current view —</option></select></div>
+    <div class="level-add"><input id="namedViewName" maxlength="40" placeholder="e.g. Board pack" aria-label="Name for this view" /><button class="btn" id="saveViewBtn" type="button">Save view</button></div>
+    <button class="btn ghost" id="deleteViewBtn" type="button">Delete selected view</button>
+  </div>
   <div class="section">
     <h3>Active on date</h3>
     <div class="field"><input id="asOf" type="date" /></div>
@@ -111,11 +131,13 @@
       <button class="btn ghost" id="templateBtn">Download CSV template</button>
       <div class="data-divider"></div>
       <button class="btn" id="backupBtn">Back up workspace</button>
+      <button class="btn" id="saveWorkspaceBtn">Save workspace</button>
+      <button class="btn ghost" id="saveWorkspaceAsBtn">Save workspace as…</button>
       <button class="btn ghost" id="restoreBtn">Restore workspace</button>
       <button class="btn ghost" id="historyBtn">Earlier versions</button>
       <input id="restoreInput" type="file" accept=".json,application/json" hidden />
     </div>
-    <div class="hint">CSV updates the active scenario. JSON backup keeps all scenarios, unassigned people, branding and your view.</div>
+    <div class="hint">CSV updates the active scenario. JSON backup keeps scenarios, people, branding, saved views and chart settings. Save workspace overwrites the last file you picked, when the browser allows it.</div>
   </div>
   <div class="section always-available">
     <h3>Example companies</h3>
@@ -143,7 +165,7 @@
 <section class="plan-panel hidden" id="positionsPanel" aria-labelledby="positionsTitle">
   <div class="panel-heading"><div><div class="eyebrow">Position register</div><h2 id="positionsTitle">Structure first. People second.</h2><p>Keep approved headcount visible, even before someone joins.</p></div><button class="btn primary" id="registerAddBtn">＋ Add position</button></div>
   <div class="register-summary" id="registerSummary"></div>
-  <div class="planning-table-wrap"><table class="planning-table"><thead><tr><th>Position</th><th>Assigned person</th><th>Group</th><th>Location</th><th>Hiring</th><th>Approval</th><th>FTE</th><th>Reports to</th><th>Active dates</th><th><span class="hidden">Edit</span></th></tr></thead><tbody id="positionsRows"></tbody></table></div>
+  <div class="planning-table-wrap"><table class="planning-table"><thead><tr><th class="check-col"><input type="checkbox" id="registerSelectAll" aria-label="Select all visible positions" /></th><th>Position</th><th>Assigned person</th><th>Group</th><th>Location</th><th>Hiring</th><th>Approval</th><th>FTE</th><th>Reports to</th><th>Active dates</th><th><span class="hidden">Edit</span></th></tr></thead><tbody id="positionsRows"></tbody></table></div>
   <p class="table-footnote" id="registerFootnote"></p>
 </section>
 <section class="plan-panel hidden" id="comparePanel" aria-labelledby="compareTitle">
@@ -165,9 +187,20 @@
       <button class="iconbtn" id="centerBtn" title="Fit chart" aria-label="Fit chart"><svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="8" stroke="currentColor" stroke-width="2"/></svg></button>
       <button class="iconbtn" id="expandBtn" title="Expand all" aria-label="Expand all"><svg viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>
       <button class="iconbtn" id="collapseBtn" title="Collapse to team leaders" aria-label="Collapse to team leaders"><svg viewBox="0 0 24 24" fill="none"><path d="M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>
+      <button class="iconbtn" id="printBtn" title="Print / A3 pages" aria-label="Print or export A3 pages"><svg viewBox="0 0 24 24" fill="none"><path d="M7 8V4h10v4M7 16H5a2 2 0 0 1-2-2v-4h18v4a2 2 0 0 1-2 2h-2M7 13h10v7H7v-7Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg></button>
     </div>
   </div>
   <div class="canvas-wrap" id="canvasWrap"><div class="chart-stage" id="chartStage"><svg id="chart" aria-label="Organization chart"></svg></div></div>
+  <div class="bulk-bar" id="bulkBar" hidden>
+    <span id="bulkCount">0 selected</span>
+    <label class="bulk-field">Type <select id="bulkType"></select></label>
+    <label class="bulk-field">Group <input id="bulkGroup" list="groupSuggestions" maxlength="200" /></label>
+    <label class="bulk-field">Site <input id="bulkSite" list="locationSuggestions" maxlength="200" /></label>
+    <label class="bulk-field">Approval <select id="bulkStatus"><option value="Approved">Approved</option><option value="Not approved">Not approved</option></select></label>
+    <button class="btn primary" id="bulkApplyBtn" type="button">Apply</button>
+    <button class="btn ghost" id="bulkClearBtn" type="button">Clear</button>
+    <span class="bulk-hint">⌘/Ctrl-click cards to select. Drop on a sibling’s edge to reorder.</span>
+  </div>
   <div class="empty" id="empty"><div class="empty-card"><h2>No positions match these filters</h2><p>Re-enable a position type or approval state, or change the active date.</p></div></div>
 <section class="drawer" id="drawer" aria-label="Edit position" inert>
   <div class="drawer-head"><div><div class="eyebrow" id="drawerScenario">Current / position</div><h2 id="drawerTitle">Position</h2><p>Reporting lines belong to positions, not people.</p></div><button class="iconbtn" id="drawerClose" aria-label="Close position editor">×</button></div>

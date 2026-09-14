@@ -364,5 +364,74 @@ test('workspace backup keeps reporting order after round-trip validation', () =>
   assert.equal(again.scenarios[0].positions[0].sortOrder, 2);
   assert.equal(again.scenarios[0].positions[0].stacked, false);
   assert.deepEqual(again.positionLevels, []);
+  assert.deepEqual(again.namedViews, []);
+});
+
+test('group and site chip values include empty labels', () => {
+  const positions = [
+    { group: 'Engineering', location: 'Berlin' },
+    { group: '', location: '' },
+    { group: 'Engineering', location: 'London' }
+  ];
+  assert.deepEqual(OrgFlow.chipValues(positions, 'group', OrgFlow.EMPTY_GROUP), ['Engineering', 'No group']);
+  assert.deepEqual(OrgFlow.chipValues(positions, 'location', OrgFlow.EMPTY_SITE), ['Berlin', 'London', 'No site']);
+});
+
+test('span of control counts direct reports and vacancies', () => {
+  const positions = [
+    { id: 'm', managerId: '', hiringState: 'Filled' },
+    { id: 'a', managerId: 'm', hiringState: 'Filled' },
+    { id: 'b', managerId: 'm', hiringState: 'Vacant' },
+    { id: 'c', managerId: 'm', hiringState: 'Recruiting' },
+    { id: 'd', managerId: 'a', hiringState: 'Filled' }
+  ];
+  assert.deepEqual(OrgFlow.spanOfControl(positions, 'm'), { reports: 3, vacant: 2, recruiting: 1 });
+  assert.deepEqual(OrgFlow.pathToRoot(positions, 'd'), ['d', 'a', 'm']);
+});
+
+test('bulk patch updates selected positions only', () => {
+  const positions = [
+    { id: 'a', type: 'Engineer', group: 'Eng', location: 'Berlin', status: 'Approved' },
+    { id: 'b', type: 'Graduate', group: 'Eng', location: 'Berlin', status: 'Not approved' }
+  ];
+  const next = OrgFlow.bulkPatchPositions(positions, ['b'], { type: 'Intern', group: 'Product', location: 'London', status: 'Approved' });
+  assert.equal(next[0].type, 'Engineer');
+  assert.equal(next[1].type, 'Intern');
+  assert.equal(next[1].group, 'Product');
+  assert.equal(next[1].location, 'London');
+  assert.equal(next[1].status, 'Approved');
+  assert.throws(() => OrgFlow.bulkPatchPositions(positions, ['a'], { type: 'Wizard' }), /Unknown position type/);
+});
+
+test('placeSibling reorders among the same manager', () => {
+  const positions = [
+    { id: 'm', managerId: '', sortOrder: 0 },
+    { id: 'a', managerId: 'm', sortOrder: 0 },
+    { id: 'b', managerId: 'm', sortOrder: 1 },
+    { id: 'c', managerId: 'm', sortOrder: 2 }
+  ];
+  const after = OrgFlow.placeSibling(positions, 'c', 'a', 'before');
+  assert.equal(OrgFlow.siblingIndex(after, 'c').index, 0);
+  assert.equal(OrgFlow.siblingIndex(after, 'a').index, 1);
+  const unchanged = OrgFlow.placeSibling(positions, 'c', 'm', 'after');
+  assert.equal(OrgFlow.siblingIndex(unchanged, 'c').index, 2);
+});
+
+test('named views persist on the planning workspace', () => {
+  const ws = OrgFlow.emptyWorkspace('2026-09-13');
+  ws.namedViews = [{ id: 'view-board', name: 'Board pack', view: { roles: ['Head'], cardDisplay: { fte: false }, groups: ['Leadership'] } }];
+  const again = OrgFlow.validatePlanning(ws);
+  assert.equal(again.namedViews.length, 1);
+  assert.equal(again.namedViews[0].name, 'Board pack');
+  assert.equal(again.namedViews[0].view.cardDisplay.fte, false);
+  assert.ok(again.namedViews[0].view.roles.includes('Head'));
+});
+
+test('A3 tiling covers the chart with enough pages', () => {
+  const one = OrgFlow.tileChartPages(400, 300, 1000, 800, 40);
+  assert.equal(one.length, 1);
+  const many = OrgFlow.tileChartPages(2500, 1800, 1000, 700, 0);
+  assert.ok(many.length >= 4);
+  assert.equal(many.at(-1).page, many.length);
 });
 

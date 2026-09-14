@@ -53,13 +53,15 @@ Harbor & Co (17 positions) loads on first visit. A tour offers that sample, Nort
 | Shareable HTML snapshot | Self-contained page with the chart inline and workspace JSON for restore |
 | Positions + assignments (CSV) | Active scenario, including custom fields |
 | People directory (CSV) | People in the active scenario |
-| Workspace backup (JSON) | Every scenario, unassigned people, branding, palette and the current view |
+| Workspace backup (JSON) | Every scenario, unassigned people, branding, palette, saved views and the current view |
+| Save workspace | Overwrites the last JSON file you picked when the browser supports it |
+| Print / A3 pages (PDF) | Tiled A3 landscape pages of the visible chart |
 
 A workspace JSON that omits `dateFilter` restores with all dates visible.
 
 ### Positions CSV columns
 
-`positionId`, `reportsToPositionId`, `secondaryManagerId`, `title`, `type`, `group`, `fte`, `approval`, `hiringState`, `personId`, `name`, `employeeNumber`, `startDate`, `endDate`, `location`, `costCenter`, `jobFamily`
+`positionId`, `reportsToPositionId`, `secondaryManagerId`, `title`, `type`, `group`, `fte`, `approval`, `hiringState`, `personId`, `name`, `employeeNumber`, `startDate`, `endDate`, `location`, `costCenter`, `jobFamily`, `sortOrder`, `stacked`
 
 Import can replace, append, or update by position ID. Spreadsheet formulas in cells are prefixed so they stay text.
 
@@ -70,7 +72,13 @@ Import can replace, append, or update by position ID. Spreadsheet formulas in ce
 - Last-level managers stack reports by default; optional left-side trunk layout
 - Move siblings up or down; reporting order and stacking persist
 - Optional wrapping cards with hide/show for FTE, site, group, type, approval and hiring
-- Optional cumulative people count on Head and Team Leader cards
+- Group and site filter chips
+- Multi-select bulk edit for type, group, site and approval
+- Drag onto a sibling’s edge to reorder; drag onto another card to re-parent
+- Direct-report and vacancy counts on cards; optional cumulative people count
+- Named views stored in the workspace backup
+- Print / A3 tiled PDF export; Save workspace overwrites the last JSON file when the browser allows it
+- Hover or search highlights the path to the top
 - Custom position tags (same kind as Engineer, Graduate, Intern) in addition to the built-in types
 - Optional local photos and richer cards (location on the card)
 - Dotted-line / matrix managers

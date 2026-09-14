@@ -186,3 +186,27 @@ button:disabled{cursor:not-allowed;opacity:.5;transform:none!important}
 .template-card b{display:block;font-size:13px;font-weight:800}
 @media(max-width:900px){.site-home{display:none}}
 #photoNote{margin:8px 0 0}
+.planning-table .check-col{width:28px;text-align:center}
+.planning-table .check-col input{accent-color:var(--accent)}
+.bulk-bar{position:absolute;left:14px;right:14px;bottom:12px;z-index:6;display:flex;flex-wrap:wrap;gap:8px;align-items:center;background:var(--header);backdrop-filter:blur(16px);border:1px solid var(--line);border-radius:13px;padding:8px 12px;box-shadow:var(--shadow);font-size:11px;font-weight:650;color:var(--ink)}
+.bulk-bar[hidden]{display:none!important}
+.bulk-bar .bulk-field{display:flex;align-items:center;gap:6px;color:var(--muted)}
+.bulk-bar select,.bulk-bar input{height:32px;border:1px solid var(--line);border-radius:8px;background:var(--panel);color:var(--ink);padding:0 8px;font-size:11px;max-width:140px}
+.bulk-hint{color:var(--muted);font-size:10px;font-weight:600}
+.canvas-wrap.has-bulk{inset:76px 0 70px 0}
+.node.selected .card{stroke:var(--accent)!important;stroke-width:2.6!important;filter:drop-shadow(0 0 12px color-mix(in srgb,var(--accent) 30%,transparent))}
+.node.on-path .card{stroke:var(--accent);stroke-width:2.1}
+.node.path-dim{opacity:.38}
+.connector.on-path{stroke:var(--accent);stroke-width:2.2}
+.node.drop-before .card{filter:drop-shadow(-8px 0 0 var(--accent))}
+.node.drop-after .card{filter:drop-shadow(8px 0 0 var(--accent))}
+.planning-table tr.selected td{background:color-mix(in srgb,var(--accent-soft) 70%,transparent)}
+.drop-mark{fill:var(--accent);stroke:none}
+@media print{
+  header,.layout aside,.planning-bar,.toolbar,.drawer,.toast,.modal-backdrop,.bulk-bar,.empty,.load-error,.skip-link{display:none!important}
+  .app,.layout,main{display:block;height:auto;overflow:visible;background:#fff}
+  main{position:static;overflow:visible;background-image:none}
+  .canvas-wrap{position:static;inset:auto;overflow:visible;padding:0}
+  svg#chart{max-width:100%;height:auto}
+  body{background:#fff}
+}

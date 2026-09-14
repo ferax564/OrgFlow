@@ -21,7 +21,9 @@
     ['sortOrder', 'Reporting order'], ['stacked', 'Stacked reports']
   ];
   const POSITION_CSV_COLUMNS = ['positionId', 'reportsToPositionId', 'secondaryManagerId', 'title', 'type', 'group', 'fte', 'approval', 'hiringState', 'personId', 'name', 'employeeNumber', 'startDate', 'endDate', 'location', 'costCenter', 'jobFamily', 'sortOrder', 'stacked'];
-  const CARD_DISPLAY_DEFAULTS = { fte: true, site: true, group: true, type: true, approval: true, hiring: true, cumulative: false, groupGap: 32, chartDots: true };
+  const CARD_DISPLAY_DEFAULTS = { fte: true, site: true, group: true, type: true, approval: true, hiring: true, cumulative: false, span: true, groupGap: 32, chartDots: true };
+  const EMPTY_GROUP = 'No group';
+  const EMPTY_SITE = 'No site';
   const CARD_W = 248;
   const ALIASES = {
     id: ['positionid', 'id'],
@@ -329,7 +331,10 @@
     if (!ids.has('current')) throw new Error('Workspace must include the protected Current scenario.');
     if (scenarios.find(s => s.id === 'current').name !== 'Current') throw new Error('The Current scenario cannot be renamed.');
     if (!ids.has(input.activeScenarioId)) throw new Error('Active scenario was not found.');
-    return { version: 2, activeScenarioId: input.activeScenarioId, scenarios, positionLevels };
+    const todayStamp = new Date().toISOString().slice(0, 10);
+    const planning = { version: 2, activeScenarioId: input.activeScenarioId, scenarios, positionLevels };
+    planning.namedViews = sanitizeNamedViews(input.namedViews, planning, todayStamp);
+    return planning;
   }
   function migrateLegacy(legacy) {
     const roster = validatePeopleData(legacy), stamp = new Date().toISOString();
@@ -497,6 +502,7 @@
       version: 2,
       activeScenarioId: 'current',
       positionLevels: [],
+      namedViews: [],
       scenarios: [{
         id: 'current', name: 'Current', description: '', createdAt: stamp, updatedAt: stamp, baseScenarioId: '', baseSnapshot: null,
         employees: [],
@@ -562,6 +568,7 @@
       approval: bool('approval', true),
       hiring: bool('hiring', true),
       cumulative: d.cumulative === true,
+      span: d.span !== false,
       groupGap,
       chartDots: d.chartDots !== false
     };
@@ -570,14 +577,16 @@
     const d = sanitizeCardDisplay(display);
     const nameLines = wrapText(personLabel(n), 186, 7.1).slice(0, 4);
     const titleLines = wrapText(n.title || '', 224, 5.7).slice(0, 3);
-    const groupLines = d.group ? wrapText(n.group || 'No group', 224, 5.4).slice(0, 2) : [];
-    const siteLines = d.site ? wrapText(n.location || 'No site', 224, 5.4).slice(0, 2) : [];
+    const groupLines = d.group ? wrapText(n.group || EMPTY_GROUP, 224, 5.4).slice(0, 2) : [];
+    const siteLines = d.site ? wrapText(n.location || EMPTY_SITE, 224, 5.4).slice(0, 2) : [];
     let h = 14 + Math.max(nameLines.length * 15, 30);
     h += 4 + titleLines.length * 13;
     h += groupLines.length * 13;
     h += siteLines.length * 13;
     if (d.type || d.approval) h += 20;
-    if (d.hiring || d.fte || (d.cumulative && showsCumulativeCount(n.type))) h += 16;
+    const footPrimary = d.hiring || d.fte || (d.cumulative && showsCumulativeCount(n.type));
+    if (footPrimary) h += 16;
+    if (d.span) h += 14;
     h += 12;
     return { width: CARD_W, height: Math.max(96, Math.min(280, Math.round(h))), nameLines, titleLines, groupLines, siteLines };
   }
@@ -619,6 +628,133 @@
     if (!pos) return { index: -1, count: 0 };
     const siblings = positions.filter(p => (p.managerId || '') === (pos.managerId || '')).sort(compareSiblings);
     return { index: siblings.findIndex(p => p.id === id), count: siblings.length };
+  }
+  function filterLabel(value, emptyLabel) {
+    const text = String(value || '').trim();
+    return text || emptyLabel;
+  }
+  function chipValues(positions, key, emptyLabel) {
+    const labels = new Set();
+    for (const p of positions || []) labels.add(filterLabel(p[key], emptyLabel));
+    return [...labels].sort((a, b) => a.localeCompare(b));
+  }
+  function spanOfControl(positions, id) {
+    const reports = (positions || []).filter(p => p.managerId === id);
+    return {
+      reports: reports.length,
+      vacant: reports.filter(p => p.hiringState !== 'Filled').length,
+      recruiting: reports.filter(p => p.hiringState === 'Recruiting').length
+    };
+  }
+  function pathToRoot(positions, id) {
+    const byId = new Map((positions || []).map(p => [p.id, p]));
+    const path = [];
+    const seen = new Set();
+    let cur = id;
+    while (cur && byId.has(cur) && !seen.has(cur)) {
+      seen.add(cur);
+      path.push(cur);
+      cur = byId.get(cur).managerId || '';
+    }
+    return path;
+  }
+  function bulkPatchPositions(positions, ids, patch = {}, extraTypes = []) {
+    const idSet = new Set(ids || []);
+    if (!idSet.size) return positions;
+    const types = new Set(positionTypes(extraTypes));
+    return (positions || []).map(p => {
+      if (!idSet.has(p.id)) return p;
+      const out = { ...p };
+      if (Object.prototype.hasOwnProperty.call(patch, 'type')) {
+        if (!types.has(patch.type)) throw new Error(`Unknown position type “${patch.type}”.`);
+        out.type = patch.type;
+      }
+      if (Object.prototype.hasOwnProperty.call(patch, 'group')) out.group = cleanString(String(patch.group ?? ''), 'Group / team', 200);
+      if (Object.prototype.hasOwnProperty.call(patch, 'location')) out.location = cleanString(String(patch.location ?? ''), 'Location', 200);
+      if (Object.prototype.hasOwnProperty.call(patch, 'status')) {
+        if (!STATUSES.includes(patch.status)) throw new Error('Unknown approval.');
+        out.status = patch.status;
+      }
+      return out;
+    });
+  }
+  function placeSibling(positions, id, targetId, where = 'before') {
+    const pos = positions.find(p => p.id === id);
+    const target = positions.find(p => p.id === targetId);
+    if (!pos || !target || id === targetId) return positions;
+    if ((pos.managerId || '') !== (target.managerId || '')) return positions;
+    const siblings = positions.filter(p => (p.managerId || '') === (pos.managerId || '')).sort(compareSiblings);
+    const rest = siblings.filter(p => p.id !== id);
+    const at = rest.findIndex(p => p.id === targetId);
+    if (at < 0) return positions;
+    rest.splice(where === 'after' ? at + 1 : at, 0, pos);
+    const rank = new Map(rest.map((p, idx) => [p.id, idx]));
+    return positions.map(p => rank.has(p.id) ? { ...p, sortOrder: rank.get(p.id) } : p);
+  }
+  function tileChartPages(width, height, pageW, pageH, header = 52) {
+    const w = Math.max(1, Number(width) || 1);
+    const h = Math.max(1, Number(height) || 1);
+    const usableW = Math.max(120, pageW);
+    const usableH = Math.max(120, pageH - header);
+    const cols = Math.max(1, Math.ceil(w / usableW));
+    const rows = Math.max(1, Math.ceil(h / usableH));
+    const pages = [];
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        pages.push({
+          row: r, col: c, rows, cols,
+          x: c * usableW, y: r * usableH,
+          page: r * cols + c + 1, total: rows * cols,
+          usableW, usableH
+        });
+      }
+    }
+    return pages;
+  }
+  function sanitizeViewState(view, planning, today) {
+    const d = view && typeof view === 'object' ? view : {};
+    const scenario = planning?.scenarios?.find(s => s.id === planning.activeScenarioId) || planning?.scenarios?.[0];
+    const positions = scenario?.positions || [];
+    const ids = new Set(positions.map(p => p.id));
+    const types = positionTypes(planning?.positionLevels);
+    const groups = chipValues(positions, 'group', EMPTY_GROUP);
+    const sites = chipValues(positions, 'location', EMPTY_SITE);
+    return {
+      roles: sanitizeChipFilters(d.roles, types, LEGACY_ROLE_TYPES),
+      statuses: sanitizeChipFilters(d.statuses, STATUSES),
+      hiring: sanitizeChipFilters(d.hiring, HIRING_STATES),
+      groups: sanitizeChipFilters(d.groups, groups, groups),
+      sites: sanitizeChipFilters(d.sites, sites, sites),
+      maxDepth: [1, 2, 3, 99].includes(d.maxDepth) ? d.maxDepth : 99,
+      collapsed: Array.isArray(d.collapsed) ? d.collapsed.filter(id => ids.has(id)) : [],
+      search: String(d.search || '').slice(0, 1000),
+      asOf: isISODate(d.asOf || '') ? d.asOf : today,
+      dateFilter: d.dateFilter === true,
+      view: ['chart', 'positions', 'compare'].includes(d.view) ? d.view : 'chart',
+      zoom: typeof d.zoom === 'number' && d.zoom >= .15 && d.zoom <= 1.75 ? d.zoom : 1,
+      showChartChanges: d.showChartChanges !== false,
+      compareBaselineId: String(d.compareBaselineId || 'current').slice(0, 150),
+      compareTargetId: String(d.compareTargetId || '').slice(0, 150),
+      compareKind: ['all', 'added', 'removed', 'changed', 'unchanged'].includes(d.compareKind) ? d.compareKind : 'all',
+      compareSearch: String(d.compareSearch || '').slice(0, 200),
+      cardDisplay: sanitizeCardDisplay(d.cardDisplay)
+    };
+  }
+  function sanitizeNamedViews(input, planning, today) {
+    if (!Array.isArray(input)) return [];
+    const out = [], seen = new Set();
+    for (const raw of input.slice(0, 20)) {
+      if (!raw || typeof raw !== 'object') continue;
+      try {
+        const name = cleanString(raw.name || '', 'Saved view name', 40, true);
+        const key = name.toLowerCase();
+        if (seen.has(key)) continue;
+        seen.add(key);
+        const id = typeof raw.id === 'string' && raw.id.trim() ? cleanString(raw.id, 'View ID', 80, true) : makeId('view');
+        out.push({ id, name, view: sanitizeViewState(raw.view || {}, planning, today) });
+      } catch { /* skip invalid named views */ }
+    }
+    return out;
   }
   function applyCardSizes(nodes, display) {
     for (const n of nodes) {
@@ -751,13 +887,15 @@
 
   return {
     ROLE_TYPES, STATUSES, HIRING_STATES, LEGACY_ROLE_TYPES, POSITION_FIELDS, DIFF_FIELDS, POSITION_CSV_COLUMNS, ALIASES,
-    CARD_DISPLAY_DEFAULTS, CARD_W,
+    CARD_DISPLAY_DEFAULTS, CARD_W, EMPTY_GROUP, EMPTY_SITE,
     esc, slug, makeId, isISODate, cleanString, fmtDate, fteText, csvEscape, csvRows, positionCSVValues,
     detectDelimiter, parseCSV, normHeader, headerMap, normalizeType, normalizeStatus, normalizeDate,
     validatePeopleData, validateScenarioData, validatePlanning, migrateLegacy, projection, totals,
     scenarioChanges, fieldValue, prepareImport, makeImportScenario, emptyWorkspace, sanitizeChipFilters,
     wouldCreateCycle, validPersonPhoto, sanitizePositionLevels, positionTypes, compareSiblings,
     defaultStacked, nodeStacked, wrapText, showsCumulativeCount, personLabel, sanitizeCardDisplay,
-    cardMetrics, subtreePeopleCount, reorderSiblings, siblingIndex, applyCardSizes, layoutOrgChart
+    cardMetrics, subtreePeopleCount, reorderSiblings, siblingIndex, applyCardSizes, layoutOrgChart,
+    filterLabel, chipValues, spanOfControl, pathToRoot, bulkPatchPositions, placeSibling,
+    tileChartPages, sanitizeViewState, sanitizeNamedViews
   };
 });

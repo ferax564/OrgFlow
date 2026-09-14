@@ -617,7 +617,7 @@ function readCardDisplayFromUi(){
 function renderCustomLevels(){
   const host=$('#customLevels');if(!host)return;
   const levels=workspace?.positionLevels||[];
-  host.innerHTML=levels.length?levels.map(name=>`<li><span>${esc(name)}</span><button type="button" class="btn ghost" data-remove-level="${esc(name)}">Remove</button></li>`).join(''):'<li style="background:transparent;border:0;padding:0;color:var(--muted);font-weight:650">No extra levels yet.</li>';
+  host.innerHTML=levels.length?levels.map(name=>`<li><span>${esc(name)}</span><button type="button" class="btn ghost" data-remove-level="${esc(name)}">Remove</button></li>`).join(''):'';
 }
 function addPositionLevel(){
   const name=$('#newLevelName')?.value.trim();if(!name){$('#newLevelName')?.focus();return;}
@@ -625,8 +625,8 @@ function addPositionLevel(){
     const next=structuredClone(workspace);
     const before=(next.positionLevels||[]).length;
     next.positionLevels=OrgFlow.sanitizePositionLevels([...(next.positionLevels||[]),name]);
-    if(next.positionLevels.length===before)throw new Error('That level already exists, or it matches a built-in type.');
-    commitPlanning(next,`Added position level ${next.positionLevels.at(-1)}`);
+    if(next.positionLevels.length===before)throw new Error('That tag already exists, or it matches a built-in type such as Engineer, Graduate or Intern.');
+    commitPlanning(next,`Added tag ${next.positionLevels.at(-1)}`);
     activeRoles.add(next.positionLevels.at(-1));
     if($('#newLevelName'))$('#newLevelName').value='';
     setupChips();render();
@@ -634,11 +634,11 @@ function addPositionLevel(){
 }
 function removePositionLevel(name){
   const used=(workspace.scenarios||[]).some(s=>s.positions.some(p=>p.type===name)||s.baseSnapshot?.positions?.some(p=>p.type===name));
-  if(used){toast('Retype or remove positions that use this level first.');return;}
+  if(used){toast('Retype or remove positions that use this tag first.');return;}
   try{
     const next=structuredClone(workspace);
     next.positionLevels=(next.positionLevels||[]).filter(x=>x!==name);
-    commitPlanning(next,`Removed position level ${name}`);
+    commitPlanning(next,`Removed tag ${name}`);
     activeRoles.delete(name);setupChips();render();
   }catch(error){toast(error.message);}
 }

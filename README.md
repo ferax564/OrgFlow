@@ -39,7 +39,7 @@ Harbor & Co (17 positions) loads on first visit. A tour offers that sample, Nort
 - **Custom fields** on a position: location / site, cost center, job family. On a person: employee number and photo.
 - **Date filter** is off by default, so future-dated roles stay visible. Turn on **Respect position start / end dates** to hide roles that have not started (or have already ended) relative to the as-of date.
 - **Chart filters** (type, hiring, approval, depth, search) apply to the org chart and the Positions register. Compare uses full snapshots and ignores those filters. Loading an example or a blank organization resets filters.
-- **Chart display** in the sidebar hides or shows FTE, site, group, position type, approval and hiring on every card. Long names wrap and that card grows. Last-level managers stack their reports; uncheck **Stack direct reports** in the drawer to spread them. **Move up / Move down** changes sibling order immediately. These settings persist and apply to PNG, PDF and HTML exports.
+- **Chart display** in the sidebar hides or shows FTE, site, group, position type, approval and hiring on every card. Long names wrap and that card grows. Last-level managers stack their reports in a column under the manager; uncheck **Stack direct reports** in the drawer to spread them. **Move up / Move down** changes sibling order immediately. Add a tag like Engineer, Graduate or Intern under **Position type**. These settings persist and apply to PNG, PDF and HTML exports.
 - **Narrow screens** hide the sidebar. Open it with the ☷ **Filters** control in the planning bar. It stays available on Org chart, Positions and Compare.
 - **Branding** stores company name, chart title and logos in this browser. Logos are sanitized and rasterized locally.
 
@@ -71,7 +71,7 @@ Import can replace, append, or update by position ID. Spreadsheet formulas in ce
 - Move siblings up or down; reporting order and stacking persist
 - Optional wrapping cards with hide/show for FTE, site, group, type, approval and hiring
 - Optional cumulative people count on Head and Team Leader cards
-- Custom position levels in addition to the built-in types
+- Custom position tags (same kind as Engineer, Graduate, Intern) in addition to the built-in types
 - Optional local photos and richer cards (location on the card)
 - Dotted-line / matrix managers
 - Undo, redo and earlier local versions

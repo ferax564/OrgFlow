@@ -258,10 +258,31 @@ test('stacked reports sit vertically under the manager with a left-side trunk', 
   const b = lay.all.find(n => n.id === 'b');
   assert.ok(a._y > m._y + m._h - 1);
   assert.ok(b._y > a._y);
-  assert.ok(Math.abs(a._x - b._x) < 1);
+  assert.ok(Math.abs(a._x - b._x) < 1, 'stacked cards should share an x');
+  assert.ok(Math.abs(a._x - m._x) < 1, 'stacked reports should align under the manager');
   assert.ok(lay.connectors.some(c => c.kind === 'stack-trunk'));
   const lead = lay.connectors.find(c => c.kind === 'stack-lead');
-  assert.match(lead.d, new RegExp(`M${m._x + m._w / 2},${m._y + m._h / 2}`));
+  assert.match(lead.d, new RegExp(`M${m._x + m._w / 2},${m._y + m._h}`));
+});
+
+test('unstacked reporting lines meet child card centers from the manager bottom', () => {
+  const tree = [{
+    id: 'h', title: 'Head', type: 'Head', stacked: false, _cardH: 110, children: [
+      { id: 'a', title: 'A', type: 'Team Leader', stacked: true, _cardH: 110, children: [
+        { id: 'a1', title: 'IC', type: 'Engineer', children: [], _cardH: 100 }
+      ] },
+      { id: 'b', title: 'B', type: 'Team Leader', stacked: false, children: [], _cardH: 110 }
+    ]
+  }];
+  const lay = OrgFlow.layoutOrgChart(tree, { groupGap: 40 });
+  const a = lay.all.find(n => n.id === 'a');
+  const a1 = lay.all.find(n => n.id === 'a1');
+  const b = lay.all.find(n => n.id === 'b');
+  assert.ok(Math.abs(a._y - b._y) < 1, 'same-level cards should share a y');
+  assert.ok(Math.abs(a._x - a1._x) < 1, 'stacked IC should sit in the manager column');
+  const down = lay.connectors.find(c => c.kind === 'tree-down' && c.toId === 'a');
+  assert.match(down.d, new RegExp(`M${a._x + a._w / 2},`));
+  assert.match(down.d, new RegExp(`V${a._y}$`));
 });
 
 test('unstacked groups use configurable horizontal spacing', () => {

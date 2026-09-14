@@ -89,11 +89,10 @@
     <div class="field gap-field"><label for="groupGap">Horizontal space between groups</label><input id="groupGap" type="range" min="16" max="96" step="4" value="32" /><div class="hint" id="groupGapValue">32 px</div></div>
     <label class="check"><input type="checkbox" id="chartDots" checked /> Dotted chart background</label>
   </div>
-  <div class="section"><h3>Position type</h3><div class="chips" id="roleChips"></div></div>
-  <div class="section">
-    <h3>Position levels</h3>
-    <p class="hint">Built-in types stay. Add extra levels for this workspace (for example Principal or Director).</p>
-    <div class="level-add"><input id="newLevelName" maxlength="40" placeholder="e.g. Principal" aria-label="New position level" /><button class="btn" id="addLevelBtn" type="button">Add</button></div>
+  <div class="section"><h3>Position type</h3>
+    <div class="chips" id="roleChips"></div>
+    <p class="hint">Create a tag like Engineer, Graduate or Intern. It shows on cards, in this list, and when you edit a position.</p>
+    <div class="level-add"><input id="newLevelName" maxlength="40" placeholder="e.g. Engineer, Graduate, Intern" aria-label="New position tag" /><button class="btn" id="addLevelBtn" type="button">Add tag</button></div>
     <ul class="level-list" id="customLevels"></ul>
   </div>
   <div class="section"><h3>Hiring state</h3><div class="chips" id="hiringChips"></div></div>

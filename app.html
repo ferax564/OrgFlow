@@ -77,7 +77,25 @@
     <h3>View depth</h3>
     <div class="seg" id="depthSeg"><button data-depth="1">Heads</button><button data-depth="2">Leads</button><button data-depth="3">Team</button><button data-depth="99" class="active">All</button></div>
   </div>
+  <div class="section">
+    <h3>Chart display</h3>
+    <label class="check"><input type="checkbox" id="showGroup" checked /> Group / team</label>
+    <label class="check"><input type="checkbox" id="showSite" checked /> Site</label>
+    <label class="check"><input type="checkbox" id="showType" checked /> Position type</label>
+    <label class="check"><input type="checkbox" id="showApproval" checked /> Approval label</label>
+    <label class="check"><input type="checkbox" id="showHiring" checked /> Hiring state</label>
+    <label class="check"><input type="checkbox" id="showFte" checked /> FTE</label>
+    <label class="check"><input type="checkbox" id="showCumulative" /> Cumulative people on Head and Team Leader cards</label>
+    <div class="field gap-field"><label for="groupGap">Horizontal space between groups</label><input id="groupGap" type="range" min="16" max="96" step="4" value="32" /><div class="hint" id="groupGapValue">32 px</div></div>
+    <label class="check"><input type="checkbox" id="chartDots" checked /> Dotted chart background</label>
+  </div>
   <div class="section"><h3>Position type</h3><div class="chips" id="roleChips"></div></div>
+  <div class="section">
+    <h3>Position levels</h3>
+    <p class="hint">Built-in types stay. Add extra levels for this workspace (for example Principal or Director).</p>
+    <div class="level-add"><input id="newLevelName" maxlength="40" placeholder="e.g. Principal" aria-label="New position level" /><button class="btn" id="addLevelBtn" type="button">Add</button></div>
+    <ul class="level-list" id="customLevels"></ul>
+  </div>
   <div class="section"><h3>Hiring state</h3><div class="chips" id="hiringChips"></div></div>
 <div class="section"><h3>Approval</h3><div class="chips" id="statusChips"></div></div>
   <div class="section">
@@ -163,6 +181,12 @@
     <div class="filter-row"><div class="field"><label for="fLocation">Location / site</label><input id="fLocation" maxlength="200" list="locationSuggestions" placeholder="e.g. London" /><datalist id="locationSuggestions"></datalist></div><div class="field"><label for="fCostCenter">Cost center</label><input id="fCostCenter" maxlength="80" placeholder="e.g. ENG" /></div></div>
     <div class="field"><label for="fJobFamily">Job family</label><input id="fJobFamily" maxlength="200" list="familySuggestions" placeholder="e.g. Engineering" /><datalist id="familySuggestions"></datalist></div>
     <div class="field"><label for="fManager">Reports to position</label><select id="fManager"></select><div class="hint">Drag a card onto another manager on the chart, or pick here. A vacant position can still lead a team.</div></div>
+    <div class="order-row" id="orderRow">
+      <button type="button" class="btn" id="moveUpBtn">Move up</button>
+      <button type="button" class="btn" id="moveDownBtn">Move down</button>
+    </div>
+    <label class="check stack-check"><input type="checkbox" id="fStacked" /> Stack direct reports vertically</label>
+    <div class="hint">Default: last-level managers stack. Uncheck to spread reports side by side.</div>
     <div class="field"><label for="fSecondary">Dotted-line to (optional)</label><select id="fSecondary"></select><div class="hint">Matrix / secondary manager. Drawn dashed; not used for the tree layout.</div></div>
     <div class="filter-row"><div class="field"><label for="fStart">Position start</label><input id="fStart" type="date" /></div><div class="field"><label for="fEnd">Position end (optional)</label><input id="fEnd" type="date" /></div></div>
     <div class="form-divider">Person assignment</div>

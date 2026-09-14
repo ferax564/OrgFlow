@@ -39,6 +39,7 @@ Harbor & Co (17 positions) loads on first visit. A tour offers that sample, Nort
 - **Custom fields** on a position: location / site, cost center, job family. On a person: employee number and photo.
 - **Date filter** is off by default, so future-dated roles stay visible. Turn on **Respect position start / end dates** to hide roles that have not started (or have already ended) relative to the as-of date.
 - **Chart filters** (type, hiring, approval, depth, search) apply to the org chart and the Positions register. Compare uses full snapshots and ignores those filters. Loading an example or a blank organization resets filters.
+- **Chart display** in the sidebar hides or shows FTE, site, group, position type, approval and hiring on every card. Long names wrap and that card grows. Last-level managers stack their reports; uncheck **Stack direct reports** in the drawer to spread them. **Move up / Move down** changes sibling order immediately. These settings persist and apply to PNG, PDF and HTML exports.
 - **Narrow screens** hide the sidebar. Open it with the ☷ **Filters** control in the planning bar. It stays available on Org chart, Positions and Compare.
 - **Branding** stores company name, chart title and logos in this browser. Logos are sanitized and rasterized locally.
 
@@ -66,10 +67,15 @@ Import can replace, append, or update by position ID. Spreadsheet formulas in ce
 
 - Expandable org chart with level presets and search
 - Drag to re-parent; cycle detection
+- Last-level managers stack reports by default; optional left-side trunk layout
+- Move siblings up or down; reporting order and stacking persist
+- Optional wrapping cards with hide/show for FTE, site, group, type, approval and hiring
+- Optional cumulative people count on Head and Team Leader cards
+- Custom position levels in addition to the built-in types
 - Optional local photos and richer cards (location on the card)
 - Dotted-line / matrix managers
 - Undo, redo and earlier local versions
-- Position types: Head, Team Leader, Engineer, Specialist, Graduate, Intern
+- Position types: Head, Team Leader, Engineer, Specialist, Graduate, Intern (plus levels you add)
 - Approval and hiring-state filters, including vacant and recruiting seats
 - Positions kept separate from people; FTE is position capacity, not salary
 - Scenario planning and before/after comparison
@@ -149,7 +155,7 @@ Details, hardening notes, Docker Keycloak, AWS: [`server/README.md`](server/READ
 npm test
 ```
 
-The suite covers CSV parsing, spreadsheet-formula escaping, scenario validation, dotted-line rules, custom-field CSV round-trips, starter templates, comparison diffs, example workspaces, filter-set migration, and enterprise ACL/stress cases (forged cookies, path traversal, oversized bodies, last-admin protection, concurrent saves).
+The suite covers CSV parsing, spreadsheet-formula escaping, scenario validation, dotted-line rules, custom-field CSV round-trips, starter templates, comparison diffs, example workspaces, filter-set migration, stacked chart layout, sibling reordering, custom position levels, and enterprise ACL/stress cases (forged cookies, path traversal, oversized bodies, last-admin protection, concurrent saves).
 
 With Chrome and `puppeteer-core` installed locally:
 

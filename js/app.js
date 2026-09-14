@@ -878,11 +878,10 @@ function siblingDropPlace(ev,over,sourceId){
   if(!src||!dst||src.id===dst.id)return null;
   if((src.managerId||'')!==(dst.managerId||''))return null;
   const rect=over.getBoundingClientRect();
-  const stacked=nodeStacked({...people.find(p=>p.id===src.managerId)||{},children:people.filter(p=>p.managerId===src.managerId).map(c=>({...c,children:[]}))});
+  const manager=people.find(p=>p.id===src.managerId);
+  const stacked=manager?nodeStacked({...manager,children:people.filter(p=>p.managerId===src.managerId).map(c=>({...c,children:[]}))}):false;
   const along=stacked?((ev.clientY-rect.top)/Math.max(1,rect.height)):((ev.clientX-rect.left)/Math.max(1,rect.width));
-  if(along<0.28)return 'before';
-  if(along>0.72)return 'after';
-  return null;
+  return along<0.5?'before':'after';
 }
 function beginCardDrag(e,node){
   if(enterpriseBlocksWrite())return;
@@ -909,7 +908,7 @@ function beginCardDrag(e,node){
     clearTargets();
     if(!moved)return;
     skipNodeClick=true;setTimeout(()=>{skipNodeClick=false;},0);
-    if(!over||over.dataset.id===id){toast('Drop on a card to change reporting, or on a sibling edge to reorder');return;}
+    if(!over||over.dataset.id===id){toast('Drop on a sibling to reorder, or on another manager to change reporting');return;}
     if(place){
       try{updateScenario(s=>{s.positions=placeSibling(s.positions,id,over.dataset.id,place);},'Reporting order updated');}
       catch(error){toast(error.message);}

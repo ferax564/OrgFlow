@@ -844,7 +844,7 @@ function buildExportSVG(filterGroup=null){
     xml.push(`<text x="40" y="99" fill="${muted}" style="font:600 11px Arial,sans-serif">${esc(exportText(description,Math.floor((w-260)/6)))}</text><text x="${w-40}" y="99" text-anchor="end" fill="${muted}" style="font:600 10px Arial,sans-serif">${esc(date)}</text><line x1="40" y1="122" x2="${w-40}" y2="122" stroke="${line}"/>`);
     xml.push(`<line x1="40" y1="${h-42}" x2="${w-40}" y2="${h-42}" stroke="${line}"/><text x="40" y="${h-22}" fill="${muted}" style="font:500 9px Arial,sans-serif">${esc(exportText(brand.footer,Math.floor((w-160)/5.5)))}</text><text x="${w-40}" y="${h-22}" text-anchor="end" fill="${muted}" style="font:600 9px Arial,sans-serif">OrgFlow</text>`);
   }else xml.push(`<text x="40" y="25" fill="${muted}" style="font:600 11px Arial,sans-serif">${esc(exportText(activeScenario().name+' · '+(filterGroup||'Organization tree'),80))}</text>`);
-  for(const c of lay.connectors||[])xml.push(`<path d="${c.d}" transform="translate(${offX},${offY})" fill="none" stroke="${connector}" stroke-width="1.4"/>`);
+  for(const c of lay.connectors||[])xml.push(`<path d="${c.d}" transform="translate(${offX},${offY})" fill="none" stroke="${connector}" stroke-width="1.5" stroke-linecap="square" stroke-linejoin="round"/>`);
   xml.push(dottedConnectors(lay,offX,offY,muted));
   for(const n of lay.all)xml.push(positionCardSVG(n,{x:n._x+offX,y:n._y+offY,hit:!!search&&matchesSearch(n,search),change:diffs.get(n.id),peopleCount:peopleCounts.has(n.id)?peopleCounts.get(n.id):null}));
   xml.push('</svg>');return{xml:xml.join(''),width:w,height:h,nodeCount:lay.all.length};

@@ -633,96 +633,117 @@
   function layoutOrgChart(nodes, opts = {}) {
     const groupGap = sanitizeCardDisplay(opts).groupGap;
     const stackGap = opts.stackGap ?? 14;
-    const levelGap = opts.levelGap ?? 48;
-    const trunkPad = 18;
+    const levelGap = opts.levelGap ?? 56;
+    const trunkPad = 14;
+    const collapseClear = 22;
     const forest = nodes || [];
     const r = v => Math.round(v * 100) / 100;
 
-    function size(n) {
+    function measure(n, depth) {
       n._w = n._cardW || CARD_W;
       n._h = n._cardH || 124;
       n._stacked = nodeStacked(n);
+      n._depth = depth;
+      (n.children || []).forEach(c => measure(c, depth + 1));
+    }
+    function boxes(n, maxH) {
       if (!n.children?.length) {
         n._boxW = n._w;
         n._boxH = n._h;
         return;
       }
-      n.children.forEach(size);
+      n.children.forEach(c => boxes(c, maxH));
+      const rowH = maxH[n._depth] || n._h;
       if (n._stacked) {
         const kidsH = n.children.reduce((s, c) => s + c._boxH, 0) + stackGap * Math.max(0, n.children.length - 1);
         n._boxW = Math.max(n._w, ...n.children.map(c => c._boxW));
-        n._boxH = n._h + levelGap + kidsH;
+        n._boxH = rowH + levelGap + kidsH;
       } else {
         const kidsW = n.children.reduce((s, c) => s + c._boxW, 0) + groupGap * (n.children.length - 1);
         n._boxW = Math.max(n._w, kidsW);
-        n._boxH = n._h + levelGap + Math.max(...n.children.map(c => c._boxH));
+        n._boxH = rowH + levelGap + Math.max(...n.children.map(c => c._boxH));
       }
     }
-    function place(n, x, y) {
-      if (!n.children?.length) {
-        n._x = x;
-        n._y = y;
-        return;
-      }
+    function place(n, x, y, maxH) {
+      n._x = x + (n._boxW - n._w) / 2;
+      n._y = y;
+      if (!n.children?.length) return;
+      const childY = y + (maxH[n._depth] || n._h) + levelGap;
       if (n._stacked) {
-        n._x = x;
-        n._y = y;
-        let cy = y + n._h + levelGap;
+        let cy = childY;
         for (const c of n.children) {
-          place(c, x, cy);
+          place(c, x + (n._boxW - c._boxW) / 2, cy, maxH);
           cy += c._boxH + stackGap;
         }
       } else {
-        n._x = x + (n._boxW - n._w) / 2;
-        n._y = y;
         const kidsW = n.children.reduce((s, c) => s + c._boxW, 0) + groupGap * (n.children.length - 1);
         let cx = x + Math.max(0, (n._boxW - kidsW) / 2);
-        const cy = y + n._h + levelGap;
         for (const c of n.children) {
-          place(c, cx, cy);
+          place(c, cx, childY, maxH);
           cx += c._boxW + groupGap;
         }
       }
     }
 
+    forest.forEach(n => measure(n, 0));
+    const maxH = [];
+    (function walk(list) {
+      for (const n of list) {
+        maxH[n._depth] = Math.max(maxH[n._depth] || 0, n._h);
+        if (n.children?.length) walk(n.children);
+      }
+    })(forest);
+    forest.forEach(n => boxes(n, maxH));
     let cursor = 0;
     forest.forEach(n => {
-      size(n);
-      place(n, cursor, 0);
+      place(n, cursor, 0, maxH);
       cursor += n._boxW + groupGap;
     });
     const all = [];
     (function flatten(list) { for (const n of list) { all.push(n); if (n.children?.length) flatten(n.children); } })(forest);
     if (!all.length) return { all, width: 0, height: 0, cardW: CARD_W, connectors: [], groupGap };
     let minX = Math.min(...all.map(n => n._x));
-    for (const n of all) if (n._stacked && n.children?.length) minX = Math.min(minX, n._x - trunkPad);
+    for (const n of all) if (n._stacked && n.children?.length) {
+      const colLeft = Math.min(n._x, ...n.children.map(c => c._x));
+      minX = Math.min(minX, colLeft - trunkPad);
+    }
     all.forEach(n => { n._x -= minX; });
     const connectors = [];
     for (const n of all) {
       if (!n.children?.length) continue;
       const mx = r(n._x + n._w / 2);
       const bottomY = r(n._y + n._h);
+      const first = n.children[0];
+      const childTop = r(first._y);
       if (n._stacked) {
         const last = n.children[n.children.length - 1];
-        const trunkX = r(n._x - trunkPad);
-        const dropY = r(bottomY + Math.min(10, levelGap / 2));
+        const colLeft = Math.min(n._x, ...n.children.map(c => c._x));
+        const trunkX = r(colLeft - trunkPad);
+        const gap = Math.max(8, childTop - bottomY);
+        const dropY = r(bottomY + Math.min(Math.max(collapseClear, gap * 0.4), gap - 8));
         connectors.push({ kind: 'stack-lead', fromId: n.id, d: `M${mx},${bottomY} V${dropY} H${trunkX}` });
         connectors.push({ kind: 'stack-trunk', fromId: n.id, d: `M${trunkX},${dropY} V${r(last._y + last._h / 2)}` });
         for (const c of n.children) {
           connectors.push({ kind: 'stack-spur', fromId: n.id, toId: c.id, d: `M${trunkX},${r(c._y + c._h / 2)} H${r(c._x)}` });
         }
       } else {
-        const busY = r(bottomY + levelGap / 2);
+        const gap = Math.max(8, childTop - bottomY);
+        const busY = r(bottomY + gap / 2);
+        const xs = [mx, ...n.children.map(c => r(c._x + c._w / 2))];
         connectors.push({ kind: 'tree-drop', fromId: n.id, d: `M${mx},${bottomY} V${busY}` });
-        const xs = n.children.map(c => r(c._x + c._w / 2));
-        if (xs.length > 1) connectors.push({ kind: 'tree-bus', fromId: n.id, d: `M${Math.min(...xs)},${busY} H${Math.max(...xs)}` });
+        const x0 = Math.min(...xs), x1 = Math.max(...xs);
+        if (x1 > x0) connectors.push({ kind: 'tree-bus', fromId: n.id, d: `M${x0},${busY} H${x1}` });
         for (const c of n.children) {
           const cx = r(c._x + c._w / 2);
           connectors.push({ kind: 'tree-down', fromId: n.id, toId: c.id, d: `M${cx},${busY} V${r(c._y)}` });
         }
       }
     }
-    const extentX = all.flatMap(n => n._stacked && n.children?.length ? [n._x - trunkPad, n._x + n._w] : [n._x, n._x + n._w]);
+    const extentX = all.flatMap(n => {
+      if (!(n._stacked && n.children?.length)) return [n._x, n._x + n._w];
+      const colLeft = Math.min(n._x, ...n.children.map(c => c._x));
+      return [colLeft - trunkPad, n._x + n._w];
+    });
     const width = Math.max(...extentX) - Math.min(...extentX);
     const height = Math.max(...all.map(n => n._y + n._h));
     return { all, width, height, cardW: CARD_W, connectors, groupGap };

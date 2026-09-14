@@ -247,9 +247,9 @@ test('default stacking applies only to last-level managers', () => {
 
 test('stacked reports sit vertically under the manager with a left-side trunk', () => {
   const tree = [{
-    id: 'm', title: 'Lead', type: 'Team Leader', stacked: true, _cardH: 110, children: [
-      { id: 'a', title: 'A', type: 'Engineer', children: [], _cardH: 100 },
-      { id: 'b', title: 'B', type: 'Engineer', children: [], _cardH: 100 }
+    id: 'm', title: 'Lead', type: 'Team Leader', stacked: true, _cardH: 110, _cardW: 248, children: [
+      { id: 'a', title: 'A', type: 'Engineer', children: [], _cardH: 100, _cardW: 200 },
+      { id: 'b', title: 'B', type: 'Engineer', children: [], _cardH: 100, _cardW: 200 }
     ]
   }];
   const lay = OrgFlow.layoutOrgChart(tree, { groupGap: 40 });
@@ -259,10 +259,14 @@ test('stacked reports sit vertically under the manager with a left-side trunk', 
   assert.ok(a._y > m._y + m._h - 1);
   assert.ok(b._y > a._y);
   assert.ok(Math.abs(a._x - b._x) < 1, 'stacked cards should share an x');
-  assert.ok(Math.abs(a._x - m._x) < 1, 'stacked reports should align under the manager');
+  assert.ok(Math.abs((a._x + a._w / 2) - (m._x + m._w / 2)) < 1, 'stacked reports should center under the manager');
   assert.ok(lay.connectors.some(c => c.kind === 'stack-trunk'));
   const lead = lay.connectors.find(c => c.kind === 'stack-lead');
   assert.match(lead.d, new RegExp(`M${m._x + m._w / 2},${m._y + m._h}`));
+  const dropY = Number(lead.d.match(/V([\d.]+)/)[1]);
+  assert.ok(dropY >= m._y + m._h + 18, 'stack lead should clear the collapse control before turning to the trunk');
+  const spur = lay.connectors.find(c => c.kind === 'stack-spur' && c.toId === 'a');
+  assert.match(spur.d, new RegExp(`H${a._x}$`));
 });
 
 test('unstacked reporting lines meet child card centers from the manager bottom', () => {
@@ -271,18 +275,27 @@ test('unstacked reporting lines meet child card centers from the manager bottom'
       { id: 'a', title: 'A', type: 'Team Leader', stacked: true, _cardH: 110, children: [
         { id: 'a1', title: 'IC', type: 'Engineer', children: [], _cardH: 100 }
       ] },
-      { id: 'b', title: 'B', type: 'Team Leader', stacked: false, children: [], _cardH: 110 }
+      { id: 'b', title: 'B', type: 'Team Leader', stacked: false, children: [], _cardH: 150 }
     ]
   }];
   const lay = OrgFlow.layoutOrgChart(tree, { groupGap: 40 });
+  const h = lay.all.find(n => n.id === 'h');
   const a = lay.all.find(n => n.id === 'a');
   const a1 = lay.all.find(n => n.id === 'a1');
   const b = lay.all.find(n => n.id === 'b');
-  assert.ok(Math.abs(a._y - b._y) < 1, 'same-level cards should share a y');
-  assert.ok(Math.abs(a._x - a1._x) < 1, 'stacked IC should sit in the manager column');
+  assert.ok(Math.abs(a._y - b._y) < 1, 'same-level cards should share a y even when card heights differ');
+  assert.ok(Math.abs((a._x + a._w / 2) - (a1._x + a1._w / 2)) < 1, 'stacked IC should sit in the manager column');
+  const drop = lay.connectors.find(c => c.kind === 'tree-drop' && c.fromId === 'h');
+  const bus = lay.connectors.find(c => c.kind === 'tree-bus' && c.fromId === 'h');
   const down = lay.connectors.find(c => c.kind === 'tree-down' && c.toId === 'a');
-  assert.match(down.d, new RegExp(`M${a._x + a._w / 2},`));
+  const mx = h._x + h._w / 2;
+  const busY = Number(drop.d.match(/V([\d.]+)/)[1]);
+  assert.match(drop.d, new RegExp(`M${mx},${h._y + h._h}`));
+  assert.match(down.d, new RegExp(`M${a._x + a._w / 2},${busY}`));
   assert.match(down.d, new RegExp(`V${a._y}$`));
+  const busStart = Number(bus.d.match(/M([\d.]+)/)[1]);
+  const busEnd = Number(bus.d.match(/H([\d.]+)/)[1]);
+  assert.ok(Math.min(busStart, busEnd) <= mx && mx <= Math.max(busStart, busEnd), 'horizontal bus should include the manager center so drops meet');
 });
 
 test('unstacked groups use configurable horizontal spacing', () => {

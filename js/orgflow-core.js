@@ -17,9 +17,12 @@
     ['type', 'Position type'], ['group', 'Group / team'], ['fte', 'Position FTE'], ['status', 'Approval'],
     ['hiringState', 'Hiring state'], ['personId', 'Assigned person'],
     ['startDate', 'Position start'], ['endDate', 'Position end'],
-    ['location', 'Location'], ['costCenter', 'Cost center'], ['jobFamily', 'Job family']
+    ['location', 'Location'], ['costCenter', 'Cost center'], ['jobFamily', 'Job family'],
+    ['sortOrder', 'Reporting order'], ['stacked', 'Stacked reports']
   ];
-  const POSITION_CSV_COLUMNS = ['positionId', 'reportsToPositionId', 'secondaryManagerId', 'title', 'type', 'group', 'fte', 'approval', 'hiringState', 'personId', 'name', 'employeeNumber', 'startDate', 'endDate', 'location', 'costCenter', 'jobFamily'];
+  const POSITION_CSV_COLUMNS = ['positionId', 'reportsToPositionId', 'secondaryManagerId', 'title', 'type', 'group', 'fte', 'approval', 'hiringState', 'personId', 'name', 'employeeNumber', 'startDate', 'endDate', 'location', 'costCenter', 'jobFamily', 'sortOrder', 'stacked'];
+  const CARD_DISPLAY_DEFAULTS = { fte: true, site: true, group: true, type: true, approval: true, hiring: true, cumulative: false, groupGap: 32, chartDots: true };
+  const CARD_W = 248;
   const ALIASES = {
     id: ['positionid', 'id'],
     managerId: ['reportstopositionid', 'managerpositionid', 'managerid', 'reportstoid', 'parentid'],
@@ -38,7 +41,9 @@
     fte: ['fte', 'fulltimeequivalent', 'positionfte'],
     location: ['location', 'site', 'office', 'city'],
     costCenter: ['costcenter', 'costcentre', 'cc'],
-    jobFamily: ['jobfamily', 'jobfunction', 'family']
+    jobFamily: ['jobfamily', 'jobfunction', 'family'],
+    sortOrder: ['sortorder', 'reportingorder', 'order', 'siblingorder'],
+    stacked: ['stacked', 'stackreports', 'stack']
   };
 
   function esc(s) {
@@ -79,7 +84,7 @@
   }
   function positionCSVValues(p, scenario) {
     const person = scenario.employees.find(x => x.id === p.personId);
-    return [p.id, p.managerId, p.secondaryManagerId, p.title, p.type, p.group, p.fte, p.status, p.hiringState, p.personId, person?.name || '', person?.employeeNumber || '', p.startDate, p.endDate, p.location, p.costCenter, p.jobFamily];
+    return [p.id, p.managerId, p.secondaryManagerId, p.title, p.type, p.group, p.fte, p.status, p.hiringState, p.personId, person?.name || '', person?.employeeNumber || '', p.startDate, p.endDate, p.location, p.costCenter, p.jobFamily, p.sortOrder ?? 0, p.stacked === true ? 'true' : p.stacked === false ? 'false' : ''];
   }
   function validPersonPhoto(v) {
     if (!v) return null;
@@ -155,15 +160,37 @@
     }
     return map;
   }
-  function normalizeType(value, warnings, rowNo) {
-    const s = String(value || '').trim().toLowerCase();
+  function sanitizePositionLevels(input) {
+    if (!Array.isArray(input)) return [];
+    const out = [], seen = new Set(ROLE_TYPES.map(x => x.toLowerCase()));
+    for (const raw of input) {
+      if (typeof raw !== 'string') continue;
+      const name = cleanString(raw, 'Position level', 40, true);
+      const key = name.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(name);
+      if (out.length >= 24) break;
+    }
+    return out;
+  }
+  function positionTypes(levels) {
+    return ROLE_TYPES.concat(sanitizePositionLevels(levels));
+  }
+  function normalizeType(value, warnings, rowNo, extraTypes = []) {
+    const s = String(value || '').trim();
     if (!s) return 'Engineer';
-    if (['head', 'director', 'department head', 'function head', 'chief', 'ceo', 'coo'].includes(s)) return 'Head';
-    if (['team leader', 'team lead', 'lead', 'leader', 'group leader', 'manager'].includes(s)) return 'Team Leader';
-    if (['engineer', 'senior engineer', 'normal engineer', 'staff', 'software engineer'].includes(s)) return 'Engineer';
-    if (['specialist', 'analyst', 'designer', 'product manager', 'customer success', 'buyer', 'partner'].includes(s)) return 'Specialist';
-    if (['graduate', 'grad', 'graduate engineer'].includes(s)) return 'Graduate';
-    if (['intern', 'internship', 'trainee'].includes(s)) return 'Intern';
+    const extra = sanitizePositionLevels(extraTypes);
+    const extraHit = extra.find(t => t.toLowerCase() === s.toLowerCase());
+    if (extraHit) return extraHit;
+    const key = s.toLowerCase();
+    if (ROLE_TYPES.some(t => t.toLowerCase() === key)) return ROLE_TYPES.find(t => t.toLowerCase() === key);
+    if (['head', 'director', 'department head', 'function head', 'chief', 'ceo', 'coo'].includes(key)) return 'Head';
+    if (['team leader', 'team lead', 'lead', 'leader', 'group leader', 'manager'].includes(key)) return 'Team Leader';
+    if (['engineer', 'senior engineer', 'normal engineer', 'staff', 'software engineer'].includes(key)) return 'Engineer';
+    if (['specialist', 'analyst', 'designer', 'product manager', 'customer success', 'buyer', 'partner'].includes(key)) return 'Specialist';
+    if (['graduate', 'grad', 'graduate engineer'].includes(key)) return 'Graduate';
+    if (['intern', 'internship', 'trainee'].includes(key)) return 'Intern';
     warnings.push(`Row ${rowNo}: unknown position type “${value}”; mapped to Engineer.`);
     return 'Engineer';
   }
@@ -215,9 +242,25 @@
     }
     return list;
   }
-  function validateScenarioData(data) {
+  function parseStackedFlag(value) {
+    if (value === true || value === false) return value;
+    if (typeof value !== 'string') return undefined;
+    const s = value.trim().toLowerCase();
+    if (['true', 'yes', '1', 'stacked'].includes(s)) return true;
+    if (['false', 'no', '0', 'spread', 'horizontal'].includes(s)) return false;
+    if (!s) return undefined;
+    throw new Error('Stacked must be true or false.');
+  }
+  function parseSortOrder(value) {
+    if (value === undefined || value === null || value === '') return 0;
+    const n = typeof value === 'number' ? value : Number(String(value).trim());
+    if (!Number.isFinite(n) || n < -10000 || n > 10000) throw new Error('Reporting order must be a number between -10,000 and 10,000.');
+    return Math.round(n);
+  }
+  function validateScenarioData(data, extraTypes = []) {
     if (!data || !Array.isArray(data.positions) || !Array.isArray(data.employees)) throw new Error('A scenario needs positions and people arrays.');
     if (data.positions.length > 2500 || data.employees.length > 5000) throw new Error('Maximum 2,500 positions and 5,000 people per scenario.');
+    const allowedTypes = new Set(positionTypes(extraTypes));
     const ids = new Set(), personIds = new Set(), assigned = new Set();
     const employees = data.employees.map(p => {
       if (!p || typeof p !== 'object') throw new Error('Invalid person record.');
@@ -232,11 +275,14 @@
       for (const key of POSITION_FIELDS.filter(k => k !== 'fte')) out[key] = cleanString(p[key] || '', key === 'title' ? 'Position title' : key, ['title', 'group', 'location', 'jobFamily'].includes(key) ? 200 : 150, ['id', 'title', 'type', 'status', 'hiringState'].includes(key));
       if (ids.has(out.id)) throw new Error(`Duplicate position ID: ${out.id}.`);
       ids.add(out.id);
-      if (!ROLE_TYPES.includes(out.type)) throw new Error(`Unknown position type on ${out.id}.`);
+      if (!allowedTypes.has(out.type)) throw new Error(`Unknown position type on ${out.id}.`);
       if (!STATUSES.includes(out.status)) throw new Error(`Unknown approval on ${out.id}.`);
       if (!HIRING_STATES.includes(out.hiringState)) throw new Error(`Unknown hiring state on ${out.id}.`);
       if (typeof p.fte !== 'number' || !Number.isFinite(p.fte) || p.fte <= 0 || p.fte > 1 || Math.abs(p.fte * 100 - Math.round(p.fte * 100)) > 1e-8) throw new Error(`FTE on ${out.id} must be 0.01 to 1.00, with at most two decimals.`);
       out.fte = p.fte;
+      out.sortOrder = parseSortOrder(p.sortOrder);
+      const stacked = parseStackedFlag(p.stacked);
+      if (stacked === true || stacked === false) out.stacked = stacked;
       if ((out.startDate && !isISODate(out.startDate)) || (out.endDate && !isISODate(out.endDate)) || (out.startDate && out.endDate && out.endDate < out.startDate)) throw new Error(`Invalid position dates on ${out.id}.`);
       if (out.personId && !personIds.has(out.personId)) throw new Error(`Assigned person is missing on ${out.id}.`);
       if (out.hiringState === 'Filled' && !out.personId) throw new Error(`Filled position ${out.id} needs an assigned person.`);
@@ -270,19 +316,20 @@
   }
   function validatePlanning(input) {
     if (!input || input.version !== 2 || !Array.isArray(input.scenarios) || !input.scenarios.length || input.scenarios.length > 30) throw new Error('Invalid planning workspace (maximum 30 scenarios).');
+    const positionLevels = sanitizePositionLevels(input.positionLevels);
     const ids = new Set(), names = new Set();
     const scenarios = input.scenarios.map(s => {
       const id = cleanString(s.id, 'Scenario ID', 150, true), name = cleanString(s.name, 'Scenario name', 80, true);
       if (ids.has(id) || names.has(name.toLocaleLowerCase())) throw new Error('Scenario names and IDs must be unique.');
       ids.add(id); names.add(name.toLocaleLowerCase());
-      const data = validateScenarioData(s);
-      const baseSnapshot = s.baseSnapshot ? { ...validateScenarioData(s.baseSnapshot), name: cleanString(s.baseSnapshot.name || 'Original baseline', 'Baseline name', 80), capturedAt: String(s.baseSnapshot.capturedAt || '').slice(0, 40) } : null;
+      const data = validateScenarioData(s, positionLevels);
+      const baseSnapshot = s.baseSnapshot ? { ...validateScenarioData(s.baseSnapshot, positionLevels), name: cleanString(s.baseSnapshot.name || 'Original baseline', 'Baseline name', 80), capturedAt: String(s.baseSnapshot.capturedAt || '').slice(0, 40) } : null;
       return { id, name, description: cleanString(s.description || '', 'Scenario notes', 1000), createdAt: String(s.createdAt || '').slice(0, 40), updatedAt: String(s.updatedAt || '').slice(0, 40), baseScenarioId: typeof s.baseScenarioId === 'string' ? s.baseScenarioId.slice(0, 150) : '', baseSnapshot, ...data };
     });
     if (!ids.has('current')) throw new Error('Workspace must include the protected Current scenario.');
     if (scenarios.find(s => s.id === 'current').name !== 'Current') throw new Error('The Current scenario cannot be renamed.');
     if (!ids.has(input.activeScenarioId)) throw new Error('Active scenario was not found.');
-    return { version: 2, activeScenarioId: input.activeScenarioId, scenarios };
+    return { version: 2, activeScenarioId: input.activeScenarioId, scenarios, positionLevels };
   }
   function migrateLegacy(legacy) {
     const roster = validatePeopleData(legacy), stamp = new Date().toISOString();
@@ -334,9 +381,11 @@
       return p ? `${p.name} [${p.id}]` : String(value);
     }
     if (key === 'fte') return fteText(value);
+    if (key === 'sortOrder') return String(Number.isFinite(value) ? value : 0);
+    if (key === 'stacked') return value === true ? 'Stacked' : value === false ? 'Side by side' : 'Auto';
     return String(value || '—');
   }
-  function prepareImport(text, fileName, source, idFactory = makeId) {
+  function prepareImport(text, fileName, source, idFactory = makeId, extraTypes = []) {
     const rows = parseCSV(text), errors = [], warnings = [], positions = [], employees = [];
     const result = { positions, employees, errors, warnings, filename: fileName, scenarioId: source.id };
     if (rows.length < 2) { errors.push('The CSV has no data rows.'); return result; }
@@ -375,9 +424,14 @@
           if (employeeMap.has(personId) && employeeMap.get(personId).name !== name) throw new Error(`Row ${rowNo}: conflicting names for person ${personId}.`);
           employeeMap.set(personId, { id: personId, name, employeeNumber: get('employeeNumber'), photo: source.employees.find(x => x.id === personId)?.photo || null });
         }
-        const type = normalizeType(get('type'), warnings, rowNo), title = get('title') || `${type} position`;
+        const type = normalizeType(get('type'), warnings, rowNo, extraTypes), title = get('title') || `${type} position`;
         if (!get('title')) warnings.push(`Row ${rowNo}: no title supplied. New/replaced positions use “${title}”; Update by ID keeps an existing title when its column is omitted.`);
-        positions.push({ id, managerId: get('managerId'), managerName: get('managerName'), secondaryManagerId: get('secondaryManagerId'), title, type, group: get('group'), fte: get('fte') ? Number(get('fte')) : 1, status: normalizeStatus(get('status')), hiringState, personId, startDate: normalizeDate(get('startDate'), warnings, rowNo, 'position start'), endDate: normalizeDate(get('endDate'), warnings, rowNo, 'position end'), location: get('location'), costCenter: get('costCenter'), jobFamily: get('jobFamily') });
+        let sortOrder = 0, stacked;
+        if (map.sortOrder !== undefined && get('sortOrder') !== '') sortOrder = parseSortOrder(get('sortOrder'));
+        if (map.stacked !== undefined && get('stacked') !== '') stacked = parseStackedFlag(get('stacked'));
+        const rowPos = { id, managerId: get('managerId'), managerName: get('managerName'), secondaryManagerId: get('secondaryManagerId'), title, type, group: get('group'), fte: get('fte') ? Number(get('fte')) : 1, status: normalizeStatus(get('status')), hiringState, personId, startDate: normalizeDate(get('startDate'), warnings, rowNo, 'position start'), endDate: normalizeDate(get('endDate'), warnings, rowNo, 'position end'), location: get('location'), costCenter: get('costCenter'), jobFamily: get('jobFamily'), sortOrder };
+        if (stacked === true || stacked === false) rowPos.stacked = stacked;
+        positions.push(rowPos);
       } catch (error) { errors.push(error.message); }
     }
     employees.push(...employeeMap.values());
@@ -399,7 +453,7 @@
     if (map.status === undefined) warnings.push('Missing approval defaults to Not approved for new/replaced positions; Update by ID keeps existing approval.');
     return result;
   }
-  function makeImportScenario(result, mode, source) {
+  function makeImportScenario(result, mode, source, extraTypes = []) {
     const s = structuredClone(source);
     if (result.scenarioId !== s.id) throw new Error('The active scenario changed. Select the file again.');
     const allPeople = new Map(s.employees.map(p => [p.id, p]));
@@ -414,7 +468,10 @@
       result.positions.forEach(p => {
         const next = structuredClone(p), old = byId.get(p.id);
         if (old) {
-          for (const key of ['title', 'type', 'group', 'fte', 'status', 'startDate', 'endDate', 'location', 'costCenter', 'jobFamily', 'secondaryManagerId']) if (!supplied.has(key)) next[key] = old[key];
+          for (const key of ['title', 'type', 'group', 'fte', 'status', 'startDate', 'endDate', 'location', 'costCenter', 'jobFamily', 'secondaryManagerId', 'sortOrder', 'stacked']) if (!supplied.has(key)) {
+            if (key === 'stacked' && old.stacked !== true && old.stacked !== false) { delete next.stacked; continue; }
+            next[key] = old[key];
+          }
           if (!supplied.has('managerId') && !supplied.has('managerName')) next.managerId = old.managerId;
           if (!supplied.has('personId') && !supplied.has('name') && !supplied.has('hiringState')) { next.personId = old.personId; next.hiringState = old.hiringState; }
         }
@@ -422,7 +479,7 @@
       });
       s.positions = [...byId.values()];
     } else throw new Error('Unknown import mode.');
-    Object.assign(s, validateScenarioData(s));
+    Object.assign(s, validateScenarioData(s, extraTypes));
     return s;
   }
   // Pre-Specialist chips. A saved “every type on” view from that era should gain Specialist.
@@ -439,6 +496,7 @@
     return validatePlanning({
       version: 2,
       activeScenarioId: 'current',
+      positionLevels: [],
       scenarios: [{
         id: 'current', name: 'Current', description: '', createdAt: stamp, updatedAt: stamp, baseScenarioId: '', baseSnapshot: null,
         employees: [],
@@ -447,12 +505,237 @@
     });
   }
 
+  function compareSiblings(a, b) {
+    const ao = Number.isFinite(a.sortOrder) ? a.sortOrder : 0;
+    const bo = Number.isFinite(b.sortOrder) ? b.sortOrder : 0;
+    if (ao !== bo) return ao - bo;
+    const head = (a.type === 'Head' ? -1 : 0) - (b.type === 'Head' ? -1 : 0);
+    if (head) return head;
+    return String(a.name || a.title || '').localeCompare(String(b.name || b.title || '')) || String(a.title || '').localeCompare(String(b.title || '')) || String(a.id).localeCompare(String(b.id));
+  }
+  function defaultStacked(node) {
+    return Array.isArray(node.children) && node.children.length > 0 && node.children.every(c => !c.children || !c.children.length);
+  }
+  function nodeStacked(node) {
+    if (node.stacked === true) return true;
+    if (node.stacked === false) return false;
+    return defaultStacked(node);
+  }
+  function wrapText(text, maxWidth, charWidth = 7) {
+    const raw = String(text || '').trim();
+    if (!raw) return [''];
+    const maxChars = Math.max(4, Math.floor(maxWidth / charWidth));
+    const words = raw.split(/\s+/);
+    const lines = [];
+    let current = '';
+    const flush = () => { if (current) { lines.push(current); current = ''; } };
+    for (const word of words) {
+      if (word.length > maxChars) {
+        flush();
+        for (let i = 0; i < word.length; i += maxChars) lines.push(word.slice(i, i + maxChars));
+        continue;
+      }
+      const next = current ? current + ' ' + word : word;
+      if (next.length > maxChars && current) { flush(); current = word; }
+      else current = next;
+    }
+    flush();
+    return lines.length ? lines : [''];
+  }
+  function showsCumulativeCount(type) {
+    return type === 'Head' || type === 'Team Leader';
+  }
+  function personLabel(n) {
+    return n.personName || n.name || (n.hiringState === 'Recruiting' ? 'Recruiting' : 'Vacant position');
+  }
+  function sanitizeCardDisplay(input) {
+    const d = input && typeof input === 'object' ? input : {};
+    const bool = (k, def) => d[k] === undefined ? def : d[k] === true;
+    let groupGap = Number(d.groupGap);
+    if (!Number.isFinite(groupGap)) groupGap = CARD_DISPLAY_DEFAULTS.groupGap;
+    groupGap = Math.max(16, Math.min(96, Math.round(groupGap)));
+    return {
+      fte: bool('fte', true),
+      site: bool('site', true),
+      group: bool('group', true),
+      type: bool('type', true),
+      approval: bool('approval', true),
+      hiring: bool('hiring', true),
+      cumulative: d.cumulative === true,
+      groupGap,
+      chartDots: d.chartDots !== false
+    };
+  }
+  function cardMetrics(n, display) {
+    const d = sanitizeCardDisplay(display);
+    const nameLines = wrapText(personLabel(n), 186, 7.1).slice(0, 4);
+    const titleLines = wrapText(n.title || '', 224, 5.7).slice(0, 3);
+    const groupLines = d.group ? wrapText(n.group || 'No group', 224, 5.4).slice(0, 2) : [];
+    const siteLines = d.site ? wrapText(n.location || 'No site', 224, 5.4).slice(0, 2) : [];
+    let h = 14 + Math.max(nameLines.length * 15, 30);
+    h += 4 + titleLines.length * 13;
+    h += groupLines.length * 13;
+    h += siteLines.length * 13;
+    if (d.type || d.approval) h += 20;
+    if (d.hiring || d.fte || (d.cumulative && showsCumulativeCount(n.type))) h += 16;
+    h += 12;
+    return { width: CARD_W, height: Math.max(96, Math.min(280, Math.round(h))), nameLines, titleLines, groupLines, siteLines };
+  }
+  function subtreePeopleCount(positions, id) {
+    const children = new Map();
+    for (const p of positions) {
+      const mid = p.managerId || '';
+      if (!children.has(mid)) children.set(mid, []);
+      children.get(mid).push(p.id);
+    }
+    let count = 0;
+    const stack = [id], seen = new Set();
+    while (stack.length) {
+      const cur = stack.pop();
+      if (seen.has(cur)) continue;
+      seen.add(cur);
+      const p = positions.find(x => x.id === cur);
+      if (p && p.hiringState === 'Filled') count++;
+      for (const c of children.get(cur) || []) stack.push(c);
+    }
+    return count;
+  }
+  function reorderSiblings(positions, id, delta) {
+    const pos = positions.find(p => p.id === id);
+    if (!pos || !delta) return positions;
+    const managerId = pos.managerId || '';
+    const siblings = positions.filter(p => (p.managerId || '') === managerId).sort(compareSiblings);
+    const i = siblings.findIndex(p => p.id === id);
+    const j = i + delta;
+    if (i < 0 || j < 0 || j >= siblings.length) return positions;
+    const ordered = siblings.slice();
+    const [moved] = ordered.splice(i, 1);
+    ordered.splice(j, 0, moved);
+    const rank = new Map(ordered.map((p, idx) => [p.id, idx]));
+    return positions.map(p => rank.has(p.id) ? { ...p, sortOrder: rank.get(p.id) } : p);
+  }
+  function siblingIndex(positions, id) {
+    const pos = positions.find(p => p.id === id);
+    if (!pos) return { index: -1, count: 0 };
+    const siblings = positions.filter(p => (p.managerId || '') === (pos.managerId || '')).sort(compareSiblings);
+    return { index: siblings.findIndex(p => p.id === id), count: siblings.length };
+  }
+  function applyCardSizes(nodes, display) {
+    for (const n of nodes) {
+      const m = cardMetrics(n, display);
+      n._cardW = m.width;
+      n._cardH = m.height;
+      n._lines = m;
+      if (n.children?.length) applyCardSizes(n.children, display);
+    }
+    return nodes;
+  }
+  function layoutOrgChart(nodes, opts = {}) {
+    const groupGap = sanitizeCardDisplay(opts).groupGap;
+    const stackGap = opts.stackGap ?? 14;
+    const stackIndent = opts.stackIndent ?? 36;
+    const levelGap = opts.levelGap ?? 48;
+    const trunkPad = 16;
+    const forest = nodes || [];
+
+    function size(n) {
+      n._w = n._cardW || CARD_W;
+      n._h = n._cardH || 124;
+      n._stacked = nodeStacked(n);
+      if (!n.children?.length) {
+        n._boxW = n._w;
+        n._boxH = n._h;
+        return;
+      }
+      n.children.forEach(size);
+      if (n._stacked) {
+        const kidsH = n.children.reduce((s, c) => s + c._boxH, 0) + stackGap * n.children.length;
+        n._boxW = Math.max(n._w, stackIndent + Math.max(...n.children.map(c => c._boxW)));
+        n._boxH = n._h + kidsH;
+      } else {
+        const kidsW = n.children.reduce((s, c) => s + c._boxW, 0) + groupGap * (n.children.length - 1);
+        n._boxW = Math.max(n._w, kidsW);
+        n._boxH = n._h + levelGap + Math.max(...n.children.map(c => c._boxH));
+      }
+    }
+    function place(n, x, y) {
+      if (!n.children?.length) {
+        n._x = x;
+        n._y = y;
+        return;
+      }
+      if (n._stacked) {
+        n._x = x;
+        n._y = y;
+        let cy = y + n._h + stackGap;
+        for (const c of n.children) {
+          place(c, x + stackIndent, cy);
+          cy += c._boxH + stackGap;
+        }
+      } else {
+        n._x = x + (n._boxW - n._w) / 2;
+        n._y = y;
+        const kidsW = n.children.reduce((s, c) => s + c._boxW, 0) + groupGap * (n.children.length - 1);
+        let cx = x + Math.max(0, (n._boxW - kidsW) / 2);
+        const cy = y + n._h + levelGap;
+        for (const c of n.children) {
+          place(c, cx, cy);
+          cx += c._boxW + groupGap;
+        }
+      }
+    }
+
+    let cursor = 0;
+    forest.forEach(n => {
+      size(n);
+      place(n, cursor, 0);
+      cursor += n._boxW + groupGap;
+    });
+    const all = [];
+    (function flatten(list) { for (const n of list) { all.push(n); if (n.children?.length) flatten(n.children); } })(forest);
+    if (!all.length) return { all, width: 0, height: 0, cardW: CARD_W, connectors: [], groupGap };
+    const minX = Math.min(...all.map(n => n._x));
+    all.forEach(n => { n._x -= minX; });
+    const connectors = [];
+    for (const n of all) {
+      if (!n.children?.length) continue;
+      const mx = n._x + n._w / 2;
+      const midY = n._y + n._h / 2;
+      if (n._stacked) {
+        const first = n.children[0], last = n.children[n.children.length - 1];
+        const trunkX = first._x - trunkPad;
+        const joinY = n._y + n._h;
+        connectors.push({ kind: 'stack-lead', fromId: n.id, d: `M${mx},${midY} V${joinY} H${trunkX}` });
+        connectors.push({ kind: 'stack-trunk', fromId: n.id, d: `M${trunkX},${joinY} V${last._y + last._h / 2}` });
+        for (const c of n.children) {
+          const cy = c._y + c._h / 2;
+          connectors.push({ kind: 'stack-spur', fromId: n.id, toId: c.id, d: `M${trunkX},${cy} H${c._x}` });
+        }
+      } else {
+        const busY = n._y + n._h + levelGap / 2;
+        connectors.push({ kind: 'tree-drop', fromId: n.id, d: `M${mx},${midY} V${busY}` });
+        const xs = n.children.map(c => c._x + c._w / 2);
+        if (xs.length > 1) connectors.push({ kind: 'tree-bus', fromId: n.id, d: `M${Math.min(...xs)},${busY} H${Math.max(...xs)}` });
+        for (const c of n.children) {
+          const cx = c._x + c._w / 2;
+          connectors.push({ kind: 'tree-down', fromId: n.id, toId: c.id, d: `M${cx},${busY} V${c._y}` });
+        }
+      }
+    }
+    const width = Math.max(...all.map(n => n._x + n._w)) - Math.min(...all.map(n => n._x));
+    const height = Math.max(...all.map(n => n._y + n._h));
+    return { all, width, height, cardW: CARD_W, connectors, groupGap };
+  }
+
   return {
     ROLE_TYPES, STATUSES, HIRING_STATES, LEGACY_ROLE_TYPES, POSITION_FIELDS, DIFF_FIELDS, POSITION_CSV_COLUMNS, ALIASES,
+    CARD_DISPLAY_DEFAULTS, CARD_W,
     esc, slug, makeId, isISODate, cleanString, fmtDate, fteText, csvEscape, csvRows, positionCSVValues,
     detectDelimiter, parseCSV, normHeader, headerMap, normalizeType, normalizeStatus, normalizeDate,
     validatePeopleData, validateScenarioData, validatePlanning, migrateLegacy, projection, totals,
     scenarioChanges, fieldValue, prepareImport, makeImportScenario, emptyWorkspace, sanitizeChipFilters,
-    wouldCreateCycle, validPersonPhoto
+    wouldCreateCycle, validPersonPhoto, sanitizePositionLevels, positionTypes, compareSiblings,
+    defaultStacked, nodeStacked, wrapText, showsCumulativeCount, personLabel, sanitizeCardDisplay,
+    cardMetrics, subtreePeopleCount, reorderSiblings, siblingIndex, applyCardSizes, layoutOrgChart
   };
 });

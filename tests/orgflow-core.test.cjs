@@ -177,9 +177,9 @@ test('CSV round-trip keeps location, cost center, job family and employee number
   const source = OrgFlow.emptyWorkspace('2026-09-13').scenarios[0];
   const csv = [
     OrgFlow.POSITION_CSV_COLUMNS.join(','),
-    'POS-001,,,Head of Product,Head,Product,1,Approved,Filled,EMP-001,Alex Morgan,E-101,2026-01-01,,London,PRD,Product',
-    'POS-002,POS-001,,Head of Engineering,Head,Engineering,1,Approved,Filled,EMP-003,Elena Voss,E-200,2026-01-01,,Berlin,ENG,Engineering',
-    'POS-003,POS-001,POS-002,Product Manager,Specialist,Product,1,Approved,Filled,EMP-002,Sam Rivera,E-118,2026-01-01,,Remote,PRD,Product'
+    'POS-001,,,Head of Product,Head,Product,1,Approved,Filled,EMP-001,Alex Morgan,E-101,2026-01-01,,London,PRD,Product,0,',
+    'POS-002,POS-001,,Head of Engineering,Head,Engineering,1,Approved,Filled,EMP-003,Elena Voss,E-200,2026-01-01,,Berlin,ENG,Engineering,1,',
+    'POS-003,POS-001,POS-002,Product Manager,Specialist,Product,1,Approved,Filled,EMP-002,Sam Rivera,E-118,2026-01-01,,Remote,PRD,Product,2,'
   ].join('\n');
   const prepared = OrgFlow.prepareImport(csv, 'team.csv', source);
   assert.equal(prepared.errors.length, 0, prepared.errors.join('; '));
@@ -204,3 +204,131 @@ test('starter templates validate as planning workspaces', () => {
     assert.ok(planning.scenarios[0].positions.every(p => p.location), `${id} should have locations`);
   }
 });
+
+test('custom position levels are stored and accepted on positions', () => {
+  const ws = OrgFlow.emptyWorkspace('2026-09-13');
+  ws.positionLevels = ['Principal'];
+  ws.scenarios[0].positions.push({
+    id: 'POS-002', managerId: 'POS-001', title: 'Principal engineer', type: 'Principal', group: 'Engineering',
+    fte: 1, status: 'Approved', hiringState: 'Vacant', personId: '', startDate: '', endDate: '', location: '', costCenter: '', jobFamily: ''
+  });
+  const checked = OrgFlow.validatePlanning(ws);
+  assert.deepEqual(checked.positionLevels, ['Principal']);
+  assert.equal(checked.scenarios[0].positions[1].type, 'Principal');
+  assert.throws(() => OrgFlow.validateScenarioData({
+    employees: [],
+    positions: [{ id: 'A', managerId: '', title: 'X', type: 'Wizard', group: 'G', fte: 1, status: 'Approved', hiringState: 'Vacant', personId: '', startDate: '', endDate: '' }]
+  }), /Unknown position type/);
+});
+
+test('wrapText wraps long names instead of truncating', () => {
+  const lines = OrgFlow.wrapText('Alexandria Catherine Montgomery-Reeves', 80, 7);
+  assert.ok(lines.length >= 2);
+  assert.ok(lines.every(line => line.length * 7 <= 90));
+});
+
+test('cards grow only when their own text wraps', () => {
+  const short = OrgFlow.cardMetrics({ title: 'Engineer', name: 'Alex', type: 'Engineer', group: 'Product', location: 'London', hiringState: 'Filled' });
+  const long = OrgFlow.cardMetrics({ title: 'Principal product operations and customer research lead', name: 'Alexandria Catherine Montgomery-Reeves', type: 'Engineer', group: 'Product operations and research', location: 'London Paddington Campus', hiringState: 'Filled' });
+  assert.ok(long.height > short.height);
+  const hidden = OrgFlow.cardMetrics({ title: 'Engineer', name: 'Alex', type: 'Engineer', group: 'Product', location: 'London', hiringState: 'Filled' }, { group: false, site: false, type: false, approval: false, hiring: false, fte: false });
+  assert.ok(hidden.height <= short.height);
+});
+
+test('default stacking applies only to last-level managers', () => {
+  const ic = { id: 'e', title: 'Engineer', type: 'Engineer', children: [] };
+  const lead = { id: 'l', title: 'Lead', type: 'Team Leader', children: [ic] };
+  const head = { id: 'h', title: 'Head', type: 'Head', children: [lead] };
+  assert.equal(OrgFlow.defaultStacked(head), false);
+  assert.equal(OrgFlow.defaultStacked(lead), true);
+  assert.equal(OrgFlow.nodeStacked({ ...head, stacked: true }), true);
+  assert.equal(OrgFlow.nodeStacked({ ...lead, stacked: false }), false);
+});
+
+test('stacked reports sit vertically under the manager with a left-side trunk', () => {
+  const tree = [{
+    id: 'm', title: 'Lead', type: 'Team Leader', stacked: true, _cardH: 110, children: [
+      { id: 'a', title: 'A', type: 'Engineer', children: [], _cardH: 100 },
+      { id: 'b', title: 'B', type: 'Engineer', children: [], _cardH: 100 }
+    ]
+  }];
+  const lay = OrgFlow.layoutOrgChart(tree, { groupGap: 40 });
+  const m = lay.all.find(n => n.id === 'm');
+  const a = lay.all.find(n => n.id === 'a');
+  const b = lay.all.find(n => n.id === 'b');
+  assert.ok(a._y > m._y + m._h - 1);
+  assert.ok(b._y > a._y);
+  assert.ok(Math.abs(a._x - b._x) < 1);
+  assert.ok(lay.connectors.some(c => c.kind === 'stack-trunk'));
+  const lead = lay.connectors.find(c => c.kind === 'stack-lead');
+  assert.match(lead.d, new RegExp(`M${m._x + m._w / 2},${m._y + m._h / 2}`));
+});
+
+test('unstacked groups use configurable horizontal spacing', () => {
+  const tree = (gap) => {
+    const kids = [
+      { id: 'a', title: 'A', type: 'Team Leader', stacked: false, children: [], _cardW: 248, _cardH: 100 },
+      { id: 'b', title: 'B', type: 'Team Leader', stacked: false, children: [], _cardW: 248, _cardH: 100 }
+    ];
+    return OrgFlow.layoutOrgChart([{ id: 'h', title: 'Head', type: 'Head', stacked: false, children: kids, _cardH: 110 }], { groupGap: gap });
+  };
+  const tight = tree(20), wide = tree(80);
+  const span = lay => {
+    const a = lay.all.find(n => n.id === 'a'), b = lay.all.find(n => n.id === 'b');
+    return b._x - a._x;
+  };
+  assert.ok(span(wide) - span(tight) >= 55);
+});
+
+test('first sibling can move down and order persists', () => {
+  const positions = [
+    { id: 'm', managerId: '', sortOrder: 0, title: 'Head', type: 'Head', name: 'Pat' },
+    { id: 'a', managerId: 'm', sortOrder: 0, title: 'Alpha', type: 'Engineer', name: 'Ada' },
+    { id: 'b', managerId: 'm', sortOrder: 1, title: 'Beta', type: 'Engineer', name: 'Bea' }
+  ];
+  const first = OrgFlow.siblingIndex(positions, 'a');
+  assert.equal(first.index, 0);
+  const moved = OrgFlow.reorderSiblings(positions, 'a', 1);
+  assert.equal(OrgFlow.siblingIndex(moved, 'a').index, 1);
+  assert.equal(OrgFlow.siblingIndex(moved, 'b').index, 0);
+  assert.equal(moved.find(p => p.id === 'a').sortOrder, 1);
+  const unchanged = OrgFlow.reorderSiblings(positions, 'a', -1);
+  assert.equal(OrgFlow.siblingIndex(unchanged, 'a').index, 0);
+});
+
+test('saving keeps stacking when the field is omitted from a replacement object', () => {
+  const data = OrgFlow.validateScenarioData({
+    employees: [{ id: 'E1', name: 'Alex' }],
+    positions: [
+      { id: 'A', managerId: '', title: 'Head', type: 'Head', group: 'G', fte: 1, status: 'Approved', hiringState: 'Filled', personId: 'E1', startDate: '', endDate: '', stacked: true, sortOrder: 3 }
+    ]
+  });
+  assert.equal(data.positions[0].stacked, true);
+  assert.equal(data.positions[0].sortOrder, 3);
+});
+
+test('cumulative people count includes the full reporting subtree', () => {
+  const positions = [
+    { id: 'h', managerId: '', hiringState: 'Filled' },
+    { id: 'l', managerId: 'h', hiringState: 'Filled' },
+    { id: 'e1', managerId: 'l', hiringState: 'Filled' },
+    { id: 'e2', managerId: 'l', hiringState: 'Vacant' },
+    { id: 'e3', managerId: 'l', hiringState: 'Recruiting' }
+  ];
+  assert.equal(OrgFlow.subtreePeopleCount(positions, 'h'), 3);
+  assert.equal(OrgFlow.subtreePeopleCount(positions, 'l'), 2);
+  assert.equal(OrgFlow.showsCumulativeCount('Head'), true);
+  assert.equal(OrgFlow.showsCumulativeCount('Team Leader'), true);
+  assert.equal(OrgFlow.showsCumulativeCount('Engineer'), false);
+});
+
+test('workspace backup keeps reporting order after round-trip validation', () => {
+  const ws = OrgFlow.emptyWorkspace('2026-09-13');
+  ws.scenarios[0].positions[0].sortOrder = 2;
+  ws.scenarios[0].positions[0].stacked = false;
+  const again = OrgFlow.validatePlanning(JSON.parse(JSON.stringify(ws)));
+  assert.equal(again.scenarios[0].positions[0].sortOrder, 2);
+  assert.equal(again.scenarios[0].positions[0].stacked, false);
+  assert.deepEqual(again.positionLevels, []);
+});
+

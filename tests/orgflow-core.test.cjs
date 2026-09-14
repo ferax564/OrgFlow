@@ -136,6 +136,23 @@ test('example CSV files round-trip through import', () => {
   }
 });
 
+test('mergeChipSelection keeps a partial group filter instead of turning every chip back on', () => {
+  const all = ['Engineering', 'Finance', 'Operations'];
+  assert.deepEqual(OrgFlow.mergeChipSelection(null, all), all);
+  assert.deepEqual(OrgFlow.mergeChipSelection([], all, all), []);
+  assert.deepEqual(OrgFlow.mergeChipSelection(['Finance'], all, all), ['Finance']);
+  assert.deepEqual(OrgFlow.mergeChipSelection(new Set(['Finance']), all, all), ['Finance']);
+  assert.deepEqual(OrgFlow.mergeChipSelection(all, all, all), all);
+  assert.deepEqual(
+    OrgFlow.mergeChipSelection(['Engineering', 'Finance'], ['Engineering', 'Finance', 'Legal'], ['Engineering', 'Finance']),
+    ['Engineering', 'Finance', 'Legal']
+  );
+  assert.deepEqual(
+    OrgFlow.mergeChipSelection(['Finance'], ['Engineering', 'Finance', 'Legal'], ['Engineering', 'Finance']),
+    ['Finance']
+  );
+});
+
 test('sanitizeChipFilters keeps new role types when every legacy type was selected', () => {
   const all = OrgFlow.ROLE_TYPES;
   const legacy = OrgFlow.LEGACY_ROLE_TYPES;

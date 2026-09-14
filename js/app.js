@@ -6,7 +6,7 @@ const {
   parseCSV, headerMap, normalizeType, normalizeStatus, normalizeDate,
   validatePeopleData, validateScenarioData, validatePlanning, migrateLegacy,
   projection: projectScenario, totals, scenarioChanges, fieldValue,
-  emptyWorkspace, sanitizeChipFilters, wouldCreateCycle, validPersonPhoto,
+  emptyWorkspace, sanitizeChipFilters, mergeChipSelection, wouldCreateCycle, validPersonPhoto,
   positionTypes, compareSiblings, nodeStacked, showsCumulativeCount, personLabel,
     sanitizeCardDisplay, cardMetrics, subtreePeopleCount, reorderSiblings, siblingIndex,
     applyCardSizes, layoutOrgChart, EMPTY_GROUP, EMPTY_SITE, filterLabel, chipValues,
@@ -19,7 +19,7 @@ const svg=$('#chart'),wrap=$('#canvasWrap'),stage=$('#chartStage');
 // Chart projection only; workspace.scenarios is the source of truth.
 let people=[];
 let activeRoles=new Set(ROLE_TYPES),activeStatuses=new Set(STATUSES),maxDepth=99,collapsed=new Set(),selectedId=null,pendingImport=null;
-let activeGroups=null,activeSites=null,selectedIds=new Set(),workspaceFileHandle=null,pathHoverId=null;
+let activeGroups=null,activeSites=null,knownGroups=null,knownSites=null,selectedIds=new Set(),workspaceFileHandle=null,pathHoverId=null;
 let cardDisplay=sanitizeCardDisplay(),stackedTouched=false;
 const now=new Date();const today=[now.getFullYear(),String(now.getMonth()+1).padStart(2,'0'),String(now.getDate()).padStart(2,'0')].join('-');
 $('#asOf').value=today;
@@ -46,23 +46,15 @@ function setupFilterChips(host,values,active,onToggle){
     host.appendChild(b);
   });
 }
-function mergeChipSelection(active, all){
-  if(!all.length)return new Set();
-  if(active===null||active===undefined)return new Set(all);
-  if(active.size===0)return new Set();
-  const still=[...active].filter(x=>all.includes(x));
-  const incoming=all.filter(x=>!active.has(x));
-  if(!still.length)return new Set(all);
-  if(incoming.length&&still.length+incoming.length===all.length)return new Set(all);
-  return new Set(still);
-}
 function setupChips(){
   const types=allPositionTypes();
   setupFilterChips($('#roleChips'),types,activeRoles);
   setupFilterChips($('#statusChips'),STATUSES,activeStatuses);
   const groups=allGroups(),sites=allSites();
-  activeGroups=mergeChipSelection(activeGroups,groups);
-  activeSites=mergeChipSelection(activeSites,sites);
+  activeGroups=new Set(mergeChipSelection(activeGroups,groups,knownGroups));
+  activeSites=new Set(mergeChipSelection(activeSites,sites,knownSites));
+  knownGroups=groups.slice();
+  knownSites=sites.slice();
   setupFilterChips($('#groupChips'),groups,activeGroups);
   setupFilterChips($('#siteChips'),sites,activeSites);
   setupHiringChips();
@@ -620,6 +612,7 @@ function setFiltersOpen(open){
   btn.setAttribute('aria-label',open?'Close filters':'Open filters');
 }
 function applyDefaultFilters(){
+  knownGroups=null;knownSites=null;
   activeRoles=new Set(allPositionTypes());activeStatuses=new Set(STATUSES);activeHiring=new Set(HIRING_STATES);
   activeGroups=new Set(allGroups());activeSites=new Set(allSites());
   $('#search').value='';$('#compareSearch').value='';$('#dateFilter').checked=false;$('#asOf').value=today;
@@ -808,9 +801,9 @@ function positionCardSVG(n,{x=0,y=0,interactive=false,hit=false,children=0,expan
     if(d.fte)right.push(`${fteText(n.fte)} FTE`);
     if(right.length)foot+=`<text x="${w-12}" y="${fy}" text-anchor="end" style="${inlineMeta}">${esc(right.join(' · '))}</text>`;
   }
-  if(d.span&&span){
+  if(d.span&&span&&(span.reports||span.vacant)){
     const label=`${span.reports} ${span.reports===1?'report':'reports'} · ${span.vacant} open`;
-    foot+=`<text x="13" y="${h-10}" style="${inlineMeta}">${esc(label)}</text>`;
+    foot+=`<text x="13" y="${h-10}" fill="${ink}" style="font:700 10px Arial,sans-serif">${esc(label)}</text>`;
   }
   const nodeClass=[interactive?'node':'',hit?'search-hit':'',selected?'selected':'',onPath?'on-path':''].filter(Boolean).join(' ');
   return `<g ${interactive?`class="${nodeClass}" data-id="${esc(n.id)}" tabindex="0" role="button" aria-label="${esc(n.title+', '+label+', '+n.hiringState+', '+n.status+'. Edit position.')}"`:''} transform="translate(${x},${y})">
@@ -1028,6 +1021,7 @@ async function validateWorkspace(input){
   return {planning,branding:b,theme:input.theme==='dark'?'dark':'light',palette:PALETTES.includes(input.palette)?input.palette:(input.palette==='audi'?'crimson':'indigo'),view:sanitizeView(input.view||{},planning)};
 }
 function restoreView(input){
+  knownGroups=null;knownSites=null;
   const view=sanitizeView(input);activeRoles=new Set(view.roles);activeStatuses=new Set(view.statuses);activeHiring=new Set(view.hiring);
   activeGroups=new Set(view.groups);activeSites=new Set(view.sites);
   maxDepth=view.maxDepth;collapsed=new Set(view.collapsed);zoom=view.zoom;showChartChanges=view.showChartChanges;

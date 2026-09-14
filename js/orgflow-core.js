@@ -497,6 +497,15 @@
     }
     return all.filter(x => picked.has(x));
   }
+  function mergeChipSelection(active, all, previousAll) {
+    const list = Array.isArray(all) ? all : [];
+    if (!list.length) return [];
+    if (active == null) return list.slice();
+    const saved = Array.isArray(active) ? active : [...active];
+    if (!saved.length) return [];
+    const prev = Array.isArray(previousAll) ? previousAll : list;
+    return sanitizeChipFilters(saved, list, prev);
+  }
   function emptyWorkspace(today, stamp = new Date().toISOString()) {
     return validatePlanning({
       version: 2,
@@ -891,7 +900,7 @@
     esc, slug, makeId, isISODate, cleanString, fmtDate, fteText, csvEscape, csvRows, positionCSVValues,
     detectDelimiter, parseCSV, normHeader, headerMap, normalizeType, normalizeStatus, normalizeDate,
     validatePeopleData, validateScenarioData, validatePlanning, migrateLegacy, projection, totals,
-    scenarioChanges, fieldValue, prepareImport, makeImportScenario, emptyWorkspace, sanitizeChipFilters,
+    scenarioChanges, fieldValue, prepareImport, makeImportScenario, emptyWorkspace, sanitizeChipFilters, mergeChipSelection,
     wouldCreateCycle, validPersonPhoto, sanitizePositionLevels, positionTypes, compareSiblings,
     defaultStacked, nodeStacked, wrapText, showsCumulativeCount, personLabel, sanitizeCardDisplay,
     cardMetrics, subtreePeopleCount, reorderSiblings, siblingIndex, applyCardSizes, layoutOrgChart,

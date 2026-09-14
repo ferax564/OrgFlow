@@ -105,7 +105,7 @@ main{min-width:0;min-height:0;position:relative;overflow:hidden;background-color
 .toolbar-actions{display:flex;gap:6px}.canvas-wrap{position:absolute;inset:76px 0 0 0;overflow:auto;padding:24px;scrollbar-width:thin}.chart-stage{transform-origin:0 0;transition:transform .18s ease}
 svg#chart{display:block;overflow:visible}
 .node{cursor:pointer}.node .card{fill:var(--panel);stroke:var(--line);stroke-width:1.15;filter:drop-shadow(0 8px 14px rgba(15,23,42,.09));transition:.16s}.node:hover .card{stroke:var(--accent);stroke-width:1.45}.node.search-hit .card{stroke:var(--accent);stroke-width:2.5;filter:drop-shadow(0 0 14px color-mix(in srgb,var(--accent) 28%,transparent))}
-.name{font-size:13px;font-weight:800;fill:var(--ink)}.role{font-size:10px;font-weight:650;fill:var(--muted)}.meta{font-size:9px;font-weight:650;fill:var(--soft)}.badgeText{font-size:8.5px;font-weight:800}.connector{fill:none;stroke:var(--connector);stroke-width:1.35}.dotted-connector{fill:none;stroke:var(--muted);stroke-width:1.3;stroke-dasharray:5 4;opacity:.92}
+.name{font-size:13px;font-weight:800;fill:var(--ink)}.role{font-size:10px;font-weight:650;fill:var(--muted)}.meta{font-size:9px;font-weight:650;fill:var(--soft)}.badgeText{font-size:8.5px;font-weight:800}.connector{fill:none;stroke:var(--connector);stroke-width:1.5;stroke-linecap:square;stroke-linejoin:round}.dotted-connector{fill:none;stroke:var(--muted);stroke-width:1.3;stroke-dasharray:5 4;opacity:.92}
 .node.dragging{opacity:.42;cursor:grabbing}.node.drop-target .card{stroke:var(--accent);stroke-width:3;filter:drop-shadow(0 0 16px color-mix(in srgb,var(--accent) 35%,transparent))}
 body.reparenting,body.reparenting *{cursor:copy}.collapse-btn{fill:var(--panel);stroke:var(--line-strong);stroke-width:1}.collapse-hit{fill:transparent;cursor:pointer}.collapseText{font-size:11px;font-weight:850;fill:var(--muted);pointer-events:none}
 .empty{position:absolute;inset:110px 30px 30px;display:none;place-items:center;text-align:center;color:var(--muted)}.empty-card{max-width:360px;padding:28px;background:var(--panel);border:1px solid var(--line);border-radius:18px;box-shadow:var(--shadow)}.empty h2{margin:0 0 7px;font-size:17px;color:var(--ink)}.empty p{margin:0;font-size:12px;line-height:1.55}
@@ -186,3 +186,27 @@ button:disabled{cursor:not-allowed;opacity:.5;transform:none!important}
 .template-card b{display:block;font-size:13px;font-weight:800}
 @media(max-width:900px){.site-home{display:none}}
 #photoNote{margin:8px 0 0}
+.planning-table .check-col{width:28px;text-align:center}
+.planning-table .check-col input{accent-color:var(--accent)}
+.bulk-bar{position:absolute;left:14px;right:14px;bottom:12px;z-index:6;display:flex;flex-wrap:wrap;gap:8px;align-items:center;background:var(--header);backdrop-filter:blur(16px);border:1px solid var(--line);border-radius:13px;padding:8px 12px;box-shadow:var(--shadow);font-size:11px;font-weight:650;color:var(--ink)}
+.bulk-bar[hidden]{display:none!important}
+.bulk-bar .bulk-field{display:flex;align-items:center;gap:6px;color:var(--muted)}
+.bulk-bar select,.bulk-bar input{height:32px;border:1px solid var(--line);border-radius:8px;background:var(--panel);color:var(--ink);padding:0 8px;font-size:11px;max-width:140px}
+.bulk-hint{color:var(--muted);font-size:10px;font-weight:600}
+.canvas-wrap.has-bulk{inset:76px 0 70px 0}
+.node.selected .card{stroke:var(--accent)!important;stroke-width:2.6!important;filter:drop-shadow(0 0 12px color-mix(in srgb,var(--accent) 30%,transparent))}
+.node.on-path .card{stroke:var(--accent);stroke-width:2.1}
+.node.path-dim{opacity:.38}
+.connector.on-path{stroke:var(--accent);stroke-width:2.2}
+.node.drop-before .card{filter:drop-shadow(-8px 0 0 var(--accent))}
+.node.drop-after .card{filter:drop-shadow(8px 0 0 var(--accent))}
+.planning-table tr.selected td{background:color-mix(in srgb,var(--accent-soft) 70%,transparent)}
+.drop-mark{fill:var(--accent);stroke:none}
+@media print{
+  header,.layout aside,.planning-bar,.toolbar,.drawer,.toast,.modal-backdrop,.bulk-bar,.empty,.load-error,.skip-link{display:none!important}
+  .app,.layout,main{display:block;height:auto;overflow:visible;background:#fff}
+  main{position:static;overflow:visible;background-image:none}
+  .canvas-wrap{position:static;inset:auto;overflow:visible;padding:0}
+  svg#chart{max-width:100%;height:auto}
+  body{background:#fff}
+}

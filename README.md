@@ -33,13 +33,16 @@ On this public site there is no backend. Clearing site data removes the workspac
 
 Harbor & Co (17 positions) loads on first visit. A tour offers that sample, Northstar Commerce, and smaller templates. Loading a sample overwrites this browser’s scenarios, people and branding.
 
-- **Drag-and-drop** a card onto another card to change reporting. Drops that would create a cycle are ignored. Set a **dotted-line** (matrix) manager in the position drawer; it draws dashed and does not change the tree layout.
+- **Drag-and-drop** a card onto another manager to change reporting. Drop onto a **sibling** to reorder (left/top = before, right/bottom = after). If that side would leave the order unchanged, the two cards swap. Drops that would create a cycle are ignored. Set a **dotted-line** (matrix) manager in the position drawer; it draws dashed and does not change the tree layout.
 - **Undo / redo** with ⌘Z / Ctrl+Z in this session (not while typing in a field). **Earlier versions** in the sidebar keeps the last ten planning snapshots in this browser, without photos or logos.
-- **Cards** show the person (or vacant/recruiting), title, group, location, type, approval, hiring state and FTE. Optional photos are resized locally to a small PNG.
+- **Cards** show the person (or vacant/recruiting), title, group, location, type, approval, hiring state and FTE. Optional photos are resized locally to a small PNG. **Direct reports and vacancies** (`N reports · N open`) is on by default; turn it off under Chart display. Heads and Team Leaders can also show a cumulative people count.
 - **Custom fields** on a position: location / site, cost center, job family. On a person: employee number and photo.
 - **Date filter** is off by default, so future-dated roles stay visible. Turn on **Respect position start / end dates** to hide roles that have not started (or have already ended) relative to the as-of date.
-- **Chart filters** (type, hiring, approval, depth, search) apply to the org chart and the Positions register. Compare uses full snapshots and ignores those filters. Loading an example or a blank organization resets filters.
-- **Chart display** in the sidebar hides or shows FTE, site, group, position type, approval and hiring on every card. Long names wrap and that card grows. Last-level managers stack their reports; uncheck **Stack direct reports** in the drawer to spread them. **Move up / Move down** changes sibling order immediately. These settings persist and apply to PNG, PDF and HTML exports.
+- **Chart filters** (type, hiring, approval, group, site, depth, search) apply to the org chart and the Positions register. Click a selected **Group / team** or **Location / site** chip to hide that set. Positions with a blank group or site sit under No group / No site. Compare uses full snapshots and ignores those filters. Loading an example or a blank organization resets filters.
+- **Search** highlights matching cards and the **path to the top**. Hovering a card does the same.
+- **Multi-select** with ⌘/Ctrl-click or Shift-click (or the checkboxes on Positions). The bulk bar applies type/tag, group, site or approval to the selection.
+- **Named views** in the sidebar store filter, zoom and card-display presets on the workspace (up to 20). They travel with the JSON backup.
+- **Chart display** in the sidebar hides or shows FTE, site, group, position type, approval, hiring, span and cumulative people on every card. Long names wrap and that card grows. Last-level managers stack their reports in a column under the manager; uncheck **Stack direct reports** in the drawer to spread them. **Move up / Move down** changes sibling order immediately. Add a tag like Engineer, Graduate or Intern under **Position type**. These settings persist and apply to PNG, PDF and HTML exports.
 - **Narrow screens** hide the sidebar. Open it with the ☷ **Filters** control in the planning bar. It stays available on Org chart, Positions and Compare.
 - **Branding** stores company name, chart title and logos in this browser. Logos are sanitized and rasterized locally.
 
@@ -53,25 +56,31 @@ Harbor & Co (17 positions) loads on first visit. A tour offers that sample, Nort
 | Shareable HTML snapshot | Self-contained page with the chart inline and workspace JSON for restore |
 | Positions + assignments (CSV) | Active scenario, including custom fields |
 | People directory (CSV) | People in the active scenario |
-| Workspace backup (JSON) | Every scenario, unassigned people, branding, palette and the current view |
+| Workspace backup (JSON) | Every scenario, unassigned people, branding, palette, saved views and the current view |
+| Save workspace | Overwrites the last JSON file you picked when the browser supports it |
+| Print / A3 pages (PDF) | Tiled A3 landscape pages of the visible chart |
 
 A workspace JSON that omits `dateFilter` restores with all dates visible.
 
 ### Positions CSV columns
 
-`positionId`, `reportsToPositionId`, `secondaryManagerId`, `title`, `type`, `group`, `fte`, `approval`, `hiringState`, `personId`, `name`, `employeeNumber`, `startDate`, `endDate`, `location`, `costCenter`, `jobFamily`
+`positionId`, `reportsToPositionId`, `secondaryManagerId`, `title`, `type`, `group`, `fte`, `approval`, `hiringState`, `personId`, `name`, `employeeNumber`, `startDate`, `endDate`, `location`, `costCenter`, `jobFamily`, `sortOrder`, `stacked`
 
 Import can replace, append, or update by position ID. Spreadsheet formulas in cells are prefixed so they stay text.
 
 ## Features
 
-- Expandable org chart with level presets and search
-- Drag to re-parent; cycle detection
+- Expandable org chart with level presets and search; hover or search highlights the path to the top
+- Drag onto a sibling to reorder; drag onto another card to re-parent; cycle detection
 - Last-level managers stack reports by default; optional left-side trunk layout
 - Move siblings up or down; reporting order and stacking persist
-- Optional wrapping cards with hide/show for FTE, site, group, type, approval and hiring
-- Optional cumulative people count on Head and Team Leader cards
-- Custom position levels in addition to the built-in types
+- Optional wrapping cards with hide/show for FTE, site, group, type, approval, hiring, span and cumulative people
+- Group and site filter chips, including No group / No site
+- Multi-select bulk edit for type, group, site and approval
+- Direct-report and vacancy counts on cards
+- Named views stored in the workspace backup
+- Print / A3 tiled PDF export; Save workspace overwrites the last JSON file when the browser allows it
+- Custom position tags (same kind as Engineer, Graduate, Intern) in addition to the built-in types
 - Optional local photos and richer cards (location on the card)
 - Dotted-line / matrix managers
 - Undo, redo and earlier local versions
@@ -155,7 +164,7 @@ Details, hardening notes, Docker Keycloak, AWS: [`server/README.md`](server/READ
 npm test
 ```
 
-The suite covers CSV parsing, spreadsheet-formula escaping, scenario validation, dotted-line rules, custom-field CSV round-trips, starter templates, comparison diffs, example workspaces, filter-set migration, stacked chart layout, sibling reordering, custom position levels, and enterprise ACL/stress cases (forged cookies, path traversal, oversized bodies, last-admin protection, concurrent saves).
+The suite covers CSV parsing, spreadsheet-formula escaping, scenario validation, dotted-line rules, custom-field CSV round-trips, starter templates, comparison diffs, example workspaces, filter-set migration, stacked chart layout, sibling reordering, custom position levels, group/site chips, bulk edit, named views, A3 tiling, and enterprise ACL/stress cases (forged cookies, path traversal, oversized bodies, last-admin protection, concurrent saves).
 
 With Chrome and `puppeteer-core` installed locally:
 

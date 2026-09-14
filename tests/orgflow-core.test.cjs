@@ -136,6 +136,23 @@ test('example CSV files round-trip through import', () => {
   }
 });
 
+test('mergeChipSelection keeps a partial group filter instead of turning every chip back on', () => {
+  const all = ['Engineering', 'Finance', 'Operations'];
+  assert.deepEqual(OrgFlow.mergeChipSelection(null, all), all);
+  assert.deepEqual(OrgFlow.mergeChipSelection([], all, all), []);
+  assert.deepEqual(OrgFlow.mergeChipSelection(['Finance'], all, all), ['Finance']);
+  assert.deepEqual(OrgFlow.mergeChipSelection(new Set(['Finance']), all, all), ['Finance']);
+  assert.deepEqual(OrgFlow.mergeChipSelection(all, all, all), all);
+  assert.deepEqual(
+    OrgFlow.mergeChipSelection(['Engineering', 'Finance'], ['Engineering', 'Finance', 'Legal'], ['Engineering', 'Finance']),
+    ['Engineering', 'Finance', 'Legal']
+  );
+  assert.deepEqual(
+    OrgFlow.mergeChipSelection(['Finance'], ['Engineering', 'Finance', 'Legal'], ['Engineering', 'Finance']),
+    ['Finance']
+  );
+});
+
 test('sanitizeChipFilters keeps new role types when every legacy type was selected', () => {
   const all = OrgFlow.ROLE_TYPES;
   const legacy = OrgFlow.LEGACY_ROLE_TYPES;
@@ -247,9 +264,9 @@ test('default stacking applies only to last-level managers', () => {
 
 test('stacked reports sit vertically under the manager with a left-side trunk', () => {
   const tree = [{
-    id: 'm', title: 'Lead', type: 'Team Leader', stacked: true, _cardH: 110, children: [
-      { id: 'a', title: 'A', type: 'Engineer', children: [], _cardH: 100 },
-      { id: 'b', title: 'B', type: 'Engineer', children: [], _cardH: 100 }
+    id: 'm', title: 'Lead', type: 'Team Leader', stacked: true, _cardH: 110, _cardW: 248, children: [
+      { id: 'a', title: 'A', type: 'Engineer', children: [], _cardH: 100, _cardW: 200 },
+      { id: 'b', title: 'B', type: 'Engineer', children: [], _cardH: 100, _cardW: 200 }
     ]
   }];
   const lay = OrgFlow.layoutOrgChart(tree, { groupGap: 40 });
@@ -258,10 +275,44 @@ test('stacked reports sit vertically under the manager with a left-side trunk', 
   const b = lay.all.find(n => n.id === 'b');
   assert.ok(a._y > m._y + m._h - 1);
   assert.ok(b._y > a._y);
-  assert.ok(Math.abs(a._x - b._x) < 1);
+  assert.ok(Math.abs(a._x - b._x) < 1, 'stacked cards should share an x');
+  assert.ok(Math.abs((a._x + a._w / 2) - (m._x + m._w / 2)) < 1, 'stacked reports should center under the manager');
   assert.ok(lay.connectors.some(c => c.kind === 'stack-trunk'));
   const lead = lay.connectors.find(c => c.kind === 'stack-lead');
-  assert.match(lead.d, new RegExp(`M${m._x + m._w / 2},${m._y + m._h / 2}`));
+  assert.match(lead.d, new RegExp(`M${m._x + m._w / 2},${m._y + m._h}`));
+  const dropY = Number(lead.d.match(/V([\d.]+)/)[1]);
+  assert.ok(dropY >= m._y + m._h + 18, 'stack lead should clear the collapse control before turning to the trunk');
+  const spur = lay.connectors.find(c => c.kind === 'stack-spur' && c.toId === 'a');
+  assert.match(spur.d, new RegExp(`H${a._x}$`));
+});
+
+test('unstacked reporting lines meet child card centers from the manager bottom', () => {
+  const tree = [{
+    id: 'h', title: 'Head', type: 'Head', stacked: false, _cardH: 110, children: [
+      { id: 'a', title: 'A', type: 'Team Leader', stacked: true, _cardH: 110, children: [
+        { id: 'a1', title: 'IC', type: 'Engineer', children: [], _cardH: 100 }
+      ] },
+      { id: 'b', title: 'B', type: 'Team Leader', stacked: false, children: [], _cardH: 150 }
+    ]
+  }];
+  const lay = OrgFlow.layoutOrgChart(tree, { groupGap: 40 });
+  const h = lay.all.find(n => n.id === 'h');
+  const a = lay.all.find(n => n.id === 'a');
+  const a1 = lay.all.find(n => n.id === 'a1');
+  const b = lay.all.find(n => n.id === 'b');
+  assert.ok(Math.abs(a._y - b._y) < 1, 'same-level cards should share a y even when card heights differ');
+  assert.ok(Math.abs((a._x + a._w / 2) - (a1._x + a1._w / 2)) < 1, 'stacked IC should sit in the manager column');
+  const drop = lay.connectors.find(c => c.kind === 'tree-drop' && c.fromId === 'h');
+  const bus = lay.connectors.find(c => c.kind === 'tree-bus' && c.fromId === 'h');
+  const down = lay.connectors.find(c => c.kind === 'tree-down' && c.toId === 'a');
+  const mx = h._x + h._w / 2;
+  const busY = Number(drop.d.match(/V([\d.]+)/)[1]);
+  assert.match(drop.d, new RegExp(`M${mx},${h._y + h._h}`));
+  assert.match(down.d, new RegExp(`M${a._x + a._w / 2},${busY}`));
+  assert.match(down.d, new RegExp(`V${a._y}$`));
+  const busStart = Number(bus.d.match(/M([\d.]+)/)[1]);
+  const busEnd = Number(bus.d.match(/H([\d.]+)/)[1]);
+  assert.ok(Math.min(busStart, busEnd) <= mx && mx <= Math.max(busStart, busEnd), 'horizontal bus should include the manager center so drops meet');
 });
 
 test('unstacked groups use configurable horizontal spacing', () => {
@@ -330,5 +381,77 @@ test('workspace backup keeps reporting order after round-trip validation', () =>
   assert.equal(again.scenarios[0].positions[0].sortOrder, 2);
   assert.equal(again.scenarios[0].positions[0].stacked, false);
   assert.deepEqual(again.positionLevels, []);
+  assert.deepEqual(again.namedViews, []);
+});
+
+test('group and site chip values include empty labels', () => {
+  const positions = [
+    { group: 'Engineering', location: 'Berlin' },
+    { group: '', location: '' },
+    { group: 'Engineering', location: 'London' }
+  ];
+  assert.deepEqual(OrgFlow.chipValues(positions, 'group', OrgFlow.EMPTY_GROUP), ['Engineering', 'No group']);
+  assert.deepEqual(OrgFlow.chipValues(positions, 'location', OrgFlow.EMPTY_SITE), ['Berlin', 'London', 'No site']);
+});
+
+test('span of control counts direct reports and vacancies', () => {
+  const positions = [
+    { id: 'm', managerId: '', hiringState: 'Filled' },
+    { id: 'a', managerId: 'm', hiringState: 'Filled' },
+    { id: 'b', managerId: 'm', hiringState: 'Vacant' },
+    { id: 'c', managerId: 'm', hiringState: 'Recruiting' },
+    { id: 'd', managerId: 'a', hiringState: 'Filled' }
+  ];
+  assert.deepEqual(OrgFlow.spanOfControl(positions, 'm'), { reports: 3, vacant: 2, recruiting: 1 });
+  assert.deepEqual(OrgFlow.pathToRoot(positions, 'd'), ['d', 'a', 'm']);
+});
+
+test('bulk patch updates selected positions only', () => {
+  const positions = [
+    { id: 'a', type: 'Engineer', group: 'Eng', location: 'Berlin', status: 'Approved' },
+    { id: 'b', type: 'Graduate', group: 'Eng', location: 'Berlin', status: 'Not approved' }
+  ];
+  const next = OrgFlow.bulkPatchPositions(positions, ['b'], { type: 'Intern', group: 'Product', location: 'London', status: 'Approved' });
+  assert.equal(next[0].type, 'Engineer');
+  assert.equal(next[1].type, 'Intern');
+  assert.equal(next[1].group, 'Product');
+  assert.equal(next[1].location, 'London');
+  assert.equal(next[1].status, 'Approved');
+  assert.throws(() => OrgFlow.bulkPatchPositions(positions, ['a'], { type: 'Wizard' }), /Unknown position type/);
+});
+
+test('placeSibling reorders among the same manager', () => {
+  const positions = [
+    { id: 'm', managerId: '', sortOrder: 0 },
+    { id: 'a', managerId: 'm', sortOrder: 0 },
+    { id: 'b', managerId: 'm', sortOrder: 1 },
+    { id: 'c', managerId: 'm', sortOrder: 2 }
+  ];
+  const after = OrgFlow.placeSibling(positions, 'c', 'a', 'before');
+  assert.equal(OrgFlow.siblingIndex(after, 'c').index, 0);
+  assert.equal(OrgFlow.siblingIndex(after, 'a').index, 1);
+  const unchanged = OrgFlow.placeSibling(positions, 'c', 'm', 'after');
+  assert.equal(OrgFlow.siblingIndex(unchanged, 'c').index, 2);
+  const swapped = OrgFlow.placeSibling(positions, 'a', 'b', 'before');
+  assert.equal(OrgFlow.siblingIndex(swapped, 'a').index, 1);
+  assert.equal(OrgFlow.siblingIndex(swapped, 'b').index, 0);
+});
+
+test('named views persist on the planning workspace', () => {
+  const ws = OrgFlow.emptyWorkspace('2026-09-13');
+  ws.namedViews = [{ id: 'view-board', name: 'Board pack', view: { roles: ['Head'], cardDisplay: { fte: false }, groups: ['Leadership'] } }];
+  const again = OrgFlow.validatePlanning(ws);
+  assert.equal(again.namedViews.length, 1);
+  assert.equal(again.namedViews[0].name, 'Board pack');
+  assert.equal(again.namedViews[0].view.cardDisplay.fte, false);
+  assert.ok(again.namedViews[0].view.roles.includes('Head'));
+});
+
+test('A3 tiling covers the chart with enough pages', () => {
+  const one = OrgFlow.tileChartPages(400, 300, 1000, 800, 40);
+  assert.equal(one.length, 1);
+  const many = OrgFlow.tileChartPages(2500, 1800, 1000, 700, 0);
+  assert.ok(many.length >= 4);
+  assert.equal(many.at(-1).page, many.length);
 });
 

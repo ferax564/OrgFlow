@@ -6,10 +6,12 @@ const {
   parseCSV, headerMap, normalizeType, normalizeStatus, normalizeDate,
   validatePeopleData, validateScenarioData, validatePlanning, migrateLegacy,
   projection: projectScenario, totals, scenarioChanges, fieldValue,
-  emptyWorkspace, sanitizeChipFilters, wouldCreateCycle, validPersonPhoto,
+  emptyWorkspace, sanitizeChipFilters, mergeChipSelection, wouldCreateCycle, validPersonPhoto,
   positionTypes, compareSiblings, nodeStacked, showsCumulativeCount, personLabel,
-  sanitizeCardDisplay, cardMetrics, subtreePeopleCount, reorderSiblings, siblingIndex,
-  applyCardSizes, layoutOrgChart
+    sanitizeCardDisplay, cardMetrics, subtreePeopleCount, reorderSiblings, siblingIndex,
+    applyCardSizes, layoutOrgChart, EMPTY_GROUP, EMPTY_SITE, filterLabel, chipValues,
+    spanOfControl, pathToRoot, bulkPatchPositions, placeSibling, tileChartPages,
+    sanitizeViewState
 } = OrgFlow;
 
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
@@ -17,6 +19,7 @@ const svg=$('#chart'),wrap=$('#canvasWrap'),stage=$('#chartStage');
 // Chart projection only; workspace.scenarios is the source of truth.
 let people=[];
 let activeRoles=new Set(ROLE_TYPES),activeStatuses=new Set(STATUSES),maxDepth=99,collapsed=new Set(),selectedId=null,pendingImport=null;
+let activeGroups=null,activeSites=null,knownGroups=null,knownSites=null,selectedIds=new Set(),workspaceFileHandle=null,pathHoverId=null;
 let cardDisplay=sanitizeCardDisplay(),stackedTouched=false;
 const now=new Date();const today=[now.getFullYear(),String(now.getMonth()+1).padStart(2,'0'),String(now.getDate()).padStart(2,'0')].join('-');
 $('#asOf').value=today;
@@ -30,11 +33,33 @@ function setTheme(theme,rerender=true){document.documentElement.dataset.theme=th
 function setPalette(palette,rerender=true){if(palette==='audi')palette='crimson';if(!PALETTES.includes(palette))palette='indigo';document.documentElement.dataset.palette=palette;safePreference('orgflow.palette',palette);updateThemeControls();if(rerender)render()}
 function cssVar(name){return getComputedStyle(document.documentElement).getPropertyValue(name).trim()}
 function allPositionTypes(){return positionTypes(workspace?.positionLevels);}
+function allGroups(){return chipValues(people,'group',EMPTY_GROUP)}
+function allSites(){return chipValues(people,'location',EMPTY_SITE)}
+function setupFilterChips(host,values,active,onToggle){
+  if(!host)return;
+  host.innerHTML='';
+  values.forEach(r=>{
+    const b=document.createElement('button');
+    b.className='chip'+(active.has(r)?' active':'');
+    b.textContent=r;b.dataset.value=r;b.setAttribute('aria-pressed',String(active.has(r)));
+    b.onclick=()=>{active.has(r)?active.delete(r):active.add(r);b.classList.toggle('active',active.has(r));b.setAttribute('aria-pressed',String(active.has(r)));onToggle?.();render();};
+    host.appendChild(b);
+  });
+}
 function setupChips(){
   const types=allPositionTypes();
-  const rc=$('#roleChips');rc.innerHTML='';types.forEach(r=>{const b=document.createElement('button');b.className='chip'+(activeRoles.has(r)?' active':'');b.textContent=r;b.dataset.value=r;b.onclick=()=>{activeRoles.has(r)?activeRoles.delete(r):activeRoles.add(r);b.classList.toggle('active',activeRoles.has(r));render()};rc.appendChild(b)});
-  const sc=$('#statusChips');sc.innerHTML='';STATUSES.forEach(r=>{const b=document.createElement('button');b.className='chip'+(activeStatuses.has(r)?' active':'');b.textContent=r;b.dataset.value=r;b.onclick=()=>{activeStatuses.has(r)?activeStatuses.delete(r):activeStatuses.add(r);b.classList.toggle('active',activeStatuses.has(r));render()};sc.appendChild(b)});
+  setupFilterChips($('#roleChips'),types,activeRoles);
+  setupFilterChips($('#statusChips'),STATUSES,activeStatuses);
+  const groups=allGroups(),sites=allSites();
+  activeGroups=new Set(mergeChipSelection(activeGroups,groups,knownGroups));
+  activeSites=new Set(mergeChipSelection(activeSites,sites,knownSites));
+  knownGroups=groups.slice();
+  knownSites=sites.slice();
+  setupFilterChips($('#groupChips'),groups,activeGroups);
+  setupFilterChips($('#siteChips'),sites,activeSites);
   setupHiringChips();
+  renderNamedViews();
+  syncBulkBar();
 }
 function dateOk(p){if(!$('#dateFilter').checked)return true;const d=$('#asOf').value;if(!d)return true;return(!p.startDate||p.startDate<=d)&&(!p.endDate||p.endDate>=d)}
 function buildFilteredForest(){
@@ -77,18 +102,18 @@ function makeZip(files){
   const end=new Uint8Array(22),e=new DataView(end.buffer);e.setUint32(0,0x06054b50,true);e.setUint16(8,files.length,true);e.setUint16(10,files.length,true);e.setUint32(12,directorySize,true);e.setUint32(16,offset,true);
   return new Blob([...chunks,...directory,end],{type:'application/zip'});
 }
-function makeJpegPdf(pages){
+function makeJpegPdf(pages,mediaW=842,mediaH=595){
   const encoder=new TextEncoder(),chunks=[],offsets=[0];let pos=0;
   const write=bytes=>{if(typeof bytes==='string')bytes=encoder.encode(bytes);chunks.push(bytes);pos+=bytes.length};
   write('%PDF-1.4\n%\x80\x81\x82\x83\n');
   const obj=(id,dict,stream)=>{offsets[id]=pos;write(`${id} 0 obj\n${dict}`);if(stream){write('stream\n');write(stream);write('\nendstream\n');}write('endobj\n');};
-  const pageW=842,pageH=595,kids=[];
+  const kids=[];
   pages.forEach((page,i)=>{
     const pageId=3+i*3,contentId=pageId+1,imgId=pageId+2;kids.push(`${pageId} 0 R`);
-    const maxW=pageW-72,maxH=pageH-72;const k=Math.min(maxW/page.width,maxH/page.height);const w=page.width*k,h=page.height*k;const x=(pageW-w)/2,y=(pageH-h)/2;
+    const maxW=mediaW-72,maxH=mediaH-72;const k=Math.min(maxW/page.width,maxH/page.height);const w=page.width*k,h=page.height*k;const x=(mediaW-w)/2,y=(mediaH-h)/2;
     const content=`q ${w.toFixed(2)} 0 0 ${h.toFixed(2)} ${x.toFixed(2)} ${y.toFixed(2)} cm /Im0 Do Q`;
     const contentBytes=encoder.encode(content);
-    obj(pageId,`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${pageW} ${pageH}] /Contents ${contentId} 0 R /Resources << /XObject << /Im0 ${imgId} 0 R >> >> >>\n`);
+    obj(pageId,`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${mediaW} ${mediaH}] /Contents ${contentId} 0 R /Resources << /XObject << /Im0 ${imgId} 0 R >> >> >>\n`);
     obj(contentId,`<< /Length ${contentBytes.length} >>\n`,contentBytes);
     obj(imgId,`<< /Type /XObject /Subtype /Image /Width ${page.width} /Height ${page.height} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${page.jpeg.length} >>\n`,page.jpeg);
   });
@@ -139,7 +164,7 @@ async function exportShareableHTML(){
     const art=buildExportSVG();if(!art){toast('Nothing to export');return;}
     const s=activeScenario(),t=totals(s);
     let css=SNAPSHOT_CSS;try{const fetched=await (await fetch('css/app.css')).text();if(fetched)css=fetched;}catch{}
-    const payload={format:'orgflow.workspace',version:2,exportedAt:new Date().toISOString(),planning:workspace,branding,theme:document.documentElement.dataset.theme,palette:document.documentElement.dataset.palette};
+    const payload=workspacePayload();
     const html=`<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><title>${esc(branding.companyName||'OrgFlow')} · ${esc(s.name)} snapshot</title><style>${css.replace(/<\//g,'<\\/')}</style></head><body><main class="snapshot"><p class="eyebrow">OrgFlow snapshot · opens without the app</p><h1>${esc(branding.companyName||'Organization')} — ${esc(s.name)}</h1><p>${esc(branding.chartTitle||'Organization')} · ${esc(today)} · ${t.positions} positions · ${fteText(t.approvedFte)} approved FTE. Data in this file was exported locally.</p><div class="metrics"><div class="metric"><b>${t.positions}</b><span>Positions</span></div><div class="metric"><b>${t.filled}</b><span>Filled</span></div><div class="metric"><b>${t.open}</b><span>Open</span></div><div class="metric"><b>${fteText(t.approvedFte)}</b><span>Approved FTE</span></div></div><div class="chart">${art.xml}</div><h2>Restore in OrgFlow</h2><p>Open the app, choose Export → Restore workspace, and paste the JSON below or save it as a .json file first.</p><pre id="workspace-json">${esc(JSON.stringify(payload,null,2))}</pre><script type="application/json" id="orgflow-workspace">${JSON.stringify(payload).replace(/</g,'\\u003c')}</script></main></body></html>`;
     downloadBlob(new Blob([html],{type:'text/html;charset=utf-8'}),`orgflow-${slug(s.name)}-snapshot.html`);toast('Shareable HTML snapshot exported');
   }catch(error){toast(error.message||'HTML export failed');}
@@ -523,7 +548,8 @@ function renderPositionTable(){
   const q=$('#search').value.trim().toLowerCase(),rows=people.filter(p=>baseVisible(p)&&(!q||matchesSearch(p,q))).sort((a,b)=>a.group.localeCompare(b.group)||a.title.localeCompare(b.title));
   const data={positions:rows},t=totals(data),byId=new Map(people.map(p=>[p.id,p]));
   $('#registerSummary').innerHTML=`<span><b>${t.positions}</b> matching positions</span><span><b>${t.filled}</b> filled</span><span><b>${t.open}</b> open</span><span><b>${fteText(t.approvedFte)}</b> approved FTE</span>`;
-  $('#positionsRows').innerHTML=rows.length?rows.map(p=>`<tr><td class="title-cell">${esc(p.title)}<span class="sub">${esc(p.id)} · ${esc(p.type)}</span></td><td>${p.personName?esc(p.personName):'<span style="color:var(--muted)">Unassigned</span>'}</td><td>${esc(p.group||'—')}</td><td>${esc(p.location||'—')}</td><td>${statusPill(p.hiringState)}</td><td>${statusPill(p.status,p.status==='Approved'?'approved':'unapproved')}</td><td>${fteText(p.fte)}</td><td>${esc(byId.get(p.managerId)?.title||'Top level')}</td><td style="white-space:nowrap">${esc(p.startDate||'No start')}<span class="sub">${p.endDate?'Until '+esc(p.endDate):'No end date'}</span></td><td><button class="btn compact-btn" data-edit-position="${esc(p.id)}" aria-label="Edit ${esc(p.title)}">Edit</button></td></tr>`).join(''):'<tr><td colspan="10" class="empty-row">No matching positions. Clear the search or reset chart filters.</td></tr>';
+  $('#positionsRows').innerHTML=rows.length?rows.map(p=>`<tr class="${selectedIds.has(p.id)?'selected':''}"><td class="check-col"><input type="checkbox" data-select-position="${esc(p.id)}" ${selectedIds.has(p.id)?'checked':''} aria-label="Select ${esc(p.title)}" /></td><td class="title-cell">${esc(p.title)}<span class="sub">${esc(p.id)} · ${esc(p.type)}</span></td><td>${p.personName?esc(p.personName):'<span style="color:var(--muted)">Unassigned</span>'}</td><td>${esc(p.group||'—')}</td><td>${esc(p.location||'—')}</td><td>${statusPill(p.hiringState)}</td><td>${statusPill(p.status,p.status==='Approved'?'approved':'unapproved')}</td><td>${fteText(p.fte)}</td><td>${esc(byId.get(p.managerId)?.title||'Top level')}</td><td style="white-space:nowrap">${esc(p.startDate||'No start')}<span class="sub">${p.endDate?'Until '+esc(p.endDate):'No end date'}</span></td><td><button class="btn compact-btn" data-edit-position="${esc(p.id)}" aria-label="Edit ${esc(p.title)}">Edit</button></td></tr>`).join(''):'<tr><td colspan="11" class="empty-row">No matching positions. Clear the search or reset chart filters.</td></tr>';
+  const allBox=$('#registerSelectAll');if(allBox)allBox.checked=rows.length>0&&rows.every(p=>selectedIds.has(p.id));
   const unassigned=activeScenario().employees.filter(e=>!activeScenario().positions.some(p=>p.personId===e.id));
   $('#registerFootnote').innerHTML=`Positions and people are separate. <b>${unassigned.length} unassigned ${unassigned.length===1?'person':'people'}</b> remain in this scenario’s directory and can be selected when filling a position. ${unassigned.length?`<button class="small-link" id="showUnassigned">View names</button>`:''}<br>Search and sidebar filters apply here; collapsed chart levels do not.`;
   $('#showUnassigned')?.addEventListener('click',()=>showPeopleDirectory());
@@ -586,7 +612,9 @@ function setFiltersOpen(open){
   btn.setAttribute('aria-label',open?'Close filters':'Open filters');
 }
 function applyDefaultFilters(){
+  knownGroups=null;knownSites=null;
   activeRoles=new Set(allPositionTypes());activeStatuses=new Set(STATUSES);activeHiring=new Set(HIRING_STATES);
+  activeGroups=new Set(allGroups());activeSites=new Set(allSites());
   $('#search').value='';$('#compareSearch').value='';$('#dateFilter').checked=false;$('#asOf').value=today;
   maxDepth=99;collapsed.clear();zoom=1;showChartChanges=true;compareKind='all';currentView='chart';
   compareBaselineId='current';compareTargetId=workspace?.scenarios.find(s=>s.id!=='current')?.id||'current';
@@ -598,7 +626,7 @@ function resetFilters(){
   applyDefaultFilters();render();
 }
 function syncChartDisplayUi(){
-  const d=cardDisplay,map={showFte:'fte',showSite:'site',showGroup:'group',showType:'type',showApproval:'approval',showHiring:'hiring',showCumulative:'cumulative',chartDots:'chartDots'};
+  const d=cardDisplay,map={showFte:'fte',showSite:'site',showGroup:'group',showType:'type',showApproval:'approval',showHiring:'hiring',showCumulative:'cumulative',showSpan:'span',chartDots:'chartDots'};
   for(const [id,key] of Object.entries(map)){const el=$('#'+id);if(el)el.checked=!!d[key];}
   if($('#groupGap')){$('#groupGap').value=String(d.groupGap);if($('#groupGapValue'))$('#groupGapValue').textContent=d.groupGap+' px';}
   document.querySelector('main')?.classList.toggle('no-chart-dots',!d.chartDots);
@@ -608,7 +636,7 @@ function readCardDisplayFromUi(){
   cardDisplay=sanitizeCardDisplay({
     fte:$('#showFte')?.checked,site:$('#showSite')?.checked,group:$('#showGroup')?.checked,type:$('#showType')?.checked,
     approval:$('#showApproval')?.checked,hiring:$('#showHiring')?.checked,cumulative:$('#showCumulative')?.checked,
-    groupGap:$('#groupGap')?Number($('#groupGap').value):cardDisplay.groupGap,chartDots:$('#chartDots')?.checked
+    span:$('#showSpan')?.checked,groupGap:$('#groupGap')?Number($('#groupGap').value):cardDisplay.groupGap,chartDots:$('#chartDots')?.checked
   });
   if($('#groupGapValue'))$('#groupGapValue').textContent=cardDisplay.groupGap+' px';
   document.querySelector('main')?.classList.toggle('no-chart-dots',!cardDisplay.chartDots);
@@ -617,7 +645,7 @@ function readCardDisplayFromUi(){
 function renderCustomLevels(){
   const host=$('#customLevels');if(!host)return;
   const levels=workspace?.positionLevels||[];
-  host.innerHTML=levels.length?levels.map(name=>`<li><span>${esc(name)}</span><button type="button" class="btn ghost" data-remove-level="${esc(name)}">Remove</button></li>`).join(''):'<li style="background:transparent;border:0;padding:0;color:var(--muted);font-weight:650">No extra levels yet.</li>';
+  host.innerHTML=levels.length?levels.map(name=>`<li><span>${esc(name)}</span><button type="button" class="btn ghost" data-remove-level="${esc(name)}">Remove</button></li>`).join(''):'';
 }
 function addPositionLevel(){
   const name=$('#newLevelName')?.value.trim();if(!name){$('#newLevelName')?.focus();return;}
@@ -625,8 +653,8 @@ function addPositionLevel(){
     const next=structuredClone(workspace);
     const before=(next.positionLevels||[]).length;
     next.positionLevels=OrgFlow.sanitizePositionLevels([...(next.positionLevels||[]),name]);
-    if(next.positionLevels.length===before)throw new Error('That level already exists, or it matches a built-in type.');
-    commitPlanning(next,`Added position level ${next.positionLevels.at(-1)}`);
+    if(next.positionLevels.length===before)throw new Error('That tag already exists, or it matches a built-in type such as Engineer, Graduate or Intern.');
+    commitPlanning(next,`Added tag ${next.positionLevels.at(-1)}`);
     activeRoles.add(next.positionLevels.at(-1));
     if($('#newLevelName'))$('#newLevelName').value='';
     setupChips();render();
@@ -634,11 +662,11 @@ function addPositionLevel(){
 }
 function removePositionLevel(name){
   const used=(workspace.scenarios||[]).some(s=>s.positions.some(p=>p.type===name)||s.baseSnapshot?.positions?.some(p=>p.type===name));
-  if(used){toast('Retype or remove positions that use this level first.');return;}
+  if(used){toast('Retype or remove positions that use this tag first.');return;}
   try{
     const next=structuredClone(workspace);
     next.positionLevels=(next.positionLevels||[]).filter(x=>x!==name);
-    commitPlanning(next,`Removed position level ${name}`);
+    commitPlanning(next,`Removed tag ${name}`);
     activeRoles.delete(name);setupChips();render();
   }catch(error){toast(error.message);}
 }
@@ -663,7 +691,18 @@ function rememberPlanningView(){
 function setupPlanningEvents(){
   $('#scenarioSelect').onchange=e=>switchScenario(e.target.value);$('#newScenarioBtn').onclick=$('#compareCreateBtn').onclick=()=>openScenarioDialog();$('#scenarioSettingsBtn').onclick=()=>openScenarioDialog('edit');
   $$('.plan-tabs [data-view]').forEach(b=>b.onclick=()=>setView(b.dataset.view));
-  $('#registerAddBtn').onclick=()=>openDrawer('',true);$('#positionsRows').onclick=e=>{const b=e.target.closest('[data-edit-position]');if(b)openDrawer(b.dataset.editPosition);};
+  $('#registerAddBtn').onclick=()=>openDrawer('',true);
+  $('#positionsRows').onclick=e=>{
+    const box=e.target.closest?.('[data-select-position]');
+    if(box){e.stopPropagation();toggleSelected(box.dataset.selectPosition,true);return;}
+    const b=e.target.closest('[data-edit-position]');if(b)openDrawer(b.dataset.editPosition);
+  };
+  $('#registerSelectAll')?.addEventListener('change',e=>{
+    const q=$('#search').value.trim().toLowerCase();
+    const rows=people.filter(p=>baseVisible(p)&&(!q||matchesSearch(p,q)));
+    if(e.target.checked)rows.forEach(p=>selectedIds.add(p.id));else rows.forEach(p=>selectedIds.delete(p.id));
+    render();
+  });
   $('#scenarioClose').onclick=$('#scenarioCancel').onclick=()=>closeDialog('scenarioModal');$('#scenarioSave').onclick=saveScenarioDialog;
   $('#scenarioDelete').onclick=()=>{const id=workspace.activeScenarioId;if(confirm(`Delete “${activeScenario().name}”? This cannot be undone. Current and other scenarios will be kept.`)){try{deleteScenario(id);closeDialog('scenarioModal');}catch(error){$('#scenarioValidation').textContent=error.message;$('#scenarioValidation').classList.add('show');}}};
   $('#fHiring').onchange=updateAssignmentFields;$('#fPerson').onchange=()=>{const emp=activeScenario().employees.find(p=>p.id===$('#fPerson').value);$('#fName').value=emp?.name||'';$('#fEmployeeNo').value=emp?.employeeNumber||'';photoDraft=emp?.photo||null;updatePhotoNote();updateAssignmentFields();};
@@ -681,7 +720,16 @@ function setupPlanningEvents(){
   $('#addLevelBtn').onclick=addPositionLevel;
   $('#newLevelName').onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();addPositionLevel();}};
   $('#customLevels').onclick=e=>{const b=e.target.closest('[data-remove-level]');if(b)removePositionLevel(b.dataset.removeLevel);};
-  for(const id of ['showFte','showSite','showGroup','showType','showApproval','showHiring','showCumulative','chartDots']){
+  $('#saveViewBtn').onclick=saveNamedView;
+  $('#namedViewName')?.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();saveNamedView();}});
+  $('#namedViewSelect')?.addEventListener('change',applyNamedView);
+  $('#deleteViewBtn').onclick=deleteNamedView;
+  $('#bulkApplyBtn').onclick=applyBulkEdit;
+  $('#bulkClearBtn').onclick=clearSelection;
+  $('#saveWorkspaceBtn').onclick=async()=>{if(await allowEnterpriseExport('workspace'))saveWorkspaceToDisk(false);};
+  $('#saveWorkspaceAsBtn').onclick=async()=>{if(await allowEnterpriseExport('workspace'))saveWorkspaceToDisk(true);};
+  $('#printBtn').onclick=async()=>{if(await allowEnterpriseExport('a3'))exportA3Pages();};
+  for(const id of ['showFte','showSite','showGroup','showType','showApproval','showHiring','showCumulative','showSpan','chartDots']){
     const el=$('#'+id);if(el)el.onchange=readCardDisplayFromUi;
   }
   if($('#groupGap'))$('#groupGap').oninput=readCardDisplayFromUi;
@@ -702,7 +750,11 @@ function trapDialogFocus(e,id){
 
 let zoom=1;
 let chartBounds={width:600,height:400};
-function baseVisible(p){return activeRoles.has(p.type)&&activeStatuses.has(p.status)&&activeHiring.has(p.hiringState)&&dateOk(p);}
+function baseVisible(p){
+  const groups=activeGroups||new Set(allGroups()),sites=activeSites||new Set(allSites());
+  return activeRoles.has(p.type)&&activeStatuses.has(p.status)&&activeHiring.has(p.hiringState)&&dateOk(p)
+    &&groups.has(filterLabel(p.group,EMPTY_GROUP))&&sites.has(filterLabel(p.location,EMPTY_SITE));
+}
 function layoutTree(nodes){
   applyCardSizes(nodes,cardDisplay);
   return layoutOrgChart(nodes,cardDisplay);
@@ -714,7 +766,7 @@ function svgLines(lines,x,y,lineH,style){
   if(!lines.length)return '';
   return `<text>${lines.map((line,i)=>`<tspan x="${x}" y="${y+i*lineH}" style="${style}">${esc(line)}</tspan>`).join('')}</text>`;
 }
-function positionCardSVG(n,{x=0,y=0,interactive=false,hit=false,children=0,expanded=false,change='unchanged',peopleCount=null}={}){
+function positionCardSVG(n,{x=0,y=0,interactive=false,hit=false,children=0,expanded=false,change='unchanged',peopleCount=null,span=null,selected=false,onPath=false}={}){
   const metrics=n._lines||cardMetrics(n,cardDisplay),w=n._w||metrics.width,h=n._h||metrics.height,d=cardDisplay;
   const [bf,bi,sf,si]=badge(n.type,n.status),vacant=n.hiringState!=='Filled';
   const ink=cssVar('--ink'),muted=cssVar('--muted'),panel=cssVar('--panel'),line=cssVar('--line'),accent=cssVar('--accent');
@@ -740,15 +792,21 @@ function positionCardSVG(n,{x=0,y=0,interactive=false,hit=false,children=0,expan
     if(d.approval)badges+=`<rect x="${w-92}" y="${badgeY}" width="80" height="16" rx="5" fill="${sf}"/><text x="${w-52}" y="${badgeY+11}" text-anchor="middle" fill="${si}" style="${inlineBadge}">${n.status==='Approved'?'Approved':'Unapproved'}</text>`;
   }
   let foot='';
-  if(d.hiring||d.fte||(d.cumulative&&peopleCount!=null)){
-    const fy=h-10;
+  const footPrimary=d.hiring||d.fte||(d.cumulative&&peopleCount!=null);
+  if(footPrimary){
+    const fy=h-(d.span?24:10);
     if(d.hiring)foot+=`<circle cx="16" cy="${fy-3}" r="2.5" fill="${stateColor}"/><text x="23" y="${fy}" fill="${stateColor}" style="font:650 9px Arial,sans-serif">${esc(n.hiringState)}</text>`;
     const right=[];
     if(d.cumulative&&peopleCount!=null)right.push(`${peopleCount} ${peopleCount===1?'person':'people'}`);
     if(d.fte)right.push(`${fteText(n.fte)} FTE`);
     if(right.length)foot+=`<text x="${w-12}" y="${fy}" text-anchor="end" style="${inlineMeta}">${esc(right.join(' · '))}</text>`;
   }
-  return `<g ${interactive?`class="node ${hit?'search-hit':''}" data-id="${esc(n.id)}" tabindex="0" role="button" aria-label="${esc(n.title+', '+label+', '+n.hiringState+', '+n.status+'. Edit position.')}"`:''} transform="translate(${x},${y})">
+  if(d.span&&span&&(span.reports||span.vacant)){
+    const label=`${span.reports} ${span.reports===1?'report':'reports'} · ${span.vacant} open`;
+    foot+=`<text x="13" y="${h-10}" fill="${ink}" style="font:700 10px Arial,sans-serif">${esc(label)}</text>`;
+  }
+  const nodeClass=[interactive?'node':'',hit?'search-hit':'',selected?'selected':'',onPath?'on-path':''].filter(Boolean).join(' ');
+  return `<g ${interactive?`class="${nodeClass}" data-id="${esc(n.id)}" tabindex="0" role="button" aria-label="${esc(n.title+', '+label+', '+n.hiringState+', '+n.status+'. Edit position.')}"`:''} transform="translate(${x},${y})">
     <title>${esc(n.title+' ['+n.id+']\n'+label+' · '+n.hiringState+' · '+n.status+'\n'+n.type+' · '+(n.group||'No group')+(n.location?' · '+n.location:'')+' · '+fteText(n.fte)+' FTE'+(peopleCount!=null?' · '+peopleCount+' in team':'')+(changeColor?'\n'+change.toUpperCase()+' vs original baseline':''))}</title>
     <rect ${interactive?'class="card"':''} width="${w}" height="${h}" rx="12" fill="${panel}" stroke="${hit?accent:changeColor||line}" stroke-width="${hit?2.5:1.2}" style="stroke:${hit?accent:changeColor||line};stroke-width:${hit?2.5:1.2}" ${vacant?'stroke-dasharray="5 3"':''}/>
     ${changeColor?`<rect x="16" y="-7" width="62" height="14" rx="4" fill="${changeColor}"/><text x="47" y="3" text-anchor="middle" fill="${cssVar('--bg')}" style="${inlineBadge};font-size:8px">${change.toUpperCase()}</text>`:''}
@@ -776,14 +834,23 @@ function render(){
   chartBounds={width:Math.max(350,lay.width+100),height:Math.max(250,lay.height+110)};
   const width=Math.max(chartBounds.width,(wrap.clientWidth-48)/zoom),height=Math.max(chartBounds.height,(wrap.clientHeight-48)/zoom),offX=(width-lay.width)/2,offY=32;
   svg.setAttribute('viewBox',`0 0 ${width} ${height}`);svg.setAttribute('width',Math.ceil(width*zoom));svg.setAttribute('height',Math.ceil(height*zoom));svg.setAttribute('xmlns','http://www.w3.org/2000/svg');
-  const peopleCounts=new Map();
-  if(cardDisplay.cumulative){const allPos=activeScenario().positions;for(const n of lay.all)if(showsCumulativeCount(n.type))peopleCounts.set(n.id,subtreePeopleCount(allPos,n.id));}
+  const peopleCounts=new Map(),spans=new Map(),allPos=activeScenario().positions;
+  if(cardDisplay.cumulative){for(const n of lay.all)if(showsCumulativeCount(n.type))peopleCounts.set(n.id,subtreePeopleCount(allPos,n.id));}
+  if(cardDisplay.span){for(const n of lay.all)spans.set(n.id,spanOfControl(allPos,n.id));}
+  const searchHit=search?lay.all.find(n=>matchesSearch(n,search)):null;
+  const pathIds=new Set(pathToRoot(allPos,pathHoverId||searchHit?.id));
   let content=`<g transform="translate(${offX},${offY})">`;
-  for(const c of lay.connectors||[])content+=`<path class="connector" d="${c.d}"/>`;
+  for(const c of lay.connectors||[]){
+    const onPath=pathIds.size>1&&pathIds.has(c.fromId)&&(!c.toId||pathIds.has(c.toId));
+    content+=`<path class="connector${onPath?' on-path':''}" data-from="${esc(c.fromId||'')}" data-to="${esc(c.toId||'')}" d="${c.d}"/>`;
+  }
   content+=dottedConnectors(lay,0,0);
-  for(const n of lay.all)content+=positionCardSVG(n,{x:n._x,y:n._y,interactive:true,hit:!!search&&matchesSearch(n,search),children:childCounts.get(n.id)||0,expanded:!!n.children.length,change:diffs.get(n.id),peopleCount:peopleCounts.has(n.id)?peopleCounts.get(n.id):null});
+  for(const n of lay.all)content+=positionCardSVG(n,{x:n._x,y:n._y,interactive:true,hit:!!search&&matchesSearch(n,search),children:childCounts.get(n.id)||0,expanded:!!n.children.length,change:diffs.get(n.id),peopleCount:peopleCounts.has(n.id)?peopleCounts.get(n.id):null,span:spans.get(n.id)||null,selected:selectedIds.has(n.id),onPath:pathIds.has(n.id)});
   content+='</g>';
   svg.innerHTML=content;
+  if(pathIds.size>1)$$('#chart .node').forEach(node=>{if(!pathIds.has(node.dataset.id))node.classList.add('path-dim');});
+  wrap.classList.toggle('has-bulk',selectedIds.size>0);
+  syncBulkBar();
   const t=totals(activeScenario(),p=>baseVisible(p));$('#countVisible').textContent=t.positions;$('#countTotal').textContent=t.filled;$('#countApproved').textContent=t.open;$('#countOpen').textContent=t.recruiting;$('#countFte').textContent=fteText(t.fte);$('#countApprovedFte').textContent=fteText(t.approvedFte);
   $('#datePill').textContent=$('#dateFilter').checked?`Active ${fmtDate($('#asOf').value)}`:'All dates';$('#zoomLabel').textContent=Math.round(zoom*100)+'%';
   $('#visibleCardsHint').textContent=`${lay.all.length} cards displayed · ${t.positions} matching positions. FTE totals ignore collapse and search.`;
@@ -799,26 +866,47 @@ function reparentPosition(id,newManagerId){
   try{updateScenario(sc=>{const p=sc.positions.find(x=>x.id===id);if(!p)return;p.managerId=newManagerId;if(p.secondaryManagerId===newManagerId)p.secondaryManagerId='';},'Reporting line updated');}
   catch(error){toast(error.message);}
 }
+function siblingDropPlace(ev,over,sourceId){
+  const src=people.find(p=>p.id===sourceId),dst=people.find(p=>p.id===over.dataset.id);
+  if(!src||!dst||src.id===dst.id)return null;
+  if((src.managerId||'')!==(dst.managerId||''))return null;
+  const rect=over.getBoundingClientRect();
+  const manager=people.find(p=>p.id===src.managerId);
+  const stacked=manager?nodeStacked({...manager,children:people.filter(p=>p.managerId===src.managerId).map(c=>({...c,children:[]}))}):false;
+  const along=stacked?((ev.clientY-rect.top)/Math.max(1,rect.height)):((ev.clientX-rect.left)/Math.max(1,rect.width));
+  return along<0.5?'before':'after';
+}
 function beginCardDrag(e,node){
   if(enterpriseBlocksWrite())return;
-  if(e.button!==0||e.target.closest?.('[data-action="collapse"]'))return;
+  if(e.button!==0||e.target.closest?.('[data-action="collapse"]')||e.target.closest?.('[data-select]'))return;
+  if(e.shiftKey||e.metaKey||e.ctrlKey)return;
   const id=node.dataset.id,startX=e.clientX,startY=e.clientY;let moved=false;
-  const clearTargets=()=>$$('.node.drop-target').forEach(n=>n.classList.remove('drop-target'));
+  const clearTargets=()=>$$('.node').forEach(n=>n.classList.remove('drop-target','drop-before','drop-after'));
   const onMove=ev=>{
     if(!moved&&Math.hypot(ev.clientX-startX,ev.clientY-startY)<8)return;
     if(!moved){moved=true;node.classList.add('dragging');document.body.classList.add('reparenting');}
     clearTargets();
     const over=document.elementFromPoint(ev.clientX,ev.clientY)?.closest?.('.node');
-    if(over&&over.dataset.id!==id)over.classList.add('drop-target');
+    if(!over||over.dataset.id===id)return;
+    const place=siblingDropPlace(ev,over,id);
+    if(place==='before')over.classList.add('drop-before');
+    else if(place==='after')over.classList.add('drop-after');
+    else over.classList.add('drop-target');
   };
   const onUp=ev=>{
     window.removeEventListener('pointermove',onMove);window.removeEventListener('pointerup',onUp);
     node.classList.remove('dragging');document.body.classList.remove('reparenting');
     const over=document.elementFromPoint(ev.clientX,ev.clientY)?.closest?.('.node');
+    const place=over?siblingDropPlace(ev,over,id):null;
     clearTargets();
     if(!moved)return;
     skipNodeClick=true;setTimeout(()=>{skipNodeClick=false;},0);
-    if(!over||over.dataset.id===id){toast('Drop on a different card to change reporting');return;}
+    if(!over||over.dataset.id===id){toast('Drop on a sibling to reorder, or on another manager to change reporting');return;}
+    if(place){
+      try{updateScenario(s=>{s.positions=placeSibling(s.positions,id,over.dataset.id,place);},'Reporting order updated');}
+      catch(error){toast(error.message);}
+      return;
+    }
     reparentPosition(id,over.dataset.id);
   };
   window.addEventListener('pointermove',onMove);window.addEventListener('pointerup',onUp);
@@ -844,9 +932,9 @@ function buildExportSVG(filterGroup=null){
     xml.push(`<text x="40" y="99" fill="${muted}" style="font:600 11px Arial,sans-serif">${esc(exportText(description,Math.floor((w-260)/6)))}</text><text x="${w-40}" y="99" text-anchor="end" fill="${muted}" style="font:600 10px Arial,sans-serif">${esc(date)}</text><line x1="40" y1="122" x2="${w-40}" y2="122" stroke="${line}"/>`);
     xml.push(`<line x1="40" y1="${h-42}" x2="${w-40}" y2="${h-42}" stroke="${line}"/><text x="40" y="${h-22}" fill="${muted}" style="font:500 9px Arial,sans-serif">${esc(exportText(brand.footer,Math.floor((w-160)/5.5)))}</text><text x="${w-40}" y="${h-22}" text-anchor="end" fill="${muted}" style="font:600 9px Arial,sans-serif">OrgFlow</text>`);
   }else xml.push(`<text x="40" y="25" fill="${muted}" style="font:600 11px Arial,sans-serif">${esc(exportText(activeScenario().name+' · '+(filterGroup||'Organization tree'),80))}</text>`);
-  for(const c of lay.connectors||[])xml.push(`<path d="${c.d}" transform="translate(${offX},${offY})" fill="none" stroke="${connector}" stroke-width="1.4"/>`);
+  for(const c of lay.connectors||[])xml.push(`<path d="${c.d}" transform="translate(${offX},${offY})" fill="none" stroke="${connector}" stroke-width="1.5" stroke-linecap="square" stroke-linejoin="round"/>`);
   xml.push(dottedConnectors(lay,offX,offY,muted));
-  for(const n of lay.all)xml.push(positionCardSVG(n,{x:n._x+offX,y:n._y+offY,hit:!!search&&matchesSearch(n,search),change:diffs.get(n.id),peopleCount:peopleCounts.has(n.id)?peopleCounts.get(n.id):null}));
+  for(const n of lay.all)xml.push(positionCardSVG(n,{x:n._x+offX,y:n._y+offY,hit:!!search&&matchesSearch(n,search),change:diffs.get(n.id),peopleCount:peopleCounts.has(n.id)?peopleCounts.get(n.id):null,span:cardDisplay.span?spanOfControl(activeScenario().positions,n.id):null}));
   xml.push('</svg>');return{xml:xml.join(''),width:w,height:h,nodeCount:lay.all.length};
 }
 function buildComparisonSVG(){
@@ -913,15 +1001,15 @@ function exportComparisonCSV(){
   downloadBlob(csvBlob(['baseline','target','change','positionId','title','field','before','after'],rows),`comparison-${slug(d.target.name)}.csv`);toast('Comparison CSV exported');
 }
 
-function captureView(){return {roles:[...activeRoles],statuses:[...activeStatuses],hiring:[...activeHiring],maxDepth,collapsed:[...collapsed],search:$('#search').value,asOf:$('#asOf').value,dateFilter:$('#dateFilter').checked,view:currentView,zoom,showChartChanges,compareBaselineId,compareTargetId,compareKind,compareSearch:$('#compareSearch').value,cardDisplay};}
+function captureView(){return {roles:[...activeRoles],statuses:[...activeStatuses],hiring:[...activeHiring],groups:[...(activeGroups||[])],sites:[...(activeSites||[])],maxDepth,collapsed:[...collapsed],search:$('#search').value,asOf:$('#asOf').value,dateFilter:$('#dateFilter').checked,view:currentView,zoom,showChartChanges,compareBaselineId,compareTargetId,compareKind,compareSearch:$('#compareSearch').value,cardDisplay};}
+function workspacePayload(){
+  return {format:'orgflow.workspace',version:2,exportedAt:new Date().toISOString(),planning:workspace,branding,theme:document.documentElement.dataset.theme,palette:document.documentElement.dataset.palette,view:captureView()};
+}
 function exportWorkspace(){
-  const data={format:'orgflow.workspace',version:2,exportedAt:new Date().toISOString(),planning:workspace,branding,theme:document.documentElement.dataset.theme,palette:document.documentElement.dataset.palette,view:captureView()};
-  downloadBlob(new Blob([JSON.stringify(data,null,2)],{type:'application/json'}),`orgflow-workspace-${today}.json`);toast('All scenarios, people and branding backed up');
+  downloadBlob(new Blob([JSON.stringify(workspacePayload(),null,2)],{type:'application/json'}),`orgflow-workspace-${today}.json`);toast('All scenarios, people, views and branding backed up');
 }
 function sanitizeView(view={},planning=workspace){
-  const ids=new Set(planning.scenarios.find(s=>s.id===planning.activeScenarioId).positions.map(p=>p.id));
-  const types=positionTypes(planning.positionLevels);
-  return {roles:sanitizeChipFilters(view.roles,types,LEGACY_ROLE_TYPES),statuses:sanitizeChipFilters(view.statuses,STATUSES),hiring:sanitizeChipFilters(view.hiring,HIRING_STATES),maxDepth:[1,2,3,99].includes(view.maxDepth)?view.maxDepth:99,collapsed:Array.isArray(view.collapsed)?view.collapsed.filter(id=>ids.has(id)):[],search:String(view.search||'').slice(0,1000),asOf:isISODate(view.asOf||'')?view.asOf:today,dateFilter:view.dateFilter===true,view:['chart','positions','compare'].includes(view.view)?view.view:'chart',zoom:typeof view.zoom==='number'&&view.zoom>=.15&&view.zoom<=1.75?view.zoom:1,showChartChanges:view.showChartChanges!==false,compareBaselineId:String(view.compareBaselineId||'current').slice(0,150),compareTargetId:String(view.compareTargetId||'').slice(0,150),compareKind:['all','added','removed','changed','unchanged'].includes(view.compareKind)?view.compareKind:'all',compareSearch:String(view.compareSearch||'').slice(0,200),cardDisplay:sanitizeCardDisplay(view.cardDisplay)};
+  return sanitizeViewState(view,planning,today);
 }
 async function validateWorkspace(input){
   if(!input||input.format!=='orgflow.workspace'||![1,2].includes(input.version))throw new Error('This is not a supported OrgFlow workspace backup. Use Import CSV for spreadsheets.');
@@ -933,13 +1021,158 @@ async function validateWorkspace(input){
   return {planning,branding:b,theme:input.theme==='dark'?'dark':'light',palette:PALETTES.includes(input.palette)?input.palette:(input.palette==='audi'?'crimson':'indigo'),view:sanitizeView(input.view||{},planning)};
 }
 function restoreView(input){
-  const view=sanitizeView(input);activeRoles=new Set(view.roles);activeStatuses=new Set(view.statuses);activeHiring=new Set(view.hiring);maxDepth=view.maxDepth;collapsed=new Set(view.collapsed);zoom=view.zoom;showChartChanges=view.showChartChanges;
+  knownGroups=null;knownSites=null;
+  const view=sanitizeView(input);activeRoles=new Set(view.roles);activeStatuses=new Set(view.statuses);activeHiring=new Set(view.hiring);
+  activeGroups=new Set(view.groups);activeSites=new Set(view.sites);
+  maxDepth=view.maxDepth;collapsed=new Set(view.collapsed);zoom=view.zoom;showChartChanges=view.showChartChanges;
   currentView=view.view;compareBaselineId=view.compareBaselineId;compareTargetId=view.compareTargetId;compareKind=view.compareKind;cardDisplay=view.cardDisplay;
   $('#search').value=view.search;$('#asOf').value=view.asOf;$('#dateFilter').checked=view.dateFilter;$('#compareSearch').value=view.compareSearch;setupChips();
   $$('#depthSeg button').forEach(b=>b.classList.toggle('active',+b.dataset.depth===maxDepth));
   syncChartDisplayUi();
 }
 function loadSavedPlanningView(){try{const raw=localStorage.getItem('orgflow.planning.view.v2');if(raw)restoreView(JSON.parse(raw));}catch{}}
+function renderNamedViews(){
+  const sel=$('#namedViewSelect');if(!sel)return;
+  const views=workspace?.namedViews||[];
+  const current=sel.value;
+  sel.innerHTML='<option value="">— Current view —</option>'+views.map(v=>`<option value="${esc(v.id)}">${esc(v.name)}</option>`).join('');
+  if(views.some(v=>v.id===current))sel.value=current;
+}
+function saveNamedView(){
+  const name=$('#namedViewName')?.value.trim();if(!name){$('#namedViewName')?.focus();return;}
+  try{
+    const next=structuredClone(workspace);
+    const views=next.namedViews||[];
+    const existing=views.find(v=>v.name.toLowerCase()===name.toLowerCase());
+    const snapshot=captureView();
+    if(existing)existing.view=snapshot;
+    else next.namedViews=[...views,{id:makeId('view'),name,view:snapshot}];
+    commitPlanning(next,existing?`Updated view ${name}`:`Saved view ${name}`);
+    if($('#namedViewName'))$('#namedViewName').value='';
+    renderNamedViews();
+    const saved=(workspace.namedViews||[]).find(v=>v.name.toLowerCase()===name.toLowerCase());
+    if(saved&&$('#namedViewSelect'))$('#namedViewSelect').value=saved.id;
+    toast(`Saved view ${name}`);
+  }catch(error){toast(error.message);}
+}
+function applyNamedView(){
+  const id=$('#namedViewSelect')?.value;if(!id)return;
+  const found=(workspace.namedViews||[]).find(v=>v.id===id);if(!found)return;
+  restoreView(found.view);setView(found.view.view);render();centerChart();toast(`Applied ${found.name}`);
+}
+function deleteNamedView(){
+  const id=$('#namedViewSelect')?.value;if(!id){toast('Choose a saved view to delete');return;}
+  const found=(workspace.namedViews||[]).find(v=>v.id===id);
+  try{
+    const next=structuredClone(workspace);
+    next.namedViews=(next.namedViews||[]).filter(v=>v.id!==id);
+    commitPlanning(next,'Removed saved view');
+    renderNamedViews();toast(found?`Removed ${found.name}`:'Removed saved view');
+  }catch(error){toast(error.message);}
+}
+function syncBulkBar(){
+  const bar=$('#bulkBar');if(!bar)return;
+  const n=selectedIds.size;
+  bar.hidden=n===0;
+  wrap?.classList.toggle('has-bulk',n>0);
+  if($('#bulkCount'))$('#bulkCount').textContent=`${n} selected`;
+  const typeSel=$('#bulkType');
+  if(typeSel){
+    const keep=typeSel.value;
+    typeSel.innerHTML='<option value="">Keep type</option>'+allPositionTypes().map(t=>`<option value="${esc(t)}">${esc(t)}</option>`).join('');
+    typeSel.value=[...typeSel.options].some(o=>o.value===keep)?keep:'';
+  }
+  const statusSel=$('#bulkStatus');
+  if(statusSel&&!statusSel.querySelector('option[value=""]'))statusSel.insertAdjacentHTML('afterbegin','<option value="">Keep approval</option>');
+}
+function clearSelection(){selectedIds=new Set();render();}
+function toggleSelected(id,additive=true){
+  if(!additive)selectedIds=new Set();
+  if(selectedIds.has(id)&&additive)selectedIds.delete(id);else selectedIds.add(id);
+  render();
+}
+function applyBulkEdit(){
+  if(!selectedIds.size)return;
+  const patch={};
+  if($('#bulkType')?.value)patch.type=$('#bulkType').value;
+  if($('#bulkGroup')?.value.trim())patch.group=$('#bulkGroup').value.trim();
+  if($('#bulkSite')?.value.trim())patch.location=$('#bulkSite').value.trim();
+  if($('#bulkStatus')?.value)patch.status=$('#bulkStatus').value;
+  if(!Object.keys(patch).length){toast('Choose a type, group, site or approval to apply');return;}
+  try{
+    updateScenario(s=>{s.positions=bulkPatchPositions(s.positions,[...selectedIds],patch,workspace.positionLevels);},`Updated ${selectedIds.size} positions`);
+    toast(`Updated ${selectedIds.size} positions`);
+  }catch(error){toast(error.message);}
+}
+function applyPathClasses(){
+  const q=$('#search')?.value.trim().toLowerCase()||'';
+  const hit=q?people.find(p=>baseVisible(p)&&matchesSearch(p,q)):null;
+  const path=new Set(pathToRoot(people,pathHoverId||hit?.id));
+  $$('#chart .node').forEach(n=>{
+    n.classList.toggle('on-path',path.has(n.dataset.id));
+    n.classList.toggle('path-dim',path.size>1&&!path.has(n.dataset.id));
+  });
+  $$('#chart .connector').forEach(c=>{
+    const from=c.dataset.from,to=c.dataset.to;
+    c.classList.toggle('on-path',path.size>1&&path.has(from)&&(!to||path.has(to)));
+  });
+}
+async function saveWorkspaceToDisk(saveAs=false){
+  const blob=new Blob([JSON.stringify(workspacePayload(),null,2)],{type:'application/json'});
+  try{
+    if(window.showSaveFilePicker&&(saveAs||!workspaceFileHandle)){
+      workspaceFileHandle=await window.showSaveFilePicker({suggestedName:`orgflow-workspace-${today}.json`,types:[{description:'OrgFlow workspace',accept:{'application/json':['.json']}}]});
+    }
+    if(workspaceFileHandle?.createWritable){
+      const writable=await workspaceFileHandle.createWritable();
+      await writable.write(blob);await writable.close();
+      toast(saveAs?'Workspace saved as a new file':'Workspace saved');
+      return;
+    }
+  }catch(error){
+    if(error?.name==='AbortError')return;
+    toast(error.message||'Could not overwrite that file. Downloaded a copy instead.');
+  }
+  downloadBlob(blob,`orgflow-workspace-${today}.json`);
+}
+async function restoreWorkspacePicker(){
+  if(enterpriseBlocksWrite()){toast('You can view this organization but you cannot restore over it.');return;}
+  if(window.showOpenFilePicker){
+    try{
+      const [handle]=await window.showOpenFilePicker({types:[{description:'OrgFlow workspace',accept:{'application/json':['.json']}}]});
+      workspaceFileHandle=handle;
+      await restoreWorkspace(await handle.getFile());
+      return;
+    }catch(error){if(error?.name==='AbortError')return;}
+  }
+  $('#restoreInput').value='';$('#restoreInput').click();
+}
+async function exportA3Pages(){
+  const art=buildExportSVG();if(!art){toast('Nothing to export');return;}
+  try{
+    toast('Preparing A3 pages…');
+    const blob=await pngFromExport(art),image=await readImage(blob);
+    const A3W=1191,A3H=842,margin=36,header=40,usableW=A3W-margin*2,usableH=A3H-margin*2-header;
+    const tiles=tileChartPages(image.naturalWidth,image.naturalHeight,usableW,usableH,0);
+    const pages=[];
+    for(const tile of tiles){
+      const canvas=document.createElement('canvas');canvas.width=usableW;canvas.height=usableH+header;
+      const ctx=canvas.getContext('2d');if(!ctx)throw new Error('PDF export is not supported by this browser.');
+      ctx.fillStyle=cssVar('--bg')||'#ffffff';ctx.fillRect(0,0,canvas.width,canvas.height);
+      ctx.fillStyle=cssVar('--ink')||'#0f172a';ctx.font='600 16px Arial,sans-serif';
+      ctx.fillText(`${exportText(branding.companyName||'OrgFlow',40)} · ${exportText(activeScenario().name,30)} · A3 page ${tile.page}/${tile.total}`,0,26);
+      ctx.drawImage(image,tile.x,tile.y,tile.usableW,tile.usableH,0,header,usableW,usableH);
+      const jpeg=await new Promise((resolve,reject)=>canvas.toBlob(b=>b?resolve(b):reject(new Error('JPEG generation failed.')),'image/jpeg',0.86));
+      pages.push({jpeg:new Uint8Array(await jpeg.arrayBuffer()),width:canvas.width,height:canvas.height});
+    }
+    downloadBlob(makeJpegPdf(pages,A3W,A3H),`orgflow-a3-${today}.pdf`);
+    toast(pages.length===1?'Exported one A3 page':`Exported ${pages.length} A3 pages`);
+  }catch(error){toast(error.message||'A3 export failed');}
+}
+function printChartView(){
+  setView('chart');
+  setTimeout(()=>window.print(),50);
+}
 async function restoreWorkspace(file){
   if(!file)return;try{
     if(file.size>12*1024*1024)throw new Error('Workspace file is too large (12 MB maximum).');let raw;try{raw=JSON.parse(await file.text());}catch{throw new Error('This file is not valid JSON.');}
@@ -1064,11 +1297,23 @@ $('#brandingModal').addEventListener('keydown',e=>{
   if(e.key!=='Tab')return;const focusables=$$('#brandingModal button:not([disabled]),#brandingModal input:not([hidden]):not([disabled]),#brandingModal select:not([disabled])').filter(x=>x.getClientRects().length);
   const first=focusables[0],last=focusables.at(-1);if(e.shiftKey&&document.activeElement===first){e.preventDefault();last?.focus()}else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first?.focus()}
 });
-$('#backupBtn').onclick=async()=>{if(await allowEnterpriseExport('workspace'))exportWorkspace();};$('#restoreBtn').onclick=()=>{if(enterpriseBlocksWrite()){toast('You can view this organization but you cannot restore over it.');return;}$('#restoreInput').value='';$('#restoreInput').click()};$('#restoreInput').onchange=e=>restoreWorkspace(e.target.files[0]);
+$('#backupBtn').onclick=async()=>{if(await allowEnterpriseExport('workspace'))exportWorkspace();};$('#restoreBtn').onclick=()=>restoreWorkspacePicker();$('#restoreInput').onchange=e=>restoreWorkspace(e.target.files[0]);
 
 
 svg.addEventListener('pointerdown',e=>{const node=e.target.closest?.('.node');if(node)beginCardDrag(e,node);});
-svg.addEventListener('click',e=>{if(skipNodeClick){skipNodeClick=false;return;}const node=e.target.closest?.('.node');if(!node)return;const id=node.dataset.id;if(e.target.closest?.('[data-action="collapse"]')){const full=buildFilteredForest(),shown=flatten(applyDepthAndCollapse(full),[]).find(n=>n.id===id);const expanding=!shown?.children.length;if(shown?.children.length)collapsed.add(id);else{if(maxDepth!==99){for(const n of flatten(full,[]))if(n.depth===maxDepth-1&&n.children.length)collapsed.add(n.id);maxDepth=99;$$('#depthSeg button').forEach(b=>b.classList.toggle('active',b.dataset.depth==='99'))}collapsed.delete(id)}render();if(expanding)centerChart();return}openDrawer(id)});
+svg.addEventListener('pointerover',e=>{const node=e.target.closest?.('.node');const id=node?.dataset.id||null;if(id===pathHoverId)return;pathHoverId=id;applyPathClasses();});
+svg.addEventListener('pointerleave',()=>{pathHoverId=null;applyPathClasses();});
+svg.addEventListener('click',e=>{
+  if(skipNodeClick){skipNodeClick=false;return;}
+  const node=e.target.closest?.('.node');if(!node)return;const id=node.dataset.id;
+  if(e.target.closest?.('[data-action="collapse"]')){
+    const full=buildFilteredForest(),shown=flatten(applyDepthAndCollapse(full),[]).find(n=>n.id===id);const expanding=!shown?.children.length;
+    if(shown?.children.length)collapsed.add(id);else{if(maxDepth!==99){for(const n of flatten(full,[]))if(n.depth===maxDepth-1&&n.children.length)collapsed.add(n.id);maxDepth=99;$$('#depthSeg button').forEach(b=>b.classList.toggle('active',b.dataset.depth==='99'))}collapsed.delete(id)}
+    render();if(expanding)centerChart();return;
+  }
+  if(e.metaKey||e.ctrlKey||e.shiftKey){toggleSelected(id,true);return;}
+  openDrawer(id);
+});
 $('#themeBtn').onclick=()=>setTheme(document.documentElement.dataset.theme==='dark'?'light':'dark');
 $('#paletteBtn').onclick=e=>{e.stopPropagation();$('#exportMenu').classList.remove('open');$('#paletteMenu').classList.toggle('open')};
 $('#paletteMenu').onclick=e=>{const b=e.target.closest('button[data-palette]');if(!b)return;setPalette(b.dataset.palette);closeMenus();toast(`${b.querySelector('b')?.textContent||'Palette'} palette applied`)};
@@ -1078,14 +1323,31 @@ $('#asOf').onchange=render;$('#dateFilter').onchange=render;$('#depthSeg').oncli
 $('#expandBtn').onclick=()=>{collapsed.clear();maxDepth=99;$$('#depthSeg button').forEach(x=>x.classList.toggle('active',x.dataset.depth==='99'));render();centerChart();};
 $('#collapseBtn').onclick=()=>{collapsed=new Set(people.filter(p=>p.type==='Team Leader').map(p=>p.id));maxDepth=2;$$('#depthSeg button').forEach(x=>x.classList.toggle('active',x.dataset.depth==='2'));render()};$('#centerBtn').onclick=fitChart;
 $('#csvBtn').onclick=async()=>{if(await allowEnterpriseExport('csv'))exportCSV()};$('#templateBtn').onclick=downloadTemplate;$('#importBtn').onclick=()=>{if(enterpriseBlocksWrite()){toast('You can view this organization but you cannot import.');return;}triggerImport();};$('#sideImportBtn').onclick=()=>$('#importBtn').click();$('#fileInput').onchange=e=>e.target.files[0]&&importFile(e.target.files[0]);
-$('#exportBtn').onclick=e=>{e.stopPropagation();$('#paletteMenu').classList.remove('open');$('#exportMenu').classList.toggle('open')};$('#exportMenu').onclick=async e=>{const b=e.target.closest('button[data-export]');if(!b)return;closeMenus();const kind=b.dataset.export;if(kind==='restore'){if(enterpriseBlocksWrite()){toast('You can view this organization but you cannot restore over it.');return;}$('#restoreBtn').click();return;}if(!(await allowEnterpriseExport(kind)))return;if(kind==='png')exportCurrentPNG();else if(kind==='groups')exportGroups();else if(kind==='pdf')exportBoardPack();else if(kind==='html')exportShareableHTML();else if(kind==='people')exportPeopleCSV();else if(kind==='workspace')exportWorkspace();else exportCSV()};document.addEventListener('click',e=>{if(!e.target.closest('.menu-wrap'))closeMenus()});
+$('#exportBtn').onclick=e=>{e.stopPropagation();$('#paletteMenu').classList.remove('open');$('#exportMenu').classList.toggle('open')};$('#exportMenu').onclick=async e=>{
+  const b=e.target.closest('button[data-export]');if(!b)return;closeMenus();const kind=b.dataset.export;
+  if(kind==='restore'){restoreWorkspacePicker();return;}
+  const audit=kind==='save'||kind==='saveAs'?'workspace':kind==='print'?'a3':kind;
+  if(!(await allowEnterpriseExport(audit)))return;
+  if(kind==='png')exportCurrentPNG();
+  else if(kind==='groups')exportGroups();
+  else if(kind==='pdf')exportBoardPack();
+  else if(kind==='a3')exportA3Pages();
+  else if(kind==='print')printChartView();
+  else if(kind==='html')exportShareableHTML();
+  else if(kind==='people')exportPeopleCSV();
+  else if(kind==='workspace')exportWorkspace();
+  else if(kind==='save')saveWorkspaceToDisk(false);
+  else if(kind==='saveAs')saveWorkspaceToDisk(true);
+  else exportCSV();
+};document.addEventListener('click',e=>{if(!e.target.closest('.menu-wrap'))closeMenus()});
 $('#importClose').onclick=$('#importCancel').onclick=()=>closeDialog('importModal');$('#importModal').addEventListener('click',e=>{if(e.target===$('#importModal'))$('#importModal').classList.remove('open')});$('#importConfirm').onclick=confirmImport;
 window.addEventListener('keydown',e=>{
   const tag=(e.target.tagName||'').toLowerCase();
   const typing=tag==='textarea'||tag==='select'||(tag==='input'&&e.target.type!=='checkbox');
   if((e.metaKey||e.ctrlKey)&&e.key.toLowerCase()==='k'){if(tag==='textarea'||(tag==='input'&&e.target.id!=='search'))return;e.preventDefault();$('#search').focus();return;}
   if((e.metaKey||e.ctrlKey)&&e.key.toLowerCase()==='z'&&!typing){e.preventDefault();if(e.shiftKey)redoChange();else undoChange();return;}
-  if(e.key==='Escape'){if($('#brandingModal').classList.contains('open')){closeBranding();return;}if($('#welcomeModal')?.classList.contains('open')){closeWelcome();return;}if($('#historyModal')?.classList.contains('open')){closeDialog('historyModal');return;}hidePositionEditor();$('#importModal').classList.remove('open');closeMenus()}
+  if((e.metaKey||e.ctrlKey)&&e.key.toLowerCase()==='s'){e.preventDefault();if(!typing)saveWorkspaceToDisk(e.shiftKey);return;}
+  if(e.key==='Escape'){if(selectedIds.size){clearSelection();return;}if($('#brandingModal').classList.contains('open')){closeBranding();return;}if($('#welcomeModal')?.classList.contains('open')){closeWelcome();return;}if($('#historyModal')?.classList.contains('open')){closeDialog('historyModal');return;}hidePositionEditor();$('#importModal').classList.remove('open');closeMenus()}
 });window.addEventListener('resize',render);
 function paintPlanner(){
   loadSavedPlanningView();setupTheme();setupChips();setupPlanningEvents();updateUndoButtons();
@@ -1106,7 +1368,7 @@ function applyEnterpriseWorkspace(doc){
   render();setTimeout(centerChart,0);
 }
 window.applyEnterpriseWorkspace=applyEnterpriseWorkspace;
-window.enterpriseWorkspacePayload=()=>({format:'orgflow.workspace',version:2,exportedAt:new Date().toISOString(),planning:workspace,branding,theme:document.documentElement.dataset.theme,palette:document.documentElement.dataset.palette,view:captureView()});
+window.enterpriseWorkspacePayload=()=>workspacePayload();
 $('#undoBtn').onclick=undoChange;$('#redoBtn').onclick=redoChange;$('#helpBtn').onclick=()=>openWelcome(true);
 $('#historyBtn').onclick=openHistory;$('#historyClose').onclick=()=>closeDialog('historyModal');
 $('#historyRows').onclick=e=>{const b=e.target.closest('[data-history]');if(b)restoreHistoryIndex(Number(b.dataset.history));};

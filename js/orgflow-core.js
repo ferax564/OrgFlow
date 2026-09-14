@@ -21,7 +21,9 @@
     ['sortOrder', 'Reporting order'], ['stacked', 'Stacked reports']
   ];
   const POSITION_CSV_COLUMNS = ['positionId', 'reportsToPositionId', 'secondaryManagerId', 'title', 'type', 'group', 'fte', 'approval', 'hiringState', 'personId', 'name', 'employeeNumber', 'startDate', 'endDate', 'location', 'costCenter', 'jobFamily', 'sortOrder', 'stacked'];
-  const CARD_DISPLAY_DEFAULTS = { fte: true, site: true, group: true, type: true, approval: true, hiring: true, cumulative: false, groupGap: 32, chartDots: true };
+  const CARD_DISPLAY_DEFAULTS = { fte: true, site: true, group: true, type: true, approval: true, hiring: true, cumulative: false, span: true, groupGap: 32, chartDots: true };
+  const EMPTY_GROUP = 'No group';
+  const EMPTY_SITE = 'No site';
   const CARD_W = 248;
   const ALIASES = {
     id: ['positionid', 'id'],
@@ -329,7 +331,10 @@
     if (!ids.has('current')) throw new Error('Workspace must include the protected Current scenario.');
     if (scenarios.find(s => s.id === 'current').name !== 'Current') throw new Error('The Current scenario cannot be renamed.');
     if (!ids.has(input.activeScenarioId)) throw new Error('Active scenario was not found.');
-    return { version: 2, activeScenarioId: input.activeScenarioId, scenarios, positionLevels };
+    const todayStamp = new Date().toISOString().slice(0, 10);
+    const planning = { version: 2, activeScenarioId: input.activeScenarioId, scenarios, positionLevels };
+    planning.namedViews = sanitizeNamedViews(input.namedViews, planning, todayStamp);
+    return planning;
   }
   function migrateLegacy(legacy) {
     const roster = validatePeopleData(legacy), stamp = new Date().toISOString();
@@ -492,11 +497,21 @@
     }
     return all.filter(x => picked.has(x));
   }
+  function mergeChipSelection(active, all, previousAll) {
+    const list = Array.isArray(all) ? all : [];
+    if (!list.length) return [];
+    if (active == null) return list.slice();
+    const saved = Array.isArray(active) ? active : [...active];
+    if (!saved.length) return [];
+    const prev = Array.isArray(previousAll) ? previousAll : list;
+    return sanitizeChipFilters(saved, list, prev);
+  }
   function emptyWorkspace(today, stamp = new Date().toISOString()) {
     return validatePlanning({
       version: 2,
       activeScenarioId: 'current',
       positionLevels: [],
+      namedViews: [],
       scenarios: [{
         id: 'current', name: 'Current', description: '', createdAt: stamp, updatedAt: stamp, baseScenarioId: '', baseSnapshot: null,
         employees: [],
@@ -562,6 +577,7 @@
       approval: bool('approval', true),
       hiring: bool('hiring', true),
       cumulative: d.cumulative === true,
+      span: d.span !== false,
       groupGap,
       chartDots: d.chartDots !== false
     };
@@ -570,14 +586,16 @@
     const d = sanitizeCardDisplay(display);
     const nameLines = wrapText(personLabel(n), 186, 7.1).slice(0, 4);
     const titleLines = wrapText(n.title || '', 224, 5.7).slice(0, 3);
-    const groupLines = d.group ? wrapText(n.group || 'No group', 224, 5.4).slice(0, 2) : [];
-    const siteLines = d.site ? wrapText(n.location || 'No site', 224, 5.4).slice(0, 2) : [];
+    const groupLines = d.group ? wrapText(n.group || EMPTY_GROUP, 224, 5.4).slice(0, 2) : [];
+    const siteLines = d.site ? wrapText(n.location || EMPTY_SITE, 224, 5.4).slice(0, 2) : [];
     let h = 14 + Math.max(nameLines.length * 15, 30);
     h += 4 + titleLines.length * 13;
     h += groupLines.length * 13;
     h += siteLines.length * 13;
     if (d.type || d.approval) h += 20;
-    if (d.hiring || d.fte || (d.cumulative && showsCumulativeCount(n.type))) h += 16;
+    const footPrimary = d.hiring || d.fte || (d.cumulative && showsCumulativeCount(n.type));
+    if (footPrimary) h += 16;
+    if (d.span) h += 14;
     h += 12;
     return { width: CARD_W, height: Math.max(96, Math.min(280, Math.round(h))), nameLines, titleLines, groupLines, siteLines };
   }
@@ -620,6 +638,137 @@
     const siblings = positions.filter(p => (p.managerId || '') === (pos.managerId || '')).sort(compareSiblings);
     return { index: siblings.findIndex(p => p.id === id), count: siblings.length };
   }
+  function filterLabel(value, emptyLabel) {
+    const text = String(value || '').trim();
+    return text || emptyLabel;
+  }
+  function chipValues(positions, key, emptyLabel) {
+    const labels = new Set();
+    for (const p of positions || []) labels.add(filterLabel(p[key], emptyLabel));
+    return [...labels].sort((a, b) => a.localeCompare(b));
+  }
+  function spanOfControl(positions, id) {
+    const reports = (positions || []).filter(p => p.managerId === id);
+    return {
+      reports: reports.length,
+      vacant: reports.filter(p => p.hiringState !== 'Filled').length,
+      recruiting: reports.filter(p => p.hiringState === 'Recruiting').length
+    };
+  }
+  function pathToRoot(positions, id) {
+    const byId = new Map((positions || []).map(p => [p.id, p]));
+    const path = [];
+    const seen = new Set();
+    let cur = id;
+    while (cur && byId.has(cur) && !seen.has(cur)) {
+      seen.add(cur);
+      path.push(cur);
+      cur = byId.get(cur).managerId || '';
+    }
+    return path;
+  }
+  function bulkPatchPositions(positions, ids, patch = {}, extraTypes = []) {
+    const idSet = new Set(ids || []);
+    if (!idSet.size) return positions;
+    const types = new Set(positionTypes(extraTypes));
+    return (positions || []).map(p => {
+      if (!idSet.has(p.id)) return p;
+      const out = { ...p };
+      if (Object.prototype.hasOwnProperty.call(patch, 'type')) {
+        if (!types.has(patch.type)) throw new Error(`Unknown position type “${patch.type}”.`);
+        out.type = patch.type;
+      }
+      if (Object.prototype.hasOwnProperty.call(patch, 'group')) out.group = cleanString(String(patch.group ?? ''), 'Group / team', 200);
+      if (Object.prototype.hasOwnProperty.call(patch, 'location')) out.location = cleanString(String(patch.location ?? ''), 'Location', 200);
+      if (Object.prototype.hasOwnProperty.call(patch, 'status')) {
+        if (!STATUSES.includes(patch.status)) throw new Error('Unknown approval.');
+        out.status = patch.status;
+      }
+      return out;
+    });
+  }
+  function placeSibling(positions, id, targetId, where = 'before') {
+    const pos = positions.find(p => p.id === id);
+    const target = positions.find(p => p.id === targetId);
+    if (!pos || !target || id === targetId) return positions;
+    if ((pos.managerId || '') !== (target.managerId || '')) return positions;
+    const siblings = positions.filter(p => (p.managerId || '') === (pos.managerId || '')).sort(compareSiblings);
+    const rest = siblings.filter(p => p.id !== id);
+    const at = rest.findIndex(p => p.id === targetId);
+    if (at < 0) return positions;
+    let index = where === 'after' ? at + 1 : at;
+    const preview = rest.slice();
+    preview.splice(index, 0, pos);
+    if (preview.every((p, i) => p.id === siblings[i].id)) index = where === 'after' ? at : at + 1;
+    rest.splice(index, 0, pos);
+    const rank = new Map(rest.map((p, idx) => [p.id, idx]));
+    return positions.map(p => rank.has(p.id) ? { ...p, sortOrder: rank.get(p.id) } : p);
+  }
+  function tileChartPages(width, height, pageW, pageH, header = 52) {
+    const w = Math.max(1, Number(width) || 1);
+    const h = Math.max(1, Number(height) || 1);
+    const usableW = Math.max(120, pageW);
+    const usableH = Math.max(120, pageH - header);
+    const cols = Math.max(1, Math.ceil(w / usableW));
+    const rows = Math.max(1, Math.ceil(h / usableH));
+    const pages = [];
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        pages.push({
+          row: r, col: c, rows, cols,
+          x: c * usableW, y: r * usableH,
+          page: r * cols + c + 1, total: rows * cols,
+          usableW, usableH
+        });
+      }
+    }
+    return pages;
+  }
+  function sanitizeViewState(view, planning, today) {
+    const d = view && typeof view === 'object' ? view : {};
+    const scenario = planning?.scenarios?.find(s => s.id === planning.activeScenarioId) || planning?.scenarios?.[0];
+    const positions = scenario?.positions || [];
+    const ids = new Set(positions.map(p => p.id));
+    const types = positionTypes(planning?.positionLevels);
+    const groups = chipValues(positions, 'group', EMPTY_GROUP);
+    const sites = chipValues(positions, 'location', EMPTY_SITE);
+    return {
+      roles: sanitizeChipFilters(d.roles, types, LEGACY_ROLE_TYPES),
+      statuses: sanitizeChipFilters(d.statuses, STATUSES),
+      hiring: sanitizeChipFilters(d.hiring, HIRING_STATES),
+      groups: sanitizeChipFilters(d.groups, groups, groups),
+      sites: sanitizeChipFilters(d.sites, sites, sites),
+      maxDepth: [1, 2, 3, 99].includes(d.maxDepth) ? d.maxDepth : 99,
+      collapsed: Array.isArray(d.collapsed) ? d.collapsed.filter(id => ids.has(id)) : [],
+      search: String(d.search || '').slice(0, 1000),
+      asOf: isISODate(d.asOf || '') ? d.asOf : today,
+      dateFilter: d.dateFilter === true,
+      view: ['chart', 'positions', 'compare'].includes(d.view) ? d.view : 'chart',
+      zoom: typeof d.zoom === 'number' && d.zoom >= .15 && d.zoom <= 1.75 ? d.zoom : 1,
+      showChartChanges: d.showChartChanges !== false,
+      compareBaselineId: String(d.compareBaselineId || 'current').slice(0, 150),
+      compareTargetId: String(d.compareTargetId || '').slice(0, 150),
+      compareKind: ['all', 'added', 'removed', 'changed', 'unchanged'].includes(d.compareKind) ? d.compareKind : 'all',
+      compareSearch: String(d.compareSearch || '').slice(0, 200),
+      cardDisplay: sanitizeCardDisplay(d.cardDisplay)
+    };
+  }
+  function sanitizeNamedViews(input, planning, today) {
+    if (!Array.isArray(input)) return [];
+    const out = [], seen = new Set();
+    for (const raw of input.slice(0, 20)) {
+      if (!raw || typeof raw !== 'object') continue;
+      try {
+        const name = cleanString(raw.name || '', 'Saved view name', 40, true);
+        const key = name.toLowerCase();
+        if (seen.has(key)) continue;
+        seen.add(key);
+        const id = typeof raw.id === 'string' && raw.id.trim() ? cleanString(raw.id, 'View ID', 80, true) : makeId('view');
+        out.push({ id, name, view: sanitizeViewState(raw.view || {}, planning, today) });
+      } catch { /* skip invalid named views */ }
+    }
+    return out;
+  }
   function applyCardSizes(nodes, display) {
     for (const n of nodes) {
       const m = cardMetrics(n, display);
@@ -633,109 +782,133 @@
   function layoutOrgChart(nodes, opts = {}) {
     const groupGap = sanitizeCardDisplay(opts).groupGap;
     const stackGap = opts.stackGap ?? 14;
-    const stackIndent = opts.stackIndent ?? 36;
-    const levelGap = opts.levelGap ?? 48;
-    const trunkPad = 16;
+    const levelGap = opts.levelGap ?? 56;
+    const trunkPad = 14;
+    const collapseClear = 22;
     const forest = nodes || [];
+    const r = v => Math.round(v * 100) / 100;
 
-    function size(n) {
+    function measure(n, depth) {
       n._w = n._cardW || CARD_W;
       n._h = n._cardH || 124;
       n._stacked = nodeStacked(n);
+      n._depth = depth;
+      (n.children || []).forEach(c => measure(c, depth + 1));
+    }
+    function boxes(n, maxH) {
       if (!n.children?.length) {
         n._boxW = n._w;
         n._boxH = n._h;
         return;
       }
-      n.children.forEach(size);
+      n.children.forEach(c => boxes(c, maxH));
+      const rowH = maxH[n._depth] || n._h;
       if (n._stacked) {
-        const kidsH = n.children.reduce((s, c) => s + c._boxH, 0) + stackGap * n.children.length;
-        n._boxW = Math.max(n._w, stackIndent + Math.max(...n.children.map(c => c._boxW)));
-        n._boxH = n._h + kidsH;
+        const kidsH = n.children.reduce((s, c) => s + c._boxH, 0) + stackGap * Math.max(0, n.children.length - 1);
+        n._boxW = Math.max(n._w, ...n.children.map(c => c._boxW));
+        n._boxH = rowH + levelGap + kidsH;
       } else {
         const kidsW = n.children.reduce((s, c) => s + c._boxW, 0) + groupGap * (n.children.length - 1);
         n._boxW = Math.max(n._w, kidsW);
-        n._boxH = n._h + levelGap + Math.max(...n.children.map(c => c._boxH));
+        n._boxH = rowH + levelGap + Math.max(...n.children.map(c => c._boxH));
       }
     }
-    function place(n, x, y) {
-      if (!n.children?.length) {
-        n._x = x;
-        n._y = y;
-        return;
-      }
+    function place(n, x, y, maxH) {
+      n._x = x + (n._boxW - n._w) / 2;
+      n._y = y;
+      if (!n.children?.length) return;
+      const childY = y + (maxH[n._depth] || n._h) + levelGap;
       if (n._stacked) {
-        n._x = x;
-        n._y = y;
-        let cy = y + n._h + stackGap;
+        let cy = childY;
         for (const c of n.children) {
-          place(c, x + stackIndent, cy);
+          place(c, x + (n._boxW - c._boxW) / 2, cy, maxH);
           cy += c._boxH + stackGap;
         }
       } else {
-        n._x = x + (n._boxW - n._w) / 2;
-        n._y = y;
         const kidsW = n.children.reduce((s, c) => s + c._boxW, 0) + groupGap * (n.children.length - 1);
         let cx = x + Math.max(0, (n._boxW - kidsW) / 2);
-        const cy = y + n._h + levelGap;
         for (const c of n.children) {
-          place(c, cx, cy);
+          place(c, cx, childY, maxH);
           cx += c._boxW + groupGap;
         }
       }
     }
 
+    forest.forEach(n => measure(n, 0));
+    const maxH = [];
+    (function walk(list) {
+      for (const n of list) {
+        maxH[n._depth] = Math.max(maxH[n._depth] || 0, n._h);
+        if (n.children?.length) walk(n.children);
+      }
+    })(forest);
+    forest.forEach(n => boxes(n, maxH));
     let cursor = 0;
     forest.forEach(n => {
-      size(n);
-      place(n, cursor, 0);
+      place(n, cursor, 0, maxH);
       cursor += n._boxW + groupGap;
     });
     const all = [];
     (function flatten(list) { for (const n of list) { all.push(n); if (n.children?.length) flatten(n.children); } })(forest);
     if (!all.length) return { all, width: 0, height: 0, cardW: CARD_W, connectors: [], groupGap };
-    const minX = Math.min(...all.map(n => n._x));
+    let minX = Math.min(...all.map(n => n._x));
+    for (const n of all) if (n._stacked && n.children?.length) {
+      const colLeft = Math.min(n._x, ...n.children.map(c => c._x));
+      minX = Math.min(minX, colLeft - trunkPad);
+    }
     all.forEach(n => { n._x -= minX; });
     const connectors = [];
     for (const n of all) {
       if (!n.children?.length) continue;
-      const mx = n._x + n._w / 2;
-      const midY = n._y + n._h / 2;
+      const mx = r(n._x + n._w / 2);
+      const bottomY = r(n._y + n._h);
+      const first = n.children[0];
+      const childTop = r(first._y);
       if (n._stacked) {
-        const first = n.children[0], last = n.children[n.children.length - 1];
-        const trunkX = first._x - trunkPad;
-        const joinY = n._y + n._h;
-        connectors.push({ kind: 'stack-lead', fromId: n.id, d: `M${mx},${midY} V${joinY} H${trunkX}` });
-        connectors.push({ kind: 'stack-trunk', fromId: n.id, d: `M${trunkX},${joinY} V${last._y + last._h / 2}` });
+        const last = n.children[n.children.length - 1];
+        const colLeft = Math.min(n._x, ...n.children.map(c => c._x));
+        const trunkX = r(colLeft - trunkPad);
+        const gap = Math.max(8, childTop - bottomY);
+        const dropY = r(bottomY + Math.min(Math.max(collapseClear, gap * 0.4), gap - 8));
+        connectors.push({ kind: 'stack-lead', fromId: n.id, d: `M${mx},${bottomY} V${dropY} H${trunkX}` });
+        connectors.push({ kind: 'stack-trunk', fromId: n.id, d: `M${trunkX},${dropY} V${r(last._y + last._h / 2)}` });
         for (const c of n.children) {
-          const cy = c._y + c._h / 2;
-          connectors.push({ kind: 'stack-spur', fromId: n.id, toId: c.id, d: `M${trunkX},${cy} H${c._x}` });
+          connectors.push({ kind: 'stack-spur', fromId: n.id, toId: c.id, d: `M${trunkX},${r(c._y + c._h / 2)} H${r(c._x)}` });
         }
       } else {
-        const busY = n._y + n._h + levelGap / 2;
-        connectors.push({ kind: 'tree-drop', fromId: n.id, d: `M${mx},${midY} V${busY}` });
-        const xs = n.children.map(c => c._x + c._w / 2);
-        if (xs.length > 1) connectors.push({ kind: 'tree-bus', fromId: n.id, d: `M${Math.min(...xs)},${busY} H${Math.max(...xs)}` });
+        const gap = Math.max(8, childTop - bottomY);
+        const busY = r(bottomY + gap / 2);
+        const xs = [mx, ...n.children.map(c => r(c._x + c._w / 2))];
+        connectors.push({ kind: 'tree-drop', fromId: n.id, d: `M${mx},${bottomY} V${busY}` });
+        const x0 = Math.min(...xs), x1 = Math.max(...xs);
+        if (x1 > x0) connectors.push({ kind: 'tree-bus', fromId: n.id, d: `M${x0},${busY} H${x1}` });
         for (const c of n.children) {
-          const cx = c._x + c._w / 2;
-          connectors.push({ kind: 'tree-down', fromId: n.id, toId: c.id, d: `M${cx},${busY} V${c._y}` });
+          const cx = r(c._x + c._w / 2);
+          connectors.push({ kind: 'tree-down', fromId: n.id, toId: c.id, d: `M${cx},${busY} V${r(c._y)}` });
         }
       }
     }
-    const width = Math.max(...all.map(n => n._x + n._w)) - Math.min(...all.map(n => n._x));
+    const extentX = all.flatMap(n => {
+      if (!(n._stacked && n.children?.length)) return [n._x, n._x + n._w];
+      const colLeft = Math.min(n._x, ...n.children.map(c => c._x));
+      return [colLeft - trunkPad, n._x + n._w];
+    });
+    const width = Math.max(...extentX) - Math.min(...extentX);
     const height = Math.max(...all.map(n => n._y + n._h));
     return { all, width, height, cardW: CARD_W, connectors, groupGap };
   }
 
   return {
     ROLE_TYPES, STATUSES, HIRING_STATES, LEGACY_ROLE_TYPES, POSITION_FIELDS, DIFF_FIELDS, POSITION_CSV_COLUMNS, ALIASES,
-    CARD_DISPLAY_DEFAULTS, CARD_W,
+    CARD_DISPLAY_DEFAULTS, CARD_W, EMPTY_GROUP, EMPTY_SITE,
     esc, slug, makeId, isISODate, cleanString, fmtDate, fteText, csvEscape, csvRows, positionCSVValues,
     detectDelimiter, parseCSV, normHeader, headerMap, normalizeType, normalizeStatus, normalizeDate,
     validatePeopleData, validateScenarioData, validatePlanning, migrateLegacy, projection, totals,
-    scenarioChanges, fieldValue, prepareImport, makeImportScenario, emptyWorkspace, sanitizeChipFilters,
+    scenarioChanges, fieldValue, prepareImport, makeImportScenario, emptyWorkspace, sanitizeChipFilters, mergeChipSelection,
     wouldCreateCycle, validPersonPhoto, sanitizePositionLevels, positionTypes, compareSiblings,
     defaultStacked, nodeStacked, wrapText, showsCumulativeCount, personLabel, sanitizeCardDisplay,
-    cardMetrics, subtreePeopleCount, reorderSiblings, siblingIndex, applyCardSizes, layoutOrgChart
+    cardMetrics, subtreePeopleCount, reorderSiblings, siblingIndex, applyCardSizes, layoutOrgChart,
+    filterLabel, chipValues, spanOfControl, pathToRoot, bulkPatchPositions, placeSibling,
+    tileChartPages, sanitizeViewState, sanitizeNamedViews
   };
 });

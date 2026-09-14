@@ -432,6 +432,9 @@ test('placeSibling reorders among the same manager', () => {
   assert.equal(OrgFlow.siblingIndex(after, 'a').index, 1);
   const unchanged = OrgFlow.placeSibling(positions, 'c', 'm', 'after');
   assert.equal(OrgFlow.siblingIndex(unchanged, 'c').index, 2);
+  const swapped = OrgFlow.placeSibling(positions, 'a', 'b', 'before');
+  assert.equal(OrgFlow.siblingIndex(swapped, 'a').index, 1);
+  assert.equal(OrgFlow.siblingIndex(swapped, 'b').index, 0);
 });
 
 test('named views persist on the planning workspace', () => {

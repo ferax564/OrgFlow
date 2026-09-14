@@ -696,7 +696,11 @@
     const rest = siblings.filter(p => p.id !== id);
     const at = rest.findIndex(p => p.id === targetId);
     if (at < 0) return positions;
-    rest.splice(where === 'after' ? at + 1 : at, 0, pos);
+    let index = where === 'after' ? at + 1 : at;
+    const preview = rest.slice();
+    preview.splice(index, 0, pos);
+    if (preview.every((p, i) => p.id === siblings[i].id)) index = where === 'after' ? at : at + 1;
+    rest.splice(index, 0, pos);
     const rank = new Map(rest.map((p, idx) => [p.id, idx]));
     return positions.map(p => rank.has(p.id) ? { ...p, sortOrder: rank.get(p.id) } : p);
   }

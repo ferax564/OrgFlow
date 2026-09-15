@@ -54,6 +54,7 @@
     <div class="menu-wrap">
       <button class="btn primary" id="exportBtn" aria-label="Export chart or workspace" title="Export chart or workspace"><svg viewBox="0 0 24 24" fill="none"><path d="M12 4v11m0 0 4-4m-4 4-4-4M5 20h14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="label">Export</span><span>⌄</span></button>
       <div class="menu" id="exportMenu">
+        <div class="menu-label">Chart</div>
         <button data-export="png">Current view as PNG</button>
         <button data-export="groups">One PNG per group (ZIP)</button>
         <button data-export="pdf">Board pack (PDF)</button>
@@ -61,8 +62,11 @@
         <button data-export="print">Print this view…</button>
         <button data-export="html">Shareable HTML snapshot</button>
         <div class="sep"></div>
+        <div class="menu-label">Data</div>
         <button data-export="csv">Positions + assignments (CSV)</button>
         <button data-export="people">People directory (CSV)</button>
+        <div class="sep"></div>
+        <div class="menu-label">Workspace</div>
         <button data-export="workspace">Workspace backup (JSON)</button>
         <button data-export="save">Save workspace</button>
         <button data-export="saveAs">Save workspace as…</button>
@@ -181,6 +185,12 @@
   </div>
 </section>
 
+  <div class="filter-strip" id="filterStrip" hidden>
+    <span class="filter-strip-label">Filters on</span>
+    <span class="filter-strip-items" id="filterStripItems"></span>
+    <span class="filter-strip-note" id="filterStripNote"></span>
+    <button class="small-link" id="clearFiltersBtn" type="button">Clear all filters &amp; search</button>
+  </div>
   <div class="toolbar">
     <div class="crumb"><strong id="chartTitle">Organization</strong><span>/ Positions</span><span class="date-pill" id="datePill"></span></div>
     <div class="toolbar-actions"><button class="iconbtn" id="zoomOut" aria-label="Zoom out" title="Zoom out">−</button><span class="zoom-label" id="zoomLabel">100%</span><button class="iconbtn" id="zoomIn" aria-label="Zoom in" title="Zoom in">＋</button>
@@ -201,7 +211,7 @@
     <button class="btn ghost" id="bulkClearBtn" type="button">Clear</button>
     <span class="bulk-hint">⌘/Ctrl-click cards to select. Drop a card onto a sibling to reorder; drop onto someone else to change manager.</span>
   </div>
-  <div class="empty" id="empty"><div class="empty-card"><h2>No positions match these filters</h2><p>Re-enable a position type or approval state, or change the active date.</p></div></div>
+  <div class="empty" id="empty"><div class="empty-card"><h2>No positions match these filters</h2><p>Re-enable a position type or approval state, or change the active date.</p><button class="btn" id="emptyClearFilters" type="button" style="margin-top:14px">Clear all filters &amp; search</button></div></div>
 <section class="drawer" id="drawer" aria-label="Edit position" inert>
   <div class="drawer-head"><div><div class="eyebrow" id="drawerScenario">Current / position</div><h2 id="drawerTitle">Position</h2><p>Reporting lines belong to positions, not people.</p></div><button class="iconbtn" id="drawerClose" aria-label="Close position editor">×</button></div>
   <div class="drawer-body">

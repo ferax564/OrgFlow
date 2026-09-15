@@ -49,7 +49,6 @@ portable:
 linux:
   icon: build/icon.png
   category: Office
-  desktopName: OrgFlow
   executableName: OrgFlow
   syncDesktopName: true
   synopsis: Private org charts and workforce planning

@@ -7,6 +7,7 @@
   "license": "MIT",
   "homepage": "https://github.com/ferax564/OrgFlow",
   "main": "desktop/main.cjs",
+  "desktopName": "OrgFlow.desktop",
   "scripts": {
     "start": "python3 -m http.server 4173",
     "start:enterprise": "node server/index.js",

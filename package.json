@@ -3,13 +3,28 @@
   "private": true,
   "version": "2.0.0",
   "description": "Interactive organization-chart and workforce-planning app that runs entirely in the browser.",
+  "author": "OrgFlow contributors",
+  "license": "MIT",
+  "homepage": "https://github.com/ferax564/OrgFlow",
+  "main": "desktop/main.cjs",
+  "desktopName": "OrgFlow.desktop",
   "scripts": {
     "start": "python3 -m http.server 4173",
     "start:enterprise": "node server/index.js",
     "mcp": "node server/mcp-stdio.js",
-    "test": "node --test tests/*.test.cjs"
+    "test": "node --test tests/*.test.cjs",
+    "icon": "python3 scripts/make-icon.py",
+    "desktop": "electron .",
+    "dist": "electron-builder --publish never",
+    "dist:win": "electron-builder --win portable --x64 --publish never",
+    "dist:mac": "electron-builder --mac zip --publish never",
+    "dist:linux": "electron-builder --linux AppImage --x64 --publish never"
   },
   "engines": {
     "node": ">=18"
+  },
+  "devDependencies": {
+    "electron": "^36.9.5",
+    "electron-builder": "^26.15.3"
   }
 }

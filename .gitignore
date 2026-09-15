@@ -9,3 +9,7 @@ test-results/
 data/
 *.sqlite
 .herenow/
+dist/
+dist-electron/
+out/
+OrgFlow-data/

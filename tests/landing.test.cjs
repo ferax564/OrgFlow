@@ -12,10 +12,11 @@ test('landing keeps public CTAs and documents both hosts', () => {
   assert.match(html, /<h1>See the company\./);
   assert.match(html, /<a class="btn primary" href="app.html">Open the planner<\/a>/);
   assert.match(html, /id="run"/);
-  assert.match(html, /Two ways to run OrgFlow/);
+  assert.match(html, /Ways to run OrgFlow/);
   assert.match(html, /https:\/\/deep-quinoa-tbf2\.here\.now\//);
   assert.match(html, /https:\/\/ferax564\.github\.io\/OrgFlow\//);
   assert.match(html, /npm run start:enterprise/);
+  assert.match(html, /Desktop app/);
   assert.match(html, /Named views/);
   assert.match(html, /Print \/ A3/);
   assert.match(html, /Group and site chips/);

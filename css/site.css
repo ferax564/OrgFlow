@@ -189,6 +189,7 @@ html[data-host="enterprise"] .live-row { display: none; }
 }
 .mode h3 { margin: 0 0 8px; font-size: 22px; letter-spacing: -.03em; }
 .mode p { margin: 0; color: var(--muted); }
+.mode .hero-actions { margin-top: 14px; }
 .mode-cmd {
   margin: 14px 0 0;
   padding: 10px 12px;
@@ -197,6 +198,8 @@ html[data-host="enterprise"] .live-row { display: none; }
   color: #ece7df;
   font-size: 12.5px;
 }
+.mode-cmd a { color: inherit; }
+.mode-cmd a:hover { color: #fff; }
 .login-page .wrap { width: min(480px, calc(100% - 40px)); }
 .login-card {
   margin: 28px 0 48px;

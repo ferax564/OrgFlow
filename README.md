@@ -27,6 +27,26 @@ python3 -m http.server 4173
 
 Then open http://localhost:4173/ or http://localhost:4173/app.html. Opening the files as `file://` may block image processing and some exports.
 
+### Desktop app (no installer)
+
+CI builds a portable binary for each OS. Download it from [GitHub Releases](https://github.com/ferax564/OrgFlow/releases) (or the **Desktop binaries** workflow artifacts). You do not install into Program Files or `/Applications`.
+
+| OS | File | How to run |
+| --- | --- | --- |
+| Windows | `OrgFlow-*-windows.exe` | Double-click the `.exe`. Windows may show SmartScreen on an unsigned build — More info → Run anyway. Workspace data is stored in `OrgFlow-data` next to the exe. |
+| macOS | `OrgFlow-*-mac.zip` | Unzip and double-click `OrgFlow.app`. You can leave it in Downloads; you do not need to drag it to Applications. If Gatekeeper blocks it, right-click → Open. |
+| Linux | `OrgFlow-*-linux.AppImage` | `chmod +x OrgFlow-*-linux.AppImage && ./OrgFlow-*-linux.AppImage` |
+
+```bash
+npm ci
+npm run desktop          # run from this repo
+npm run dist:linux       # AppImage (Linux host)
+npm run dist:win         # portable exe (Windows host)
+npm run dist:mac         # .app zip (macOS host)
+```
+
+Tagged versions (`v2.0.0`) publish those three files onto the GitHub Release.
+
 On this public site there is no backend. Clearing site data removes the workspace; export a JSON backup first. An optional Node host can share one org — see [Enterprise host](#enterprise-host-optional).
 
 ## Using the planner
@@ -90,6 +110,7 @@ Import can replace, append, or update by position ID. Spreadsheet formulas in ce
 - Scenario planning and before/after comparison
 - Company branding, light/dark modes, palettes (Indigo, Crimson, Graphite, Ocean, Emerald)
 - First-run tour and starter templates (startup, agency, nonprofit)
+- Portable desktop app (Windows exe, macOS .app, Linux AppImage) with no installer
 
 ## Example companies and templates
 
@@ -164,7 +185,7 @@ Details, hardening notes, Docker Keycloak, AWS: [`server/README.md`](server/READ
 npm test
 ```
 
-The suite covers CSV parsing, spreadsheet-formula escaping, scenario validation, dotted-line rules, custom-field CSV round-trips, starter templates, comparison diffs, example workspaces, filter-set migration, stacked chart layout, sibling reordering, custom position levels, group/site chips, bulk edit, named views, A3 tiling, and enterprise ACL/stress cases (forged cookies, path traversal, oversized bodies, last-admin protection, concurrent saves).
+The suite covers CSV parsing, spreadsheet-formula escaping, scenario validation, dotted-line rules, custom-field CSV round-trips, starter templates, comparison diffs, example workspaces, filter-set migration, stacked chart layout, sibling reordering, custom position levels, group/site chips, bulk edit, named views, A3 tiling, the desktop file server, and enterprise ACL/stress cases (forged cookies, path traversal, oversized bodies, last-admin protection, concurrent saves).
 
 With Chrome and `puppeteer-core` installed locally:
 

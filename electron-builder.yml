@@ -1,0 +1,60 @@
+appId: org.orgflow.planner
+productName: OrgFlow
+copyright: Copyright © OrgFlow contributors
+asar: true
+directories:
+  output: dist
+  buildResources: build
+files:
+  - desktop/**/*
+  - app.html
+  - index.html
+  - 404.html
+  - LICENSE
+  - README.md
+  - manifest.webmanifest
+  - robots.txt
+  - css/**/*
+  - js/**/*
+  - assets/**/*
+  - examples/**/*
+  - package.json
+extraMetadata:
+  main: desktop/main.cjs
+artifactName: OrgFlow-${version}-${os}.${ext}
+compression: maximum
+electronFuses:
+  runAsNode: false
+  enableNodeCliInspectArguments: false
+  enableNodeOptionsEnvironmentVariable: false
+mac:
+  category: public.app-category.business
+  icon: build/icon.png
+  identity: null
+  target:
+    - target: zip
+      arch:
+        - universal
+  artifactName: OrgFlow-${version}-mac.zip
+win:
+  icon: build/icon.png
+  signAndEditExecutable: false
+  target:
+    - target: portable
+      arch:
+        - x64
+portable:
+  artifactName: OrgFlow-${version}-windows.exe
+  requestExecutionLevel: user
+linux:
+  icon: build/icon.png
+  category: Office
+  desktopName: OrgFlow
+  executableName: OrgFlow
+  syncDesktopName: true
+  synopsis: Private org charts and workforce planning
+  target:
+    - target: AppImage
+      arch:
+        - x64
+  artifactName: OrgFlow-${version}-linux.AppImage

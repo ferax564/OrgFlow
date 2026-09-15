@@ -1,0 +1,73 @@
+name: Desktop binaries
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: desktop-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  desktop:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: windows
+            os: windows-latest
+            script: dist:win
+            artifact: 'dist/OrgFlow-*-windows.exe'
+          - name: mac
+            os: macos-latest
+            script: dist:mac
+            artifact: 'dist/OrgFlow-*-mac.zip'
+          - name: linux
+            os: ubuntu-latest
+            script: dist:linux
+            artifact: 'dist/OrgFlow-*-linux.AppImage'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Run tests
+        run: npm test
+      - name: Build portable app
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+        run: npm run ${{ matrix.script }}
+      - name: Upload binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: OrgFlow-${{ matrix.name }}
+          path: ${{ matrix.artifact }}
+          if-no-files-found: error
+          retention-days: 14
+
+  release:
+    name: GitHub Release
+    needs: desktop
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          merge-multiple: true
+          path: dist
+      - name: Publish tagged binaries
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/OrgFlow-*
+          generate_release_notes: true
+          fail_on_unmatched_files: true

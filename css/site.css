@@ -167,7 +167,7 @@ section { padding: 28px 0 10px; }
 }
 .cta-band h2 { margin: 0 0 6px; font-size: 28px; letter-spacing: -.04em; }
 .cta-band p { margin: 0; color: var(--muted); max-width: 36rem; }
-.modes { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.modes { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
 .modes[hidden],
 .live-row[hidden],
 html[data-host="enterprise"] .modes,

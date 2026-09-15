@@ -548,7 +548,7 @@ function renderPositionTable(){
   const q=$('#search').value.trim().toLowerCase(),rows=people.filter(p=>baseVisible(p)&&(!q||matchesSearch(p,q))).sort((a,b)=>a.group.localeCompare(b.group)||a.title.localeCompare(b.title));
   const data={positions:rows},t=totals(data),byId=new Map(people.map(p=>[p.id,p]));
   $('#registerSummary').innerHTML=`<span><b>${t.positions}</b> matching positions</span><span><b>${t.filled}</b> filled</span><span><b>${t.open}</b> open</span><span><b>${fteText(t.approvedFte)}</b> approved FTE</span>`;
-  $('#positionsRows').innerHTML=rows.length?rows.map(p=>`<tr class="${selectedIds.has(p.id)?'selected':''}"><td class="check-col"><input type="checkbox" data-select-position="${esc(p.id)}" ${selectedIds.has(p.id)?'checked':''} aria-label="Select ${esc(p.title)}" /></td><td class="title-cell">${esc(p.title)}<span class="sub">${esc(p.id)} · ${esc(p.type)}</span></td><td>${p.personName?esc(p.personName):'<span style="color:var(--muted)">Unassigned</span>'}</td><td>${esc(p.group||'—')}</td><td>${esc(p.location||'—')}</td><td>${statusPill(p.hiringState)}</td><td>${statusPill(p.status,p.status==='Approved'?'approved':'unapproved')}</td><td>${fteText(p.fte)}</td><td>${esc(byId.get(p.managerId)?.title||'Top level')}</td><td style="white-space:nowrap">${esc(p.startDate||'No start')}<span class="sub">${p.endDate?'Until '+esc(p.endDate):'No end date'}</span></td><td><button class="btn compact-btn" data-edit-position="${esc(p.id)}" aria-label="Edit ${esc(p.title)}">Edit</button></td></tr>`).join(''):'<tr><td colspan="11" class="empty-row">No matching positions. Clear the search or reset chart filters.</td></tr>';
+  $('#positionsRows').innerHTML=rows.length?rows.map(p=>`<tr class="${selectedIds.has(p.id)?'selected':''}"><td class="check-col"><input type="checkbox" data-select-position="${esc(p.id)}" ${selectedIds.has(p.id)?'checked':''} aria-label="Select ${esc(p.title)}" /></td><td class="title-cell">${esc(p.title)}<span class="sub">${esc(p.id)} · ${esc(p.type)}</span></td><td>${p.personName?esc(p.personName):'<span style="color:var(--muted)">Unassigned</span>'}</td><td>${esc(p.group||'—')}</td><td>${esc(p.location||'—')}</td><td>${statusPill(p.hiringState)}</td><td>${statusPill(p.status,p.status==='Approved'?'approved':'unapproved')}</td><td>${fteText(p.fte)}</td><td>${esc(byId.get(p.managerId)?.title||'Top level')}</td><td style="white-space:nowrap">${esc(p.startDate||'No start')}<span class="sub">${p.endDate?'Until '+esc(p.endDate):'No end date'}</span></td><td><button class="btn compact-btn" data-edit-position="${esc(p.id)}" aria-label="Edit ${esc(p.title)}">Edit</button></td></tr>`).join(''):`<tr><td colspan="11" class="empty-row">${activeFilterItems().length?'No matching positions. <button class="small-link" type="button" data-clear-filters>Clear all filters &amp; search</button> to see every seat in this scenario.':'No positions in this scenario yet. Add one, import a CSV, or load an example.'}</td></tr>`;
   const allBox=$('#registerSelectAll');if(allBox)allBox.checked=rows.length>0&&rows.every(p=>selectedIds.has(p.id));
   const unassigned=activeScenario().employees.filter(e=>!activeScenario().positions.some(p=>p.personId===e.id));
   $('#registerFootnote').innerHTML=`Positions and people are separate. <b>${unassigned.length} unassigned ${unassigned.length===1?'person':'people'}</b> remain in this scenario’s directory and can be selected when filling a position. ${unassigned.length?`<button class="small-link" id="showUnassigned">View names</button>`:''}<br>Search and sidebar filters apply here; collapsed chart levels do not.`;
@@ -581,7 +581,7 @@ function renderComparison(){
   $('#comparisonRows').innerHTML=rows.length?rows.map(c=>{
     const p=c.after||c.before,short=c.kind==='added'?`New ${p.type.toLowerCase()} · ${fteText(p.fte)} FTE · ${p.hiringState}`:c.kind==='removed'?`Position removed · ${fteText(p.fte)} FTE`:c.kind==='unchanged'?'No changes to this position or its assigned person.':c.fields.map(f=>f.label).join(' · ');
     return `<tr data-change-id="${esc(c.id)}"><td>${statusPill(c.kind[0].toUpperCase()+c.kind.slice(1),c.kind)}</td><td class="title-cell">${esc(p.title)}<span class="sub">${esc(c.id)} · ${esc(p.group||'No group')}</span></td><td class="change-list">${esc(short)}</td><td><button class="btn compact-btn" data-diff-toggle="${esc(c.id)}" aria-expanded="false">Details</button></td></tr><tr class="change-details hidden" data-detail-id="${esc(c.id)}"><td colspan="4"><div class="detail-grid">${diffDetailsHTML(c,d)}</div></td></tr>`;
-  }).join(''):'<tr><td colspan="4" class="empty-row">'+(changedCount?'No changes match this search or category.':'No differences. Edit a scenario to see changes here.')+'</td></tr>';
+  }).join(''):'<tr><td colspan="4" class="empty-row">'+(changedCount?'No changes match this search or category.':`No differences — “${esc(d.target.name)}” is identical to ${compareBaselineId==='__snapshot__'?'its frozen baseline':'“'+esc(d.baseline.name)+'”'}. It was copied there; add, move or edit positions in that scenario, then compare again.`)+'</td></tr>';
   $('#comparisonFootnote').textContent=`${rows.length} ${compareKind==='unchanged'?'unchanged positions':'matching positions'} shown · ${changedCount} changed positions in the full comparison. Total FTE: ${fteText(a.fte)} → ${fteText(b.fte)}. Exports use the category and search above; summary totals always cover both full snapshots. A move appears as Changed, not a removal and addition.`;
 }
 function diffDetailsHTML(change,data){
@@ -624,6 +624,36 @@ function applyDefaultFilters(){
 }
 function resetFilters(){
   applyDefaultFilters();render();
+}
+function activeFilterItems(){
+  const items=[],types=allPositionTypes(),groups=allGroups(),sites=allSites(),q=$('#search').value.trim();
+  if(q)items.push(`Search “${exportText(q,26)}”`);
+  if(activeRoles.size<types.length)items.push(`Type ${activeRoles.size} of ${types.length}`);
+  if(activeStatuses.size<STATUSES.length)items.push(`Approval ${activeStatuses.size} of ${STATUSES.length}`);
+  if(activeHiring.size<HIRING_STATES.length)items.push(`Hiring ${activeHiring.size} of ${HIRING_STATES.length}`);
+  if(activeGroups&&activeGroups.size<groups.length)items.push(`Group ${activeGroups.size} of ${groups.length}`);
+  if(activeSites&&activeSites.size<sites.length)items.push(`Site ${activeSites.size} of ${sites.length}`);
+  if($('#dateFilter').checked&&$('#asOf').value)items.push(`Active ${fmtDate($('#asOf').value)}`);
+  return items;
+}
+function renderFilterStrip(){
+  const strip=$('#filterStrip');if(!strip)return;
+  const items=activeFilterItems(),on=items.length>0;
+  strip.hidden=!on;document.querySelector('main')?.classList.toggle('filters-on',on);
+  $('#filterStripItems').innerHTML=items.map(x=>`<span class="filter-pill">${esc(x)}</span>`).join('');
+  const note=$('#filterStripNote');if(note)note.textContent=on&&currentView==='compare'?'· chart & register only — Compare uses full snapshots':'';
+}
+function clearAllFilters(){
+  knownGroups=null;knownSites=null;
+  activeRoles=new Set(allPositionTypes());activeStatuses=new Set(STATUSES);activeHiring=new Set(HIRING_STATES);
+  activeGroups=new Set(allGroups());activeSites=new Set(allSites());
+  $('#search').value='';$('#dateFilter').checked=false;$('#asOf').value=today;
+  maxDepth=99;collapsed.clear();
+  $$('#depthSeg button').forEach(b=>b.classList.toggle('active',b.dataset.depth==='99'));
+  setupChips();render();toast('All filters and search cleared');
+}
+function activeDateNote(){
+  return $('#dateFilter').checked&&$('#asOf').value?` · active ${fmtDate($('#asOf').value)}`:'';
 }
 function syncChartDisplayUi(){
   const d=cardDisplay,map={showFte:'fte',showSite:'site',showGroup:'group',showType:'type',showApproval:'approval',showHiring:'hiring',showCumulative:'cumulative',showSpan:'span',chartDots:'chartDots'};
@@ -693,6 +723,7 @@ function setupPlanningEvents(){
   $$('.plan-tabs [data-view]').forEach(b=>b.onclick=()=>setView(b.dataset.view));
   $('#registerAddBtn').onclick=()=>openDrawer('',true);
   $('#positionsRows').onclick=e=>{
+    if(e.target.closest?.('[data-clear-filters]')){clearAllFilters();return;}
     const box=e.target.closest?.('[data-select-position]');
     if(box){e.stopPropagation();toggleSelected(box.dataset.selectPosition,true);return;}
     const b=e.target.closest('[data-edit-position]');if(b)openDrawer(b.dataset.editPosition);
@@ -711,6 +742,8 @@ function setupPlanningEvents(){
   $('#comparisonRows').onclick=e=>{const b=e.target.closest('[data-diff-toggle]');if(!b)return;const row=$$('[data-detail-id]').find(r=>r.dataset.detailId===b.dataset.diffToggle);const expanded=row.classList.contains('hidden');row.classList.toggle('hidden',!expanded);b.setAttribute('aria-expanded',String(expanded));b.textContent=expanded?'Hide':'Details';};
   $('#comparisonCSVBtn').onclick=exportComparisonCSV;$('#comparisonPNGBtn').onclick=exportComparisonPNG;
   $('#resetFilters').onclick=resetFilters;
+  $('#clearFiltersBtn').onclick=clearAllFilters;
+  $('#emptyClearFilters').onclick=clearAllFilters;
   $('#filterToggle').onclick=()=>setFiltersOpen(!$('.layout').classList.contains('filters-open'));
   $('#closeFilters').onclick=()=>setFiltersOpen(false);
   $('#directoryClose').onclick=()=>closeDialog('directoryModal');
@@ -831,6 +864,12 @@ function render(){
   const full=buildFilteredForest(),forest=applyDepthAndCollapse(full),search=$('#search').value.trim().toLowerCase(),lay=layoutTree(forest),diffs=chartDiffMap();
   const allFiltered=flatten(full,[]),childCounts=new Map(allFiltered.map(n=>[n.id,n.children.length]));
   $('#empty').style.display=forest.length||currentView!=='chart'?'none':'grid';
+  const filtersOn=activeFilterItems().length>0,emptyCard=$('#empty .empty-card');
+  if(emptyCard){
+    emptyCard.querySelector('h2').textContent=filtersOn?'No positions match these filters':'No positions in this scenario yet';
+    emptyCard.querySelector('p').textContent=filtersOn?'Search, filter chips and the date filter are limiting the chart.':'Add a position, import a CSV, or load an example company from the sidebar.';
+    $('#emptyClearFilters')?.classList.toggle('hidden',!filtersOn);
+  }
   chartBounds={width:Math.max(350,lay.width+100),height:Math.max(250,lay.height+110)};
   const width=Math.max(chartBounds.width,(wrap.clientWidth-48)/zoom),height=Math.max(chartBounds.height,(wrap.clientHeight-48)/zoom),offX=(width-lay.width)/2,offY=32;
   svg.setAttribute('viewBox',`0 0 ${width} ${height}`);svg.setAttribute('width',Math.ceil(width*zoom));svg.setAttribute('height',Math.ceil(height*zoom));svg.setAttribute('xmlns','http://www.w3.org/2000/svg');
@@ -854,6 +893,7 @@ function render(){
   const t=totals(activeScenario(),p=>baseVisible(p));$('#countVisible').textContent=t.positions;$('#countTotal').textContent=t.filled;$('#countApproved').textContent=t.open;$('#countOpen').textContent=t.recruiting;$('#countFte').textContent=fteText(t.fte);$('#countApprovedFte').textContent=fteText(t.approvedFte);
   $('#datePill').textContent=$('#dateFilter').checked?`Active ${fmtDate($('#asOf').value)}`:'All dates';$('#zoomLabel').textContent=Math.round(zoom*100)+'%';
   $('#visibleCardsHint').textContent=`${lay.all.length} cards displayed · ${t.positions} matching positions. FTE totals ignore collapse and search.`;
+  renderFilterStrip();
   if(currentView==='positions')renderPositionTable();if(currentView==='compare')renderComparison();
   if(search&&currentView==='chart'){const hit=lay.all.find(n=>matchesSearch(n,search));if(hit)setTimeout(()=>svg.querySelector(`[data-id="${CSS.escape(hit.id)}"]`)?.scrollIntoView({behavior:'smooth',block:'center',inline:'center'}),30);}
   if($('#drawer').classList.contains('open')&&selectedId)updateOrderControls();
@@ -1026,7 +1066,7 @@ function restoreView(input){
   activeGroups=new Set(view.groups);activeSites=new Set(view.sites);
   maxDepth=view.maxDepth;collapsed=new Set(view.collapsed);zoom=view.zoom;showChartChanges=view.showChartChanges;
   currentView=view.view;compareBaselineId=view.compareBaselineId;compareTargetId=view.compareTargetId;compareKind=view.compareKind;cardDisplay=view.cardDisplay;
-  $('#search').value=view.search;$('#asOf').value=view.asOf;$('#dateFilter').checked=view.dateFilter;$('#compareSearch').value=view.compareSearch;setupChips();
+  $('#search').value=view.search;$('#dateFilter').checked=view.dateFilter;$('#asOf').value=view.dateFilter?view.asOf:today;$('#compareSearch').value=view.compareSearch;setupChips();
   $$('#depthSeg button').forEach(b=>b.classList.toggle('active',+b.dataset.depth===maxDepth));
   syncChartDisplayUi();
 }
@@ -1058,7 +1098,7 @@ function saveNamedView(){
 function applyNamedView(){
   const id=$('#namedViewSelect')?.value;if(!id)return;
   const found=(workspace.namedViews||[]).find(v=>v.id===id);if(!found)return;
-  restoreView(found.view);setView(found.view.view);render();centerChart();toast(`Applied ${found.name}`);
+  restoreView(found.view);setView(found.view.view);render();centerChart();toast(`Applied ${found.name}${activeDateNote()}`);
 }
 function deleteNamedView(){
   const id=$('#namedViewSelect')?.value;if(!id){toast('Choose a saved view to delete');return;}
@@ -1181,7 +1221,7 @@ async function restoreWorkspace(file){
     const entries={[BRANDING_KEY]:JSON.stringify(next.branding),'orgflow.theme':next.theme,'orgflow.palette':next.palette,'orgflow.planning.view.v2':JSON.stringify(next.view),[PLANNING_KEY]:JSON.stringify(next.planning)},previous={};
     try{for(const key of Object.keys(entries))previous[key]=localStorage.getItem(key);for(const [key,value] of Object.entries(entries))localStorage.setItem(key,value);}
     catch{for(const [key,value] of Object.entries(previous)){try{value===null?localStorage.removeItem(key):localStorage.setItem(key,value);}catch{}}throw new Error('Browser storage is unavailable or full. Restore was not applied.');}
-    workspace=next.planning;lastSavedPlanningText=JSON.stringify(workspace);branding=next.branding;modelLoadError='';$('#loadError').classList.add('hidden');undoStack=[];redoStack=[];updateUndoButtons();syncProjection();hidePositionEditor();setPalette(next.palette,false);setTheme(next.theme,false);restoreView(next.view);applyBranding();render();centerChart();toast(`Restored ${count} scenario(s)`);afterEnterprisePersist();
+    workspace=next.planning;lastSavedPlanningText=JSON.stringify(workspace);branding=next.branding;modelLoadError='';$('#loadError').classList.add('hidden');undoStack=[];redoStack=[];updateUndoButtons();syncProjection();hidePositionEditor();setPalette(next.palette,false);setTheme(next.theme,false);restoreView(next.view);applyBranding();render();centerChart();toast(`Restored ${count} scenario(s)${activeDateNote()}`);afterEnterprisePersist();
   }catch(error){alert(`Workspace not restored.\n\n${error.message||'The file could not be read.'}`);}
 }
 function safeGet(key){try{return localStorage.getItem(key);}catch{return null;}}
@@ -1209,8 +1249,9 @@ function replaceWorkspace(next,{brandingNext=null,palette='indigo',theme='light'
     applyBranding();
   }
   setPalette(palette,false);setTheme(theme,false);
+  syncProjection();
   if(view)restoreView(view);else applyDefaultFilters();
-  hidePositionEditor();syncProjection();render();centerChart();updateUndoButtons();
+  hidePositionEditor();render();centerChart();updateUndoButtons();
   const aside=document.querySelector('aside');if(aside)aside.scrollTop=0;
   afterEnterprisePersist();
 }
@@ -1226,7 +1267,7 @@ function loadSampleWorkspace(sampleId,{empty=false,skipConfirm=false}={}){
     }else{
       const sample=ORGFLOW_EXAMPLES[sampleId];
       replaceWorkspace(sample.planning,{brandingNext:sample.branding,palette:sample.palette,theme:sample.theme,view:sample.view||{},sampleId,message:`Loaded ${sample.branding.companyName}`});
-      toast(`Loaded ${sample.branding.companyName}`);
+      toast(`Loaded ${sample.branding.companyName}${activeDateNote()}`);
     }
   }catch(error){toast(error.message||'Could not load the example.');}
 }
@@ -1237,7 +1278,7 @@ function loadStarterTemplate(id,{skipConfirm=false}={}){
   if(!skipConfirm&&!confirm(`Replace the current workspace with ${t.branding.companyName}?\n\nThis overwrites scenarios, people and branding in this browser.`))return;
   try{
     replaceWorkspace(t.planning,{brandingNext:t.branding,palette:t.palette||'indigo',theme:'light',message:`Loaded ${t.branding.companyName}`});
-    toast(`Loaded ${t.branding.companyName}`);
+    toast(`Loaded ${t.branding.companyName}${activeDateNote()}`);
   }catch(error){toast(error.message||'Could not load the template.');}
 }
 function markWelcomeSeen(){try{localStorage.setItem(WELCOME_KEY,'1');}catch{}}

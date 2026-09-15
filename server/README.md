@@ -1,6 +1,6 @@
 # OrgFlow enterprise host
 
-The public site (`index.html` / `app.html` on GitHub Pages or here.now) stays **browser-only**. This Node host is optional: one shared workspace per tenant, login, then OrgFlow decides what each person may see.
+The public site (`index.html` / `app.html` on [GitHub Pages](https://ferax564.github.io/OrgFlow/)) stays **browser-only**. This Node host is optional: one shared workspace per tenant, login, then OrgFlow decides what each person may see.
 
 ## Start locally (no Keycloak)
 

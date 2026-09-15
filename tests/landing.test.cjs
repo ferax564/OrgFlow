@@ -13,10 +13,16 @@ test('landing keeps public CTAs and documents both hosts', () => {
   assert.match(html, /<a class="btn primary" href="app.html">Open the planner<\/a>/);
   assert.match(html, /id="run"/);
   assert.match(html, /Ways to run OrgFlow/);
-  assert.match(html, /https:\/\/deep-quinoa-tbf2\.here\.now\//);
   assert.match(html, /https:\/\/ferax564\.github\.io\/OrgFlow\//);
+  assert.doesNotMatch(html, /here\.now/i);
+  assert.doesNotMatch(html, /Live demo/);
   assert.match(html, /npm run start:enterprise/);
   assert.match(html, /Desktop app/);
+  assert.match(html, /href="#run">Downloads/);
+  assert.match(html, /https:\/\/github.com\/ferax564\/OrgFlow\/releases\/download\/v2\.0\.0\/OrgFlow-2\.0\.0-windows\.exe/);
+  assert.match(html, /https:\/\/github.com\/ferax564\/OrgFlow\/releases\/download\/v2\.0\.0\/OrgFlow-2\.0\.0-mac\.zip/);
+  assert.match(html, /https:\/\/github.com\/ferax564\/OrgFlow\/releases\/download\/v2\.0\.0\/OrgFlow-2\.0\.0-linux\.AppImage/);
+  assert.match(html, /href="https:\/\/github.com\/ferax564\/OrgFlow\/releases"/);
   assert.match(html, /Named views/);
   assert.match(html, /Print \/ A3/);
   assert.match(html, /Group and site chips/);
@@ -25,8 +31,12 @@ test('landing keeps public CTAs and documents both hosts', () => {
 
 test('README lists live hosts once and a single enterprise heading', () => {
   const md = read('README.md');
-  assert.match(md, /deep-quinoa-tbf2\.here\.now/);
   assert.match(md, /ferax564\.github\.io\/OrgFlow/);
+  assert.match(md, /https:\/\/ferax564\.github\.io\/OrgFlow\/app\.html/);
+  assert.doesNotMatch(md, /here\.now/i);
+  assert.match(md, /OrgFlow-2\.0\.0-windows\.exe/);
+  assert.match(md, /OrgFlow-2\.0\.0-mac\.zip/);
+  assert.match(md, /OrgFlow-2\.0\.0-linux\.AppImage/);
   const headings = md.match(/^## Enterprise host \(optional\)$/gm) || [];
   assert.equal(headings.length, 1);
 });

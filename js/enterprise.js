@@ -1,5 +1,5 @@
 /**
- * Optional enterprise adapter. On GitHub Pages / here.now, /api/meta is missing
+ * Optional enterprise adapter. On GitHub Pages, /api/meta is missing
  * and the planner stays fully local. On the Node host it uses session cookies.
  */
 (function () {

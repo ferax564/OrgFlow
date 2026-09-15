@@ -50,9 +50,9 @@ async function serve(root, port) {
     assert.match(how, /planning session/);
     const run = await page.$eval('#run h2', el => el.textContent);
     assert.match(run, /Two ways to run OrgFlow/);
-    assert.match(await page.$eval('footer', el => el.textContent), /here\.now/);
+    assert.match(await page.$eval('footer', el => el.textContent), /GitHub Pages/);
     const live = await page.$eval('a.live-chip', el => el.getAttribute('href'));
-    assert.match(live, /here\.now/);
+    assert.match(live, /ferax564\.github\.io\/OrgFlow/);
     await page.goto(`http://127.0.0.1:${port}/app.html`, { waitUntil: 'networkidle0' });
     await page.evaluate(() => localStorage.clear());
     await page.reload({ waitUntil: 'networkidle0' });

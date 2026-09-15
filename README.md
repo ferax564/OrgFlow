@@ -2,9 +2,7 @@
 
 Private organization charts and workforce planning in the browser. Positions stay separate from people. Scenarios copy Current instead of overwriting it. Names, photos and logos stay on the device that opened the page until you export a file.
 
-**Live demo:** [deep-quinoa-tbf2.here.now](https://deep-quinoa-tbf2.here.now/) · **Planner:** [app.html](https://deep-quinoa-tbf2.here.now/app.html)
-
-**GitHub Pages:** [ferax564.github.io/OrgFlow](https://ferax564.github.io/OrgFlow/) (after Settings → Pages points at the `gh-pages` branch)
+**Public site:** [ferax564.github.io/OrgFlow](https://ferax564.github.io/OrgFlow/) · **Planner:** [app.html](https://ferax564.github.io/OrgFlow/app.html)
 
 ![Harbor & Co organization chart](examples/harbor-and-co/chart.png)
 
@@ -29,13 +27,13 @@ Then open http://localhost:4173/ or http://localhost:4173/app.html. Opening the 
 
 ### Desktop app (no installer)
 
-CI builds a portable binary for each OS. Download it from [GitHub Releases](https://github.com/ferax564/OrgFlow/releases) (or the **Desktop binaries** workflow artifacts). You do not install into Program Files or `/Applications`.
+CI builds a portable binary for each OS. Download **v2.0.0** below, or browse [all GitHub Releases](https://github.com/ferax564/OrgFlow/releases) (or the **Desktop binaries** workflow artifacts). You do not install into Program Files or `/Applications`.
 
 | OS | File | How to run |
 | --- | --- | --- |
-| Windows | `OrgFlow-*-windows.exe` | Double-click the `.exe`. Windows may show SmartScreen on an unsigned build — More info → Run anyway. Workspace data is stored in `OrgFlow-data` next to the exe. |
-| macOS | `OrgFlow-*-mac.zip` | Unzip and double-click `OrgFlow.app`. You can leave it in Downloads; you do not need to drag it to Applications. If Gatekeeper blocks it, right-click → Open. |
-| Linux | `OrgFlow-*-linux.AppImage` | `chmod +x OrgFlow-*-linux.AppImage && ./OrgFlow-*-linux.AppImage` |
+| Windows | [OrgFlow-2.0.0-windows.exe](https://github.com/ferax564/OrgFlow/releases/download/v2.0.0/OrgFlow-2.0.0-windows.exe) | Double-click the `.exe`. Windows may show SmartScreen on an unsigned build — More info → Run anyway. Workspace data is stored in `OrgFlow-data` next to the exe. |
+| macOS | [OrgFlow-2.0.0-mac.zip](https://github.com/ferax564/OrgFlow/releases/download/v2.0.0/OrgFlow-2.0.0-mac.zip) | Unzip and double-click `OrgFlow.app`. You can leave it in Downloads; you do not need to drag it to Applications. If Gatekeeper blocks it, right-click → Open. |
+| Linux | [OrgFlow-2.0.0-linux.AppImage](https://github.com/ferax564/OrgFlow/releases/download/v2.0.0/OrgFlow-2.0.0-linux.AppImage) | `chmod +x OrgFlow-*-linux.AppImage && ./OrgFlow-*-linux.AppImage` |
 
 ```bash
 npm ci
@@ -154,13 +152,11 @@ The Actions `GITHUB_TOKEN` cannot turn Pages on (the Pages create API is an admi
 2. **Build and deployment → Source:** Deploy from a branch
 3. **Branch:** `gh-pages` / `/ (root)` → Save
 
-Until that is saved, `has_pages` stays false and `ferax564.github.io/OrgFlow` 404s even though the `gh-pages` branch has the site.
-
-The always-on demo is [here.now](https://deep-quinoa-tbf2.here.now/). `login.html` and `admin.html` are not copied onto Pages; they belong to the optional Node host.
+That one-time save is already done for this repo. The public site is [ferax564.github.io/OrgFlow](https://ferax564.github.io/OrgFlow/). `login.html` and `admin.html` are not copied onto Pages; they belong to the optional Node host.
 
 ## Enterprise host (optional)
 
-The Pages / here.now site stays private and local. For a **shared** organization on your machine or AWS, run the Node host. **Keycloak is not required locally.** The landing page (`index.html`) documents both modes; when that host is running it rewrites Open-app links to `login.html`.
+The GitHub Pages site stays private and local. For a **shared** organization on your machine or AWS, run the Node host. **Keycloak is not required locally.** The landing page (`index.html`) documents both modes; when that host is running it rewrites Open-app links to `login.html`.
 
 ```bash
 npm run start:enterprise
@@ -197,7 +193,7 @@ node scripts/smoke.cjs        # landing page plus planner; starts its own server
 
 ## Privacy
 
-On GitHub Pages and here.now, people names, reporting lines, photos and logos never leave the browser unless you export a file. Logos and photos are processed locally; SVG uploads are sanitized before conversion to PNG. Those hosts serve only the program, not your roster.
+On GitHub Pages, people names, reporting lines, photos and logos never leave the browser unless you export a file. Logos and photos are processed locally; SVG uploads are sanitized before conversion to PNG. That host serves only the program, not your roster.
 
 The optional enterprise host stores one workspace in SQLite on that machine after sign-in. Roles and subtree scope decide who can load, save or export.
 

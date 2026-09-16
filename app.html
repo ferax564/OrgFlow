@@ -124,7 +124,8 @@
   <div class="section">
     <h3>Active on date</h3>
     <div class="field"><input id="asOf" type="date" /></div>
-    <label class="check"><input type="checkbox" id="dateFilter" /> Respect position start / end dates</label>
+    <label class="check"><input type="checkbox" id="dateFilter" /> Only show positions active on this date</label>
+    <p class="hint" id="asOfHint">All dates — positions show regardless of start or end.</p>
   </div>
   <div class="section"><h3>Matching position capacity</h3><div class="stats"><div class="stat"><b id="countVisible">0</b><span>Positions</span></div><div class="stat"><b id="countTotal">0</b><span>Filled</span></div><div class="stat"><b id="countApproved">0</b><span>Open</span></div><div class="stat"><b id="countOpen">0</b><span>Recruiting</span></div><div class="stat"><b id="countFte">0</b><span>Total FTE</span></div><div class="stat"><b id="countApprovedFte">0</b><span>Approved FTE</span></div></div><p class="hint" id="visibleCardsHint"></p><button class="btn ghost sidebar-reset" id="resetFilters">Reset filters · all dates</button></div>
   <div class="section always-available">
@@ -132,6 +133,7 @@
     <div class="data-actions">
       <button class="btn" id="sideImportBtn">Import CSV</button>
       <button class="btn" id="csvBtn">Export CSV</button>
+      <button class="btn" id="directoryBtn">People directory</button>
       <button class="btn ghost" id="templateBtn">Download CSV template</button>
       <div class="data-divider"></div>
       <button class="btn" id="backupBtn">Back up workspace</button>
@@ -140,6 +142,7 @@
       <button class="btn ghost" id="restoreBtn">Restore workspace</button>
       <button class="btn ghost" id="historyBtn">Earlier versions</button>
       <input id="restoreInput" type="file" accept=".json,application/json" hidden />
+      <label class="check autosave-check"><input type="checkbox" id="autoSaveFile" /> Keep the saved file up to date</label>
     </div>
     <div class="hint">CSV updates the active scenario. JSON backup keeps scenarios, people, branding, saved views and chart settings. Save workspace overwrites the last file you picked, when the browser allows it.</div>
   </div>
@@ -207,11 +210,16 @@
     <label class="bulk-field">Group <input id="bulkGroup" list="groupSuggestions" maxlength="200" /></label>
     <label class="bulk-field">Site <input id="bulkSite" list="locationSuggestions" maxlength="200" /></label>
     <label class="bulk-field">Approval <select id="bulkStatus"><option value="Approved">Approved</option><option value="Not approved">Not approved</option></select></label>
+    <label class="bulk-field">Hiring <select id="bulkHiring"><option value="">Keep hiring</option><option value="Vacant">Vacant</option><option value="Recruiting">Recruiting</option></select></label>
+    <label class="bulk-field">Start <input id="bulkStart" type="date" aria-label="Bulk start date" /></label>
+    <label class="bulk-field">End <input id="bulkEnd" type="date" aria-label="Bulk end date" /></label>
+    <label class="bulk-field">Cost ctr <input id="bulkCostCenter" maxlength="80" aria-label="Bulk cost center" /></label>
+    <label class="bulk-field">Job family <input id="bulkJobFamily" maxlength="200" aria-label="Bulk job family" /></label>
     <button class="btn primary" id="bulkApplyBtn" type="button">Apply</button>
     <button class="btn ghost" id="bulkClearBtn" type="button">Clear</button>
-    <span class="bulk-hint">⌘/Ctrl-click cards to select. Drop a card onto a sibling to reorder; drop onto someone else to change manager.</span>
+    <span class="bulk-hint">⌘/Ctrl-click cards to select. Empty fields stay unchanged. Vacant/Recruiting unassign the seat.</span>
   </div>
-  <div class="empty" id="empty"><div class="empty-card"><h2>No positions match these filters</h2><p>Re-enable a position type or approval state, or change the active date.</p><button class="btn" id="emptyClearFilters" type="button" style="margin-top:14px">Clear all filters &amp; search</button></div></div>
+  <div class="empty" id="empty"><div class="empty-card"><h2>No positions match these filters</h2><p>Re-enable a position type or approval state, or turn off the active-date filter.</p><button class="btn" id="emptyClearFilters" type="button" style="margin-top:14px">Clear all filters &amp; search</button></div></div>
 <section class="drawer" id="drawer" aria-label="Edit position" inert>
   <div class="drawer-head"><div><div class="eyebrow" id="drawerScenario">Current / position</div><h2 id="drawerTitle">Position</h2><p>Reporting lines belong to positions, not people.</p></div><button class="iconbtn" id="drawerClose" aria-label="Close position editor">×</button></div>
   <div class="drawer-body">
@@ -237,7 +245,7 @@
     <p class="assignment-note" id="vacancyNote">No placeholder employee is needed. Unassigning a person preserves their record, so you can place them in another position.</p>
     <p class="assignment-note">Dates describe the position’s lifecycle. Scenarios capture assignments; this is not a historical employment record.</p>
   </div>
-  <div class="drawer-foot"><button class="btn danger" id="deleteBtn">Remove position</button><button class="btn primary" id="saveBtn">Save position</button></div>
+  <div class="drawer-foot"><button class="btn danger" id="deleteBtn">Remove position</button><button class="btn" id="drawerCancel" type="button">Close</button><button class="btn primary" id="saveBtn">Save position</button></div>
 </section>
 </main>
 </div>
@@ -251,6 +259,7 @@
     <div class="modal-body">
       <div class="import-summary"><div class="summary-box"><b id="impRows">0</b><span>Positions</span></div><div class="summary-box"><b id="impWarnings">0</b><span>Warnings</span></div><div class="summary-box"><b id="impErrors">0</b><span>Errors</span></div></div>
       <p class="scope-warning">Only the active scenario changes. Update by ID preserves fields whose columns are omitted; blank cells clear values or apply defaults. Replace replaces all positions and retains the people directory. Back up the workspace first.</p><div class="issues" id="importIssues"></div>
+      <details class="map-details" id="importMapWrap"><summary id="importMapSummary">Column mapping</summary><div class="map-grid" id="importMapGrid"></div></details>
       <div class="preview"><table><thead><tr><th>Position ID</th><th>Title</th><th>Person</th><th>Group</th><th>Hiring</th><th>Approval</th><th>FTE</th><th>Reports to</th></tr></thead><tbody id="importPreview"></tbody></table></div>
     </div>
     <div class="modal-foot">
@@ -303,11 +312,22 @@
 
 <div class="modal-backdrop" id="scenarioModal"><div class="modal scenario-modal" role="dialog" aria-modal="true" aria-labelledby="scenarioModalTitle">
   <div class="modal-head"><div><div class="settings-kicker">Workspace / planning</div><h2 id="scenarioModalTitle">Create a scenario</h2><p id="scenarioModalSubtitle">Explore a new structure without changing your source.</p></div><button class="iconbtn" id="scenarioClose" aria-label="Close scenario dialog">×</button></div>
-  <div class="modal-body"><div class="validation" id="scenarioValidation" role="alert"></div><div class="field" id="scenarioSourceField"><label for="scenarioSource">Copy from</label><select id="scenarioSource"></select></div><div class="field"><label for="scenarioName">Scenario name *</label><input id="scenarioName" maxlength="80" placeholder="e.g. 2027 proposed" /></div><div class="field"><label for="scenarioDescription">Notes (optional)</label><textarea id="scenarioDescription" maxlength="1000" placeholder="What are you exploring?"></textarea></div><p class="settings-note" id="scenarioModalNote">Copies keep position IDs and include a frozen source snapshot for comparison. Edits stay in the new scenario. Approval labels are not an authorization workflow.</p></div>
-  <div class="modal-foot"><button class="btn danger hidden" id="scenarioDelete">Delete scenario</button><div class="right"><button class="btn" id="scenarioCancel">Cancel</button><button class="btn primary" id="scenarioSave">Create scenario</button></div></div>
+  <div class="modal-body"><div class="validation" id="scenarioValidation" role="alert"></div><div class="field" id="scenarioSourceField"><label for="scenarioSource">Copy from</label><select id="scenarioSource"></select></div><div class="field"><label for="scenarioName">Scenario name *</label><input id="scenarioName" maxlength="80" placeholder="e.g. 2027 proposed" /></div><div class="field"><label for="scenarioDescription">Notes (optional)</label><textarea id="scenarioDescription" maxlength="1000" placeholder="What are you exploring?"></textarea></div><p class="settings-note" id="scenarioModalNote">Copies keep position IDs and include a frozen source snapshot for comparison. Edits stay in the new scenario. Approval labels are not an authorization workflow.</p><div id="archivedScenarios" class="hidden"></div></div>
+  <div class="modal-foot"><button class="btn danger hidden" id="scenarioDelete">Delete scenario</button><button class="btn hidden" id="scenarioArchive">Archive scenario</button><div class="right"><button class="btn" id="scenarioCancel">Cancel</button><button class="btn primary" id="scenarioSave">Create scenario</button></div></div>
 </div></div>
 
-<div class="modal-backdrop" id="directoryModal"><div class="modal scenario-modal" role="dialog" aria-modal="true" aria-labelledby="directoryTitle"><div class="modal-head"><div><h2 id="directoryTitle">Unassigned people</h2><p>Select a person here from any filled position’s assignment menu.</p></div><button class="iconbtn" id="directoryClose" aria-label="Close directory">×</button></div><div class="modal-body"><div class="planning-table-wrap"><table class="planning-table"><thead><tr><th>Name</th><th>Person ID</th></tr></thead><tbody id="directoryRows"></tbody></table></div><p class="table-footnote">These people are not counted as filled positions. Workspace backup retains this directory.</p></div></div></div>
+<div class="modal-backdrop" id="directoryModal"><div class="modal scenario-modal" role="dialog" aria-modal="true" aria-labelledby="directoryTitle"><div class="modal-head"><div><h2 id="directoryTitle">People</h2><p id="directorySubtitle">Everyone in this scenario — seated or unassigned. Seat assignment happens in the position editor.</p></div><button class="iconbtn" id="directoryClose" aria-label="Close directory">×</button></div><div class="modal-body"><div class="planning-table-wrap"><table class="planning-table"><thead><tr><th>Name</th><th>Employee no</th><th>Seat</th><th>Person ID</th><th><span class="hidden">Actions</span></th></tr></thead><tbody id="directoryRows"></tbody></table></div><p class="table-footnote">People are records, not seats. Unassigned people stay available to fill any position in this scenario; the workspace backup retains this directory.</p></div><div class="modal-foot"><span class="settings-save-note" id="directoryCount"></span><div class="right"><button class="btn primary" id="directoryAdd">＋ Add person</button></div></div></div></div>
+
+<div class="modal-backdrop" id="personModal"><div class="modal scenario-modal" role="dialog" aria-modal="true" aria-labelledby="personTitle">
+  <div class="modal-head"><div><div class="settings-kicker">People</div><h2 id="personTitle">Add person</h2><p>A person record can fill one position in this scenario.</p></div><button class="iconbtn" id="personClose" aria-label="Close">×</button></div>
+  <div class="modal-body">
+    <div class="validation" id="personValidation" role="alert"></div>
+    <div class="field"><label for="personName">Name *</label><input id="personName" maxlength="150" autocomplete="off" /></div>
+    <div class="field"><label for="personEmployeeNo">Employee number</label><input id="personEmployeeNo" maxlength="80" placeholder="Optional staff / badge ID" /></div>
+    <div class="field"><label>Photo</label><div class="logo-actions"><button class="btn" type="button" id="personPhotoUpload">Upload photo</button><button class="btn ghost" type="button" id="personPhotoRemove">Remove</button></div><input type="file" id="personPhotoInput" accept=".png,.jpg,.jpeg,.webp,.svg,image/png,image/jpeg,image/webp,image/svg+xml" hidden /><p class="assignment-note" id="personPhotoNote">Optional. Processed locally to a small PNG.</p></div>
+  </div>
+  <div class="modal-foot"><div class="right"><button class="btn" id="personCancel">Cancel</button><button class="btn primary" id="personSave">Save person</button></div></div>
+</div></div>
 
 <div class="modal-backdrop" id="welcomeModal"><div class="modal branding-modal" role="dialog" aria-modal="true" aria-labelledby="welcomeTitle">
   <div class="modal-head"><div><div class="settings-kicker">Welcome</div><h2 id="welcomeTitle">Plan an organization without uploading it.</h2><p>Positions stay separate from people. Everything stays in this browser until you export a file.</p></div><button class="iconbtn" id="welcomeClose" aria-label="Close tour">×</button></div>

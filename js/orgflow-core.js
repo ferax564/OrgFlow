@@ -153,12 +153,20 @@
     return rows;
   }
   function normHeader(s) { return String(s || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, ''); }
-  function headerMap(headers) {
+  function headerMap(headers, overrides = {}) {
     const normalized = headers.map(normHeader), map = {};
     for (const [key, aliases] of Object.entries(ALIASES)) {
       const indexes = normalized.flatMap((h, i) => aliases.map(normHeader).includes(h) ? [i] : []);
       if (indexes.length > 1) throw new Error(`Multiple columns map to ${key}. Keep only one.`);
       if (indexes.length) map[key] = indexes[0];
+    }
+    for (const [column, key] of Object.entries(overrides || {})) {
+      const i = Number(column);
+      if (!Number.isInteger(i) || i < 0 || i >= headers.length) continue;
+      for (const k of Object.keys(map)) if (map[k] === i) delete map[k];
+      if (!key || !ALIASES[key]) continue;
+      delete map[key];
+      map[key] = i;
     }
     return map;
   }
@@ -326,7 +334,7 @@
       ids.add(id); names.add(name.toLocaleLowerCase());
       const data = validateScenarioData(s, positionLevels);
       const baseSnapshot = s.baseSnapshot ? { ...validateScenarioData(s.baseSnapshot, positionLevels), name: cleanString(s.baseSnapshot.name || 'Original baseline', 'Baseline name', 80), capturedAt: String(s.baseSnapshot.capturedAt || '').slice(0, 40) } : null;
-      return { id, name, description: cleanString(s.description || '', 'Scenario notes', 1000), createdAt: String(s.createdAt || '').slice(0, 40), updatedAt: String(s.updatedAt || '').slice(0, 40), baseScenarioId: typeof s.baseScenarioId === 'string' ? s.baseScenarioId.slice(0, 150) : '', baseSnapshot, ...data };
+      return { id, name, description: cleanString(s.description || '', 'Scenario notes', 1000), createdAt: String(s.createdAt || '').slice(0, 40), updatedAt: String(s.updatedAt || '').slice(0, 40), baseScenarioId: typeof s.baseScenarioId === 'string' ? s.baseScenarioId.slice(0, 150) : '', archived: id === 'current' ? false : s.archived === true, baseSnapshot, ...data };
     });
     if (!ids.has('current')) throw new Error('Workspace must include the protected Current scenario.');
     if (scenarios.find(s => s.id === 'current').name !== 'Current') throw new Error('The Current scenario cannot be renamed.');
@@ -390,13 +398,15 @@
     if (key === 'stacked') return value === true ? 'Stacked' : value === false ? 'Side by side' : 'Auto';
     return String(value || '—');
   }
-  function prepareImport(text, fileName, source, idFactory = makeId, extraTypes = []) {
+  function prepareImport(text, fileName, source, idFactory = makeId, extraTypes = [], overrides = {}) {
     const rows = parseCSV(text), errors = [], warnings = [], positions = [], employees = [];
     const result = { positions, employees, errors, warnings, filename: fileName, scenarioId: source.id };
     if (rows.length < 2) { errors.push('The CSV has no data rows.'); return result; }
     if (rows.length > 2501) { errors.push('Import supports at most 2,500 positions at a time.'); return result; }
-    const headers = rows.shift(), map = headerMap(headers);
+    const headers = rows.shift(), map = headerMap(headers, overrides);
     result.columns = Object.keys(map);
+    result.headers = headers;
+    result.map = map;
     if (map.name === undefined && map.title === undefined && map.id === undefined) { errors.push('A position ID, title or name column is required.'); return result; }
     const recognized = new Set(Object.values(map)), ignored = headers.filter((_, i) => !recognized.has(i));
     if (ignored.length) warnings.push('Ignored columns: ' + ignored.join(', ') + '.');
@@ -684,6 +694,25 @@
         if (!STATUSES.includes(patch.status)) throw new Error('Unknown approval.');
         out.status = patch.status;
       }
+      if (Object.prototype.hasOwnProperty.call(patch, 'hiringState')) {
+        if (!HIRING_STATES.includes(patch.hiringState)) throw new Error('Unknown hiring state.');
+        if (patch.hiringState === 'Filled') throw new Error('Bulk edits cannot assign people. Use the position editor to fill a seat.');
+        out.hiringState = patch.hiringState;
+        out.personId = '';
+      }
+      if (Object.prototype.hasOwnProperty.call(patch, 'startDate')) {
+        const d = String(patch.startDate ?? '').trim();
+        if (d && !isISODate(d)) throw new Error('Start date must be YYYY-MM-DD.');
+        out.startDate = d;
+      }
+      if (Object.prototype.hasOwnProperty.call(patch, 'endDate')) {
+        const d = String(patch.endDate ?? '').trim();
+        if (d && !isISODate(d)) throw new Error('End date must be YYYY-MM-DD.');
+        out.endDate = d;
+      }
+      if (Object.prototype.hasOwnProperty.call(patch, 'costCenter')) out.costCenter = cleanString(String(patch.costCenter ?? ''), 'Cost center', 80);
+      if (Object.prototype.hasOwnProperty.call(patch, 'jobFamily')) out.jobFamily = cleanString(String(patch.jobFamily ?? ''), 'Job family', 200);
+      if (out.startDate && out.endDate && out.endDate < out.startDate) throw new Error(`End date precedes start date on “${out.title || out.id}”.`);
       return out;
     });
   }

@@ -55,13 +55,16 @@ Harbor & Co (17 positions) loads on first visit. A tour offers that sample, Nort
 - **Undo / redo** with ⌘Z / Ctrl+Z in this session (not while typing in a field). **Earlier versions** in the sidebar keeps the last ten planning snapshots in this browser, without photos or logos.
 - **Cards** show the person (or vacant/recruiting), title, group, location, type, approval, hiring state and FTE. Optional photos are resized locally to a small PNG. **Direct reports and vacancies** (`N reports · N open`) is on by default; turn it off under Chart display. Heads and Team Leaders can also show a cumulative people count.
 - **Custom fields** on a position: location / site, cost center, job family. On a person: employee number and photo.
-- **Date filter** is off by default, so future-dated roles stay visible. Turn on **Respect position start / end dates** to hide roles that have not started (or have already ended) relative to the as-of date.
+- **Date filter** is off by default, so future-dated roles stay visible and the date box shows "All dates". Turn on **Only show positions active on this date** to hide roles that have not started (or have already ended) relative to the as-of date; the toolbar pill then reads "As of …" instead of "All dates".
 - **Chart filters** (type, hiring, approval, group, site, depth, search) apply to the org chart and the Positions register. Click a selected **Group / team** or **Location / site** chip to hide that set. Positions with a blank group or site sit under No group / No site. Whenever filters or a search limit the view, a pinned bar above the workspace shows what is active and offers **Clear all filters & search**. Compare uses full snapshots and ignores those filters. Loading an example or a blank organization resets filters.
 - **Search** highlights matching cards and the **path to the top**. Hovering a card does the same.
-- **Multi-select** with ⌘/Ctrl-click or Shift-click (or the checkboxes on Positions). The bulk bar applies type/tag, group, site or approval to the selection.
+- **Multi-select** with ⌘/Ctrl-click or Shift-click (or the checkboxes on Positions). The bulk bar applies type/tag, group, site, approval, hiring state, start/end dates, cost center or job family to the selection; empty fields stay unchanged and Vacant/Recruiting unassigns the seat.
+- **Position editor** opens from a card or the register's Edit. `Escape` or **Close** leaves it, `⌘/Ctrl+Enter` saves, and Tab cycles inside the drawer. Unsaved edits ask before they are discarded when you switch cards, views or scenarios.
+- **People directory** in the sidebar lists everyone in the active scenario with their seat, and adds, edits or removes person records (name, employee number, photo). Seat assignment stays in the position editor.
+- **Scenarios** can be renamed and deleted from **Scenario details**; archiving one drops it from the switcher and compare lists while keeping its data and frozen snapshot, and it restores from the same dialog.
 - **Named views** in the sidebar store filter, zoom and card-display presets on the workspace (up to 20). They travel with the JSON backup.
 - **Chart display** in the sidebar hides or shows FTE, site, group, position type, approval, hiring, span and cumulative people on every card. Long names wrap and that card grows. Last-level managers stack their reports in a column under the manager; uncheck **Stack direct reports** in the drawer to spread them. **Move up / Move down** changes sibling order immediately. Add a tag like Engineer, Graduate or Intern under **Position type**. These settings persist and apply to PNG, PDF and HTML exports.
-- **Narrow screens** hide the sidebar. Open it with the ☷ **Filters** control in the planning bar. It stays available on Org chart, Positions and Compare.
+- **Narrow screens** hide the sidebar. Open it with the ☷ **Filters** control in the planning bar — a badge counts active filters — and close it with `Escape`. The chart pans with touch or by dragging empty space with the mouse.
 - **Branding** stores company name, chart title and logos in this browser. Logos are sanitized and rasterized locally.
 
 ### Export
@@ -75,7 +78,7 @@ Harbor & Co (17 positions) loads on first visit. A tour offers that sample, Nort
 | Positions + assignments (CSV) | Active scenario, including custom fields |
 | People directory (CSV) | People in the active scenario |
 | Workspace backup (JSON) | Every scenario, unassigned people, branding, palette, saved views and the current view |
-| Save workspace | Overwrites the last JSON file you picked when the browser supports it |
+| Save workspace | Overwrites the last JSON file you picked when the browser supports it; the **Autosave** checkbox beside it writes every change through to that file |
 | Print / A3 pages (PDF) | Tiled A3 landscape pages of the visible chart |
 
 A workspace JSON that omits `dateFilter` restores with all dates visible.
@@ -84,7 +87,7 @@ A workspace JSON that omits `dateFilter` restores with all dates visible.
 
 `positionId`, `reportsToPositionId`, `secondaryManagerId`, `title`, `type`, `group`, `fte`, `approval`, `hiringState`, `personId`, `name`, `employeeNumber`, `startDate`, `endDate`, `location`, `costCenter`, `jobFamily`, `sortOrder`, `stacked`
 
-Import can replace, append, or update by position ID. Spreadsheet formulas in cells are prefixed so they stay text.
+Import can replace, append, or update by position ID. The review step validates every row, previews the result and maps each source column to an OrgFlow field — unrecognized headers can be remapped or ignored before applying. Spreadsheet formulas in cells are prefixed so they stay text.
 
 ## Features
 

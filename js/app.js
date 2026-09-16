@@ -216,7 +216,7 @@ function applyBranding(){
 }
 function brandingError(message){const el=$('#brandingError');el.textContent=message;el.classList.toggle('show',!!message);if(message)el.scrollIntoView({block:'nearest'})}
 function openBranding(){
-  closeMenus();$('#drawer').classList.remove('open');brandingSession++;brandingDraft=structuredClone(branding);logoBusy=0;
+  closeMenus();if(drawerIsDirty()&&!confirm('Discard unsaved position edits?'))return;hidePositionEditor();brandingSession++;brandingDraft=structuredClone(branding);logoBusy=0;
   $('#brandCompany').value=branding.companyName;$('#brandChartTitle').value=branding.chartTitle;
   $('#brandExports').checked=branding.includeExports;$('#brandFooter').value=branding.footer;
   brandingError('');$('#brandingModal').classList.add('open');renderBrandingPreview();$('#brandCompany').focus();
@@ -301,11 +301,12 @@ function saveBranding(){
   if(!brandingDraft||logoBusy)return;const title=$('#brandChartTitle').value.trim();if(!title){brandingError('Enter a chart title.');$('#brandChartTitle').focus();return}
   const candidate={...brandingDraft,companyName:$('#brandCompany').value.trim(),chartTitle:title,includeExports:$('#brandExports').checked,footer:$('#brandFooter').value.trim()};
   try{localStorage.setItem(BRANDING_KEY,JSON.stringify(candidate))}catch{brandingError('Browser storage is full or unavailable. Your previous branding is unchanged. Try a smaller logo or enable local storage.');return}
-  branding=candidate;applyBranding();closeBranding();toast('Company branding saved');afterEnterprisePersist();
+  branding=candidate;applyBranding();closeBranding();toast('Company branding saved');afterEnterprisePersist();scheduleFileAutosave();
 }
 const PLANNING_KEY = 'orgflow.planning.v2';
 const HISTORY_KEY = 'orgflow.history.v1';
 const WELCOME_KEY = 'orgflow.welcome.v1';
+const AUTOSAVE_KEY = 'orgflow.autosaveFile';
 let workspace = null;
 let modelLoadError = '';
 let lastSavedPlanningText = null;
@@ -417,17 +418,32 @@ function commitPlanning(next,message='',opts={}){
   lastSavedPlanningText=serialized;
   workspace=checked;syncProjection();
   if(opts.recordUndo!==false)recordUndoFrom(previous,opts.historyNote||message||'Edit');
-  render();updateUndoButtons();if(message)toast(message);afterEnterprisePersist();return true;
+  render();updateUndoButtons();if(message)toast(message);afterEnterprisePersist();scheduleFileAutosave();return true;
+}
+let autoSaveTimer=null;
+function syncAutosaveUi(){
+  const cb=$('#autoSaveFile');if(!cb)return;
+  const can=!!workspaceFileHandle?.createWritable;cb.disabled=!can;
+  let pref=false;try{pref=localStorage.getItem(AUTOSAVE_KEY)==='1';}catch{}
+  cb.checked=can&&pref;
+}
+function scheduleFileAutosave(){
+  if(!$('#autoSaveFile')?.checked||!workspaceFileHandle?.createWritable)return;
+  clearTimeout(autoSaveTimer);
+  autoSaveTimer=setTimeout(async()=>{
+    try{const writable=await workspaceFileHandle.createWritable();await writable.write(new Blob([JSON.stringify(workspacePayload(),null,2)],{type:'application/json'}));await writable.close();}
+    catch(error){toast(`Auto-save to file failed: ${error?.message||'could not write'}`);}
+  },900);
 }
 function updateScenario(mutator,message=''){
   const next=structuredClone(workspace),scenario=next.scenarios.find(s=>s.id===next.activeScenarioId);
   mutator(scenario);scenario.updatedAt=new Date().toISOString();return commitPlanning(next,message);
 }
 function switchScenario(id){
-  if(!scenarioById(id))return;
-  if($('#drawer').classList.contains('open')&&!confirm('Switch scenarios and discard unsaved position edits?')){renderPlanningHeader();return;}
+  if(!scenarioById(id)||scenarioById(id).archived)return;
+  if(drawerIsDirty()&&!confirm('Switch scenarios and discard unsaved position edits?')){renderPlanningHeader();return;}
   const next=structuredClone(workspace);next.activeScenarioId=id;
-  try{commitPlanning(next);hidePositionEditor();collapsed.clear();compareTargetId=id==='current'?(workspace.scenarios.find(s=>s.id!=='current')?.id||'current'):id;render();centerChart();}
+  try{commitPlanning(next);hidePositionEditor();collapsed.clear();compareTargetId=id==='current'?(workspace.scenarios.find(s=>s.id!=='current'&&!s.archived)?.id||'current'):id;render();centerChart();}
   catch(error){toast(error.message);renderPlanningHeader();}
 }
 function createScenario(name,sourceId,description=''){
@@ -443,14 +459,29 @@ function deleteScenario(id){
   const next=structuredClone(workspace);if(!next.scenarios.some(s=>s.id===id))throw new Error('Scenario not found.');next.scenarios=next.scenarios.filter(s=>s.id!==id);if(next.activeScenarioId===id)next.activeScenarioId='current';
   commitPlanning(next,'Scenario deleted. Current is unchanged.');compareTargetId='';compareBaselineId='current';render();
 }
+function toggleScenarioArchive(id,archive){
+  if(id==='current'){toast('Current cannot be archived.');return;}
+  const next=structuredClone(workspace),s=next.scenarios.find(x=>x.id===id);if(!s)return;
+  s.archived=archive;
+  if(archive&&next.activeScenarioId===id)next.activeScenarioId='current';
+  if(archive&&compareBaselineId===id)compareBaselineId='current';
+  if(archive&&compareTargetId===id)compareTargetId=workspace.scenarios.find(x=>x.id!=='current'&&x.id!==id&&!x.archived)?.id||'current';
+  commitPlanning(next,archive?`Archived ${s.name} — restore it from Scenario details.`:`Restored ${s.name}`);
+}
 
 function hidePositionEditor(){
-  const wasOpen=$('#drawer').classList.contains('open');$('#drawer').classList.remove('open');$('#drawer').inert=true;selectedId=null;
+  const wasOpen=$('#drawer').classList.contains('open');$('#drawer').classList.remove('open');$('#drawer').inert=true;selectedId=null;drawerSnapshot=null;
   if(wasOpen && lastEditorFocus?.isConnected)lastEditorFocus.focus({preventScroll:true});
 }
-let lastEditorFocus=null;
+let lastEditorFocus=null,drawerSnapshot=null;
+function drawerFormState(){
+  return JSON.stringify({id:$('#fPositionId').value,title:$('#fTitle').value,type:$('#fType').value,status:$('#fStatus').value,group:$('#fGroup').value,fte:$('#fFte').value,location:$('#fLocation').value,costCenter:$('#fCostCenter').value,jobFamily:$('#fJobFamily').value,manager:$('#fManager').value,secondary:$('#fSecondary').value,start:$('#fStart').value,end:$('#fEnd').value,hiring:$('#fHiring').value,person:$('#fPerson').value,name:$('#fName').value,employeeNo:$('#fEmployeeNo').value,stacked:$('#fStacked').checked,photo:photoDraft||''});
+}
+function drawerIsDirty(){return $('#drawer').classList.contains('open')&&drawerSnapshot!==null&&drawerFormState()!==drawerSnapshot;}
+function requestCloseDrawer(){if(drawerIsDirty()&&!confirm('Discard unsaved position edits?'))return;hidePositionEditor();}
 function openDrawer(id,newPosition=false){
   if(modelLoadError){toast('Restore your workspace before editing.');return;}
+  if(drawerIsDirty()&&!confirm('Discard unsaved position edits?'))return;
   lastEditorFocus=document.activeElement;selectedId=newPosition?null:id;selectedSourceScenario=workspace.activeScenarioId;
   const p=activeScenario().positions.find(x=>x.id===id)||{id:'POS-'+makeId('').slice(-8).toUpperCase(),title:'',type:'Engineer',group:'',managerId:'',secondaryManagerId:'',fte:1,status:'Not approved',hiringState:'Vacant',personId:'',startDate:($('#dateFilter').checked&&$('#asOf').value)||today,endDate:'',location:'',costCenter:'',jobFamily:''};
   $('#formValidation').classList.remove('show');$('#drawerTitle').textContent=newPosition?'New position':p.title;
@@ -476,7 +507,7 @@ function openDrawer(id,newPosition=false){
   $('#groupSuggestions').innerHTML=[...new Set(people.map(p=>p.group).filter(Boolean))].sort().map(g=>`<option value="${esc(g)}"></option>`).join('');
   $('#locationSuggestions').innerHTML=[...new Set(people.map(p=>p.location).filter(Boolean))].sort().map(g=>`<option value="${esc(g)}"></option>`).join('');
   $('#familySuggestions').innerHTML=[...new Set(people.map(p=>p.jobFamily).filter(Boolean))].sort().map(g=>`<option value="${esc(g)}"></option>`).join('');
-  $('#deleteBtn').classList.toggle('hidden',newPosition);$('#orderRow').classList.toggle('hidden',newPosition);$('#drawer').inert=false;$('#drawer').classList.add('open');updateAssignmentFields();updateOrderControls();setTimeout(()=>$('#fTitle').focus(),100);
+  $('#deleteBtn').classList.toggle('hidden',newPosition);$('#orderRow').classList.toggle('hidden',newPosition);$('#drawer').inert=false;$('#drawer').classList.add('open');updateAssignmentFields();updateOrderControls();drawerSnapshot=drawerFormState();setTimeout(()=>$('#fTitle').focus(),100);
 }
 function updatePhotoNote(){
   const note=$('#photoNote');if(!note)return;
@@ -528,13 +559,13 @@ function deleteSelected(){
 }
 function setView(view){
   if(!['chart','positions','compare'].includes(view))return;
-  if($('#drawer').classList.contains('open')&&!confirm('Discard unsaved position edits and change view?'))return;
+  if(drawerIsDirty()&&!confirm('Discard unsaved position edits and change view?'))return;
   hidePositionEditor();currentView=view;render();if(view==='chart')setTimeout(centerChart,0);
 }
 function renderPlanningHeader(){
   if(!workspace)return;
   const s=activeScenario();
-  $('#scenarioSelect').innerHTML=workspace.scenarios.map(x=>`<option value="${esc(x.id)}">${esc(x.name)}${x.id==='current'?' · live':''}</option>`).join('');$('#scenarioSelect').value=s.id;
+  $('#scenarioSelect').innerHTML=workspace.scenarios.filter(x=>!x.archived).map(x=>`<option value="${esc(x.id)}">${esc(x.name)}${x.id==='current'?' · live':''}</option>`).join('');$('#scenarioSelect').value=s.id;
   $$('.plan-tabs [data-view]').forEach(b=>{b.classList.toggle('active',b.dataset.view===currentView);b.setAttribute('aria-pressed',String(b.dataset.view===currentView));});
   $('.toolbar').classList.toggle('hidden',currentView!=='chart');$('#canvasWrap').classList.toggle('hidden',currentView!=='chart');
   $('#positionsPanel').classList.toggle('hidden',currentView!=='positions');$('#comparePanel').classList.toggle('hidden',currentView!=='compare');$('.layout').classList.toggle('comparison-mode',currentView==='compare');
@@ -551,16 +582,57 @@ function renderPositionTable(){
   $('#positionsRows').innerHTML=rows.length?rows.map(p=>`<tr class="${selectedIds.has(p.id)?'selected':''}"><td class="check-col"><input type="checkbox" data-select-position="${esc(p.id)}" ${selectedIds.has(p.id)?'checked':''} aria-label="Select ${esc(p.title)}" /></td><td class="title-cell">${esc(p.title)}<span class="sub">${esc(p.id)} · ${esc(p.type)}</span></td><td>${p.personName?esc(p.personName):'<span style="color:var(--muted)">Unassigned</span>'}</td><td>${esc(p.group||'—')}</td><td>${esc(p.location||'—')}</td><td>${statusPill(p.hiringState)}</td><td>${statusPill(p.status,p.status==='Approved'?'approved':'unapproved')}</td><td>${fteText(p.fte)}</td><td>${esc(byId.get(p.managerId)?.title||'Top level')}</td><td style="white-space:nowrap">${esc(p.startDate||'No start')}<span class="sub">${p.endDate?'Until '+esc(p.endDate):'No end date'}</span></td><td><button class="btn compact-btn" data-edit-position="${esc(p.id)}" aria-label="Edit ${esc(p.title)}">Edit</button></td></tr>`).join(''):`<tr><td colspan="11" class="empty-row">${activeFilterItems().length?'No matching positions. <button class="small-link" type="button" data-clear-filters>Clear all filters &amp; search</button> to see every seat in this scenario.':'No positions in this scenario yet. Add one, import a CSV, or load an example.'}</td></tr>`;
   const allBox=$('#registerSelectAll');if(allBox)allBox.checked=rows.length>0&&rows.every(p=>selectedIds.has(p.id));
   const unassigned=activeScenario().employees.filter(e=>!activeScenario().positions.some(p=>p.personId===e.id));
-  $('#registerFootnote').innerHTML=`Positions and people are separate. <b>${unassigned.length} unassigned ${unassigned.length===1?'person':'people'}</b> remain in this scenario’s directory and can be selected when filling a position. ${unassigned.length?`<button class="small-link" id="showUnassigned">View names</button>`:''}<br>Search and sidebar filters apply here; collapsed chart levels do not.`;
-  $('#showUnassigned')?.addEventListener('click',()=>showPeopleDirectory());
+  $('#registerFootnote').innerHTML=`Positions and people are separate. <b>${unassigned.length} unassigned ${unassigned.length===1?'person':'people'}</b> remain in this scenario’s directory and can be selected when filling a position. <button class="small-link" id="showUnassigned">Open people directory</button><br>Search and sidebar filters apply here; collapsed chart levels do not.`;
+  $('#showUnassigned')?.addEventListener('click',()=>openDirectory());
 }
-function showPeopleDirectory(){
-  const s=activeScenario(),unassigned=s.employees.filter(e=>!s.positions.some(p=>p.personId===e.id));
-  $('#directoryTitle').textContent=`Unassigned people · ${s.name}`;$('#directoryRows').innerHTML=unassigned.map(p=>`<tr><td>${esc(p.name)}</td><td class="sub">${esc(p.id)}</td></tr>`).join('')||'<tr><td colspan="2">Everyone is assigned.</td></tr>';openDialog('directoryModal');
+let personEditingId=null,personPhotoDraft=null;
+function openDirectory(){renderPeopleDirectory();openDialog('directoryModal');}
+function renderPeopleDirectory(){
+  const s=activeScenario(),seats=new Map(s.positions.filter(p=>p.personId).map(p=>[p.personId,p]));
+  const rows=[...s.employees].sort((a,b)=>a.name.localeCompare(b.name));
+  $('#directoryTitle').textContent=`People · ${s.name}`;
+  const seated=rows.filter(p=>seats.has(p.id)).length;
+  if($('#directoryCount'))$('#directoryCount').textContent=`${rows.length} ${rows.length===1?'person':'people'} · ${seated} seated · ${rows.length-seated} unassigned`;
+  $('#directoryRows').innerHTML=rows.length?rows.map(p=>{
+    const seat=seats.get(p.id);
+    return `<tr><td class="title-cell">${esc(p.name)}</td><td>${esc(p.employeeNumber||'—')}</td><td>${seat?esc(seat.title):'<span style="color:var(--muted)">Unassigned</span>'}</td><td class="sub">${esc(p.id)}</td><td style="white-space:nowrap"><button class="btn compact-btn" data-person-edit="${esc(p.id)}">Edit</button>${seat?'':` <button class="btn compact-btn" data-person-remove="${esc(p.id)}">Remove</button>`}</td></tr>`;
+  }).join(''):'<tr><td colspan="5" class="empty-row">No people in this scenario yet. Add one here, or fill a position to create the record.</td></tr>';
+}
+function updatePersonPhotoNote(){const note=$('#personPhotoNote');if(note)note.textContent=personPhotoDraft?'Photo attached. Processed locally to a small PNG.':'Optional. Processed locally to a small PNG.';}
+function openPersonModal(id=''){
+  const emp=id?activeScenario().employees.find(x=>x.id===id):null;
+  if(id&&!emp){toast('This person no longer exists in the scenario.');renderPeopleDirectory();return;}
+  personEditingId=emp?emp.id:null;
+  $('#personTitle').textContent=emp?`Edit ${emp.name}`:'Add person';
+  $('#personName').value=emp?.name||'';$('#personEmployeeNo').value=emp?.employeeNumber||'';
+  personPhotoDraft=emp?.photo||null;updatePersonPhotoNote();
+  $('#personValidation').classList.remove('show');$('#personValidation').textContent='';
+  openDialog('personModal');setTimeout(()=>$('#personName').focus(),50);
+}
+function savePersonModal(){
+  const name=$('#personName').value.trim(),employeeNumber=$('#personEmployeeNo').value.trim();
+  try{
+    if(!name)throw new Error('A name is required.');
+    updateScenario(s=>{
+      const existing=personEditingId?s.employees.find(x=>x.id===personEditingId):null;
+      if(personEditingId&&!existing)throw new Error('This person no longer exists in the scenario.');
+      if(existing){existing.name=name;existing.employeeNumber=employeeNumber;existing.photo=personPhotoDraft?validPersonPhoto(personPhotoDraft):null;}
+      else s.employees.push({id:makeId('person'),name,employeeNumber,photo:personPhotoDraft?validPersonPhoto(personPhotoDraft):null});
+    },personEditingId?'Person updated':'Person added');
+    closeDialog('personModal');renderPeopleDirectory();
+  }catch(error){$('#personValidation').textContent=error.message;$('#personValidation').classList.add('show');}
+}
+function removePerson(id){
+  const s=activeScenario(),emp=s.employees.find(x=>x.id===id);if(!emp)return;
+  const seat=s.positions.find(p=>p.personId===id);
+  if(seat){toast(`Unassign ${emp.name} from “${seat.title}” first — only unassigned people can be removed.`);return;}
+  if(!confirm(`Remove ${emp.name} from “${s.name}”? Their record is deleted from this scenario only.`))return;
+  try{updateScenario(x=>{x.employees=x.employees.filter(p=>p.id!==id);},'Person removed');renderPeopleDirectory();}catch(error){toast(error.message);}
 }
 function comparisonData(){
-  let target=scenarioById(compareTargetId);if(!target){target=workspace.activeScenarioId!=='current'?activeScenario():workspace.scenarios.find(s=>s.id!=='current')||activeScenario();compareTargetId=target.id;}
+  let target=scenarioById(compareTargetId);if(!target||target.archived){target=workspace.activeScenarioId!=='current'&&!activeScenario().archived?activeScenario():workspace.scenarios.find(s=>s.id!=='current'&&!s.archived)||activeScenario();compareTargetId=target.id;}
   let base=compareBaselineId==='__snapshot__'?target.baseSnapshot:scenarioById(compareBaselineId);
+  if(base?.archived)base=null;
   if(!base){base=scenarioById('current');compareBaselineId='current';}
   return {baseline:base,target,changes:scenarioChanges(base,target)};
 }
@@ -571,7 +643,7 @@ function visibleChanges(data){
 function renderComparison(){
   const one=workspace.scenarios.length===1;$('#compareWelcome').classList.toggle('hidden',!one);$('#compareContent').classList.toggle('hidden',one);if(one)return;
   const d=comparisonData(),a=totals(d.baseline),b=totals(d.target);
-  const scenarioOptions=workspace.scenarios.map(s=>`<option value="${esc(s.id)}">${esc(s.name)}${s.id==='current'?' (live)':''}</option>`).join('');
+  const scenarioOptions=workspace.scenarios.filter(s=>!s.archived).map(s=>`<option value="${esc(s.id)}">${esc(s.name)}${s.id==='current'?' (live)':''}</option>`).join('');
   $('#compareBaseline').innerHTML=scenarioOptions+(d.target.baseSnapshot?'<option value="__snapshot__">Original baseline (frozen)</option>':'');$('#compareBaseline').value=compareBaselineId;$('#compareTarget').innerHTML=scenarioOptions;$('#compareTarget').value=d.target.id;
   $('#comparisonMetrics').innerHTML=[['positions','Positions'],['filled','Filled positions'],['open','Open positions'],['approvedFte','Approved FTE']].map(([key,label])=>{const delta=Math.round((b[key]-a[key])*100)/100;return `<div class="metric"><div class="metric-label">${label}</div><div class="metric-values"><span>${fteText(a[key])} →</span> ${fteText(b[key])}</div><div class="delta ${delta>0?'positive':delta<0?'negative':''}">${delta>0?'+':''}${fteText(delta)} ${delta===0?'· no net change':'vs baseline'}</div></div>`;}).join('');
   $('#baselineContext').textContent=compareBaselineId==='__snapshot__'?`Frozen ${d.baseline.name} snapshot · ${fmtDate(d.baseline.capturedAt?.slice(0,10))}`:`Comparing saved ${d.baseline.name} → ${d.target.name}. Independent scenarios; no automatic merge.`;
@@ -591,12 +663,15 @@ function diffDetailsHTML(change,data){
 function openDialog(id){lastDialogFocus=document.activeElement;$('#'+id).classList.add('open');setTimeout(()=>$('#'+id).querySelector('input:not([hidden]),select,button')?.focus(),0);}
 function closeDialog(id){$('#'+id).classList.remove('open');if(lastDialogFocus?.isConnected)lastDialogFocus.focus({preventScroll:true});}
 function openScenarioDialog(mode='create'){
-  if($('#drawer').classList.contains('open')){if(!confirm('Discard unsaved position edits before opening scenario settings?'))return;hidePositionEditor();}
+  if(drawerIsDirty()){if(!confirm('Discard unsaved position edits before opening scenario settings?'))return;}hidePositionEditor();
   scenarioDialogMode=mode;const s=activeScenario(),edit=mode==='edit';$('#scenarioValidation').classList.remove('show');
   $('#scenarioModalTitle').textContent=edit?'Scenario details':'Create a scenario';$('#scenarioModalSubtitle').textContent=edit?'This name and notes belong to this scenario.':'Explore a new structure without changing your source.';
-  $('#scenarioSourceField').classList.toggle('hidden',edit);$('#scenarioSource').innerHTML=workspace.scenarios.map(s=>`<option value="${esc(s.id)}">${esc(s.name)}</option>`).join('');$('#scenarioSource').value=s.id;
+  $('#scenarioSourceField').classList.toggle('hidden',edit);$('#scenarioSource').innerHTML=workspace.scenarios.filter(s=>!s.archived).map(s=>`<option value="${esc(s.id)}">${esc(s.name)}</option>`).join('');$('#scenarioSource').value=s.id;
   $('#scenarioName').value=edit?s.name:'';$('#scenarioName').readOnly=edit&&s.id==='current';$('#scenarioDescription').value=edit?s.description:'';
-  $('#scenarioDelete').classList.toggle('hidden',!edit||s.id==='current');$('#scenarioSave').textContent=edit?'Save details':'Create scenario';
+  $('#scenarioDelete').classList.toggle('hidden',!edit||s.id==='current');$('#scenarioArchive').classList.toggle('hidden',!edit||s.id==='current');$('#scenarioSave').textContent=edit?'Save details':'Create scenario';
+  const archived=workspace.scenarios.filter(x=>x.archived);
+  $('#archivedScenarios').classList.toggle('hidden',!archived.length);
+  $('#archivedScenarios').innerHTML=archived.length?`<div class="form-divider">Archived scenarios</div>`+archived.map(x=>`<div class="archived-row"><span>${esc(x.name)}</span><button class="btn compact-btn" type="button" data-unarchive="${esc(x.id)}">Restore</button></div>`).join(''):'';
   $('#scenarioModalNote').textContent=edit&&s.id==='current'?'Current is protected from renaming and deletion. Create a scenario before exploring changes.':edit?'Changes to positions and people stay in this scenario. Its original comparison snapshot never changes.':'Copies keep stable position IDs and a frozen source snapshot. Edits stay in the new scenario. Approval labels are not an authorization workflow.';
   openDialog('scenarioModal');setTimeout(()=>$('#scenarioName').focus(),10);
 }
@@ -617,7 +692,7 @@ function applyDefaultFilters(){
   activeGroups=new Set(allGroups());activeSites=new Set(allSites());
   $('#search').value='';$('#compareSearch').value='';$('#dateFilter').checked=false;$('#asOf').value=today;
   maxDepth=99;collapsed.clear();zoom=1;showChartChanges=true;compareKind='all';currentView='chart';
-  compareBaselineId='current';compareTargetId=workspace?.scenarios.find(s=>s.id!=='current')?.id||'current';
+  compareBaselineId='current';compareTargetId=workspace?.scenarios.find(s=>s.id!=='current'&&!s.archived)?.id||'current';
   $$('#depthSeg button').forEach(b=>b.classList.toggle('active',b.dataset.depth==='99'));
   setFiltersOpen(false);
   setupChips();
@@ -633,8 +708,14 @@ function activeFilterItems(){
   if(activeHiring.size<HIRING_STATES.length)items.push(`Hiring ${activeHiring.size} of ${HIRING_STATES.length}`);
   if(activeGroups&&activeGroups.size<groups.length)items.push(`Group ${activeGroups.size} of ${groups.length}`);
   if(activeSites&&activeSites.size<sites.length)items.push(`Site ${activeSites.size} of ${sites.length}`);
-  if($('#dateFilter').checked&&$('#asOf').value)items.push(`Active ${fmtDate($('#asOf').value)}`);
+  if($('#dateFilter').checked&&$('#asOf').value)items.push(`As of ${fmtDate($('#asOf').value)}`);
   return items;
+}
+function syncDateFilterUi(){
+  const on=$('#dateFilter').checked,d=$('#asOf').value;
+  $('#asOf').disabled=!on;$('#asOf').setAttribute('aria-disabled',String(!on));
+  const hint=$('#asOfHint');if(hint)hint.textContent=!on?'All dates — positions show regardless of start or end.':d?`Only positions active on ${fmtDate(d)} — later starts and already-ended roles are hidden.`:'Pick a date — every position shows until then.';
+  $('#datePill').textContent=on&&d?`As of ${fmtDate(d)}`:'All dates';
 }
 function renderFilterStrip(){
   const strip=$('#filterStrip');if(!strip)return;
@@ -642,6 +723,7 @@ function renderFilterStrip(){
   strip.hidden=!on;document.querySelector('main')?.classList.toggle('filters-on',on);
   $('#filterStripItems').innerHTML=items.map(x=>`<span class="filter-pill">${esc(x)}</span>`).join('');
   const note=$('#filterStripNote');if(note)note.textContent=on&&currentView==='compare'?'· chart & register only — Compare uses full snapshots':'';
+  const ft=$('#filterToggle');if(ft)ft.dataset.count=items.length?String(items.length):'';
 }
 function clearAllFilters(){
   knownGroups=null;knownSites=null;
@@ -653,7 +735,7 @@ function clearAllFilters(){
   setupChips();render();toast('All filters and search cleared');
 }
 function activeDateNote(){
-  return $('#dateFilter').checked&&$('#asOf').value?` · active ${fmtDate($('#asOf').value)}`:'';
+  return $('#dateFilter').checked&&$('#asOf').value?` · as of ${fmtDate($('#asOf').value)}`:'';
 }
 function syncChartDisplayUi(){
   const d=cardDisplay,map={showFte:'fte',showSite:'site',showGroup:'group',showType:'type',showApproval:'approval',showHiring:'hiring',showCumulative:'cumulative',showSpan:'span',chartDots:'chartDots'};
@@ -736,6 +818,8 @@ function setupPlanningEvents(){
   });
   $('#scenarioClose').onclick=$('#scenarioCancel').onclick=()=>closeDialog('scenarioModal');$('#scenarioSave').onclick=saveScenarioDialog;
   $('#scenarioDelete').onclick=()=>{const id=workspace.activeScenarioId;if(confirm(`Delete “${activeScenario().name}”? This cannot be undone. Current and other scenarios will be kept.`)){try{deleteScenario(id);closeDialog('scenarioModal');}catch(error){$('#scenarioValidation').textContent=error.message;$('#scenarioValidation').classList.add('show');}}};
+  $('#scenarioArchive').onclick=()=>{const id=workspace.activeScenarioId;if(confirm(`Archive “${activeScenario().name}”? It leaves the scenario switcher and compare lists but keeps its data and snapshot.`)){toggleScenarioArchive(id,true);closeDialog('scenarioModal');}};
+  $('#archivedScenarios').onclick=e=>{const b=e.target.closest('[data-unarchive]');if(b){toggleScenarioArchive(b.dataset.unarchive,false);openScenarioDialog(scenarioDialogMode);}};
   $('#fHiring').onchange=updateAssignmentFields;$('#fPerson').onchange=()=>{const emp=activeScenario().employees.find(p=>p.id===$('#fPerson').value);$('#fName').value=emp?.name||'';$('#fEmployeeNo').value=emp?.employeeNumber||'';photoDraft=emp?.photo||null;updatePhotoNote();updateAssignmentFields();};
   $('#compareBaseline').onchange=e=>{compareBaselineId=e.target.value;renderComparison();rememberPlanningView();};$('#compareTarget').onchange=e=>{compareTargetId=e.target.value;renderComparison();rememberPlanningView();};
   $('#compareSearch').oninput=renderComparison;$('#changeChips').onclick=e=>{const b=e.target.closest('[data-change-kind]');if(b){compareKind=b.dataset.changeKind;renderComparison();rememberPlanningView();}};
@@ -747,6 +831,13 @@ function setupPlanningEvents(){
   $('#filterToggle').onclick=()=>setFiltersOpen(!$('.layout').classList.contains('filters-open'));
   $('#closeFilters').onclick=()=>setFiltersOpen(false);
   $('#directoryClose').onclick=()=>closeDialog('directoryModal');
+  $('#directoryBtn').onclick=openDirectory;$('#directoryAdd').onclick=()=>openPersonModal('');
+  $('#directoryRows').onclick=e=>{const ed=e.target.closest('[data-person-edit]');if(ed){openPersonModal(ed.dataset.personEdit);return;}const rm=e.target.closest('[data-person-remove]');if(rm)removePerson(rm.dataset.personRemove);};
+  $('#personClose').onclick=$('#personCancel').onclick=()=>closeDialog('personModal');
+  $('#personSave').onclick=savePersonModal;
+  $('#personPhotoUpload').onclick=()=>{$('#personPhotoInput').value='';$('#personPhotoInput').click();};
+  $('#personPhotoInput').onchange=async e=>{const file=e.target.files[0];if(!file)return;try{personPhotoDraft=await normalizePersonPhoto(file);updatePersonPhotoNote();toast('Photo attached');}catch(error){toast(error.message||'Could not use this photo.');}};
+  $('#personPhotoRemove').onclick=()=>{personPhotoDraft=null;updatePersonPhotoNote();};
   $('#moveUpBtn').onclick=()=>moveSelected(-1);
   $('#moveDownBtn').onclick=()=>moveSelected(1);
   $('#fStacked').onchange=()=>{stackedTouched=true;};
@@ -766,14 +857,14 @@ function setupPlanningEvents(){
     const el=$('#'+id);if(el)el.onchange=readCardDisplayFromUi;
   }
   if($('#groupGap'))$('#groupGap').oninput=readCardDisplayFromUi;
-  for(const id of ['scenarioModal','directoryModal','welcomeModal','historyModal']){
+  for(const id of ['scenarioModal','directoryModal','personModal','welcomeModal','historyModal']){
     if(!$('#'+id))continue;
     $('#'+id).addEventListener('click',e=>{if(e.target===$('#'+id))closeDialog(id);});
     $('#'+id).addEventListener('keydown',e=>trapDialogFocus(e,id));
   }
   $('#importModal').addEventListener('keydown',e=>trapDialogFocus(e,'importModal'));
-  $('#drawer').addEventListener('keydown',e=>{if(e.key==='Escape'){e.stopPropagation();hidePositionEditor();}if((e.metaKey||e.ctrlKey)&&e.key==='Enter'){e.preventDefault();saveDrawer();}});
-  window.addEventListener('keydown',e=>{if(e.key==='Escape')for(const id of ['scenarioModal','directoryModal','welcomeModal','historyModal'])if($('#'+id)?.classList.contains('open')){if(id==='welcomeModal')markWelcomeSeen();closeDialog(id);}});
+  $('#drawer').addEventListener('keydown',e=>{trapDialogFocus(e,'drawer');if(e.key==='Escape'){e.stopPropagation();requestCloseDrawer();}if((e.metaKey||e.ctrlKey)&&e.key==='Enter'){e.preventDefault();saveDrawer();}});
+  window.addEventListener('keydown',e=>{if(e.key==='Escape')for(const id of ['scenarioModal','directoryModal','personModal','welcomeModal','historyModal'])if($('#'+id)?.classList.contains('open')){if(id==='welcomeModal')markWelcomeSeen();closeDialog(id);}});
   // Ignore unrelated keys; desktop shortcuts do not fire while writing in forms.
   svg.addEventListener('keydown',e=>{if(['Enter',' '].includes(e.key)&&e.target.closest('.node')){e.preventDefault();e.target.dispatchEvent(new MouseEvent('click',{bubbles:true}));}});
 }
@@ -891,7 +982,7 @@ function render(){
   wrap.classList.toggle('has-bulk',selectedIds.size>0);
   syncBulkBar();
   const t=totals(activeScenario(),p=>baseVisible(p));$('#countVisible').textContent=t.positions;$('#countTotal').textContent=t.filled;$('#countApproved').textContent=t.open;$('#countOpen').textContent=t.recruiting;$('#countFte').textContent=fteText(t.fte);$('#countApprovedFte').textContent=fteText(t.approvedFte);
-  $('#datePill').textContent=$('#dateFilter').checked?`Active ${fmtDate($('#asOf').value)}`:'All dates';$('#zoomLabel').textContent=Math.round(zoom*100)+'%';
+  syncDateFilterUi();$('#zoomLabel').textContent=Math.round(zoom*100)+'%';
   $('#visibleCardsHint').textContent=`${lay.all.length} cards displayed · ${t.positions} matching positions. FTE totals ignore collapse and search.`;
   renderFilterStrip();
   if(currentView==='positions')renderPositionTable();if(currentView==='compare')renderComparison();
@@ -968,7 +1059,7 @@ function buildExportSVG(filterGroup=null){
       if(surface)xml.push(`<rect x="34" y="20" width="${lw+12}" height="50" rx="5" fill="${surface}"/>`);
       xml.push(`<image x="40" y="${26+(38-lh)/2}" width="${lw}" height="${lh}" preserveAspectRatio="xMidYMid meet" xlink:href="${esc(logo.data)}"/>`);x=lw+62;}
     xml.push(`<text x="${x}" y="42" fill="${ink}" style="font:700 15px Arial,sans-serif">${esc(exportText(brand.companyName||'OrgFlow',Math.floor((w-x-60)/8)))}</text><text x="${x}" y="61" fill="${muted}" style="font:600 10px Arial,sans-serif">${esc(exportText(brand.chartTitle,Math.floor((w-x-60)/6)))}</text>`);
-    const description=`${activeScenario().name} · ${filterGroup||'Organization tree'} · ${lay.all.length} positions${filterGroup?' incl. context':''}`,date=$('#dateFilter').checked?`Active ${fmtDate($('#asOf').value)}`:'All dates';
+    const description=`${activeScenario().name} · ${filterGroup||'Organization tree'} · ${lay.all.length} positions${filterGroup?' incl. context':''}`,date=$('#dateFilter').checked&&$('#asOf').value?`As of ${fmtDate($('#asOf').value)}`:'All dates';
     xml.push(`<text x="40" y="99" fill="${muted}" style="font:600 11px Arial,sans-serif">${esc(exportText(description,Math.floor((w-260)/6)))}</text><text x="${w-40}" y="99" text-anchor="end" fill="${muted}" style="font:600 10px Arial,sans-serif">${esc(date)}</text><line x1="40" y1="122" x2="${w-40}" y2="122" stroke="${line}"/>`);
     xml.push(`<line x1="40" y1="${h-42}" x2="${w-40}" y2="${h-42}" stroke="${line}"/><text x="40" y="${h-22}" fill="${muted}" style="font:500 9px Arial,sans-serif">${esc(exportText(brand.footer,Math.floor((w-160)/5.5)))}</text><text x="${w-40}" y="${h-22}" text-anchor="end" fill="${muted}" style="font:600 9px Arial,sans-serif">OrgFlow</text>`);
   }else xml.push(`<text x="40" y="25" fill="${muted}" style="font:600 11px Arial,sans-serif">${esc(exportText(activeScenario().name+' · '+(filterGroup||'Organization tree'),80))}</text>`);
@@ -1006,8 +1097,32 @@ function downloadTemplate(){
   const rows=[['POS-001','','','Head of Product','Head','Product',1,'Approved','Filled','EMP-001','Alex Morgan','E-101','2026-01-01','','London','PRD','Product','0',''],['POS-002','POS-001','','Team Leader — Product Management','Team Leader','Product',1,'Approved','Filled','EMP-002','Sam Rivera','E-118','2026-01-01','','London','PRD','Product','0',''],['POS-003','POS-002','POS-001','Senior Product Manager','Specialist','Product',1,'Approved','Recruiting','','','','2027-01-01','','Remote','PRD','Product','1',''],['POS-004','POS-002','','Graduate Product Manager','Graduate','Product',0.8,'Not approved','Vacant','','','','2027-01-01','2027-12-31','London','PRD','Product','2','']];
   downloadBlob(csvBlob(POSITION_CSV_COLUMNS,rows),'orgflow-positions-template.csv');
 }
-function prepareImport(text,fileName){return OrgFlow.prepareImport(text,fileName,activeScenario(),makeId,workspace.positionLevels);}
+const IMPORT_FIELD_LABELS={id:'Position ID',managerId:'Reports to · position ID',secondaryManagerId:'Dotted-line · position ID',managerName:'Reports to · name or title',personId:'Person ID',employeeNumber:'Employee number',name:'Person name',title:'Position title',type:'Position type',group:'Group / team',startDate:'Start date',endDate:'End date',status:'Approval',hiringState:'Hiring state',fte:'FTE',location:'Location / site',costCenter:'Cost center',jobFamily:'Job family',sortOrder:'Reporting order',stacked:'Stacked reports'};
+let pendingImportText='',pendingImportName='',pendingImportOverrides={};
+function prepareImport(text,fileName){return OrgFlow.prepareImport(text,fileName,activeScenario(),makeId,workspace.positionLevels,pendingImportOverrides);}
 function makeImportScenario(result,mode){return OrgFlow.makeImportScenario(result,mode,activeScenario(),workspace.positionLevels);}
+function renderImportMapping(result){
+  const wrap=$('#importMapWrap');if(!wrap)return;
+  if(!result.headers?.length){wrap.style.display='none';return;}
+  wrap.style.display='';
+  const fieldByCol=new Map(Object.entries(result.map||{}).map(([k,i])=>[i,k]));
+  const ignored=result.headers.filter((_,i)=>!fieldByCol.has(i));
+  $('#importMapSummary').textContent=`Column mapping${ignored.length?` · ${ignored.length} ignored`:''}`;
+  wrap.open=ignored.length>0;
+  $('#importMapGrid').innerHTML=result.headers.map((h,i)=>{
+    const sel=fieldByCol.get(i)||'';
+    const opts=`<option value="ignore"${sel?'':' selected'}>— Ignore —</option>`+Object.keys(IMPORT_FIELD_LABELS).map(k=>`<option value="${k}"${k===sel?' selected':''}>${esc(IMPORT_FIELD_LABELS[k])}</option>`).join('');
+    return `<label class="map-row"><span title="${esc(h)}">${esc(h||'Column '+(i+1))}</span><select data-map-col="${i}">${opts}</select></label>`;
+  }).join('');
+}
+function reimportWithMapping(){
+  if(!pendingImportText)return;
+  const overrides={};
+  $$('#importMapGrid select[data-map-col]').forEach(s=>{overrides[s.dataset.mapCol]=s.value||'ignore';});
+  pendingImportOverrides=overrides;
+  pendingImport=prepareImport(pendingImportText,pendingImportName);
+  renderImportReview();
+}
 
 function renderImportReview(){
   if(!pendingImport)return;const result=pendingImport,mode=$('input[name="importMode"]:checked').value,errors=[...result.errors];
@@ -1015,13 +1130,17 @@ function renderImportReview(){
   if(!errors.length){try{const merged=makeImportScenario(result,mode);preview=result.positions.map(p=>merged.positions.find(x=>x.id===p.id));}catch(error){errors.push(error.message);}}
   $('#importFileName').textContent=`${result.filename||'CSV file'} → ${activeScenario().name}`;$('#impRows').textContent=result.positions.length;$('#impWarnings').textContent=result.warnings.length;$('#impErrors').textContent=errors.length;
   $('#importIssues').innerHTML=[...errors.map(x=>`<div class="issue error">${esc(x)}</div>`),...result.warnings.map(x=>`<div class="issue warn">${esc(x)}</div>`)].slice(0,40).join('');
+  renderImportMapping(result);
   $('#importPreview').innerHTML=preview.slice(0,10).map(p=>`<tr><td>${esc(p.id)}</td><td>${esc(p.title)}</td><td>${esc(result.employees.find(x=>x.id===p.personId)?.name||activeScenario().employees.find(x=>x.id===p.personId)?.name||'Unassigned')}</td><td>${esc(p.group)}</td><td>${esc(p.hiringState)}</td><td>${esc(p.status)}</td><td>${esc(p.fte)}</td><td>${esc(p.managerId||'Top level')}</td></tr>`).join('');
   $('#importConfirm').disabled=!!errors.length||!result.positions.length;$('#importConfirm').textContent=`Import ${result.positions.length} positions`;
 }
 function openImportReview(result){pendingImport=result;renderImportReview();openDialog('importModal');}
 async function importFile(file){
-  try{if(file.size>5*1024*1024)throw new Error('CSV exceeds the 5 MB import limit.');openImportReview(prepareImport(await file.text(),file.name));}
-  catch(error){openImportReview({positions:[],employees:[],errors:[error.message||'Could not read this CSV.'],warnings:[],filename:file.name,scenarioId:workspace.activeScenarioId});}
+  try{
+    if(file.size>5*1024*1024)throw new Error('CSV exceeds the 5 MB import limit.');
+    pendingImportText=await file.text();pendingImportName=file.name;pendingImportOverrides={};
+    openImportReview(prepareImport(pendingImportText,pendingImportName));
+  }catch(error){pendingImportText='';pendingImportName='';pendingImportOverrides={};openImportReview({positions:[],employees:[],errors:[error.message||'Could not read this CSV.'],warnings:[],filename:file.name,scenarioId:workspace.activeScenarioId});}
 }
 function confirmImport(){
   if(!pendingImport||pendingImport.errors.length)return;
@@ -1029,7 +1148,7 @@ function confirmImport(){
     const mode=$('input[name="importMode"]:checked').value,nextScenario=makeImportScenario(pendingImport,mode);
     if(mode==='replace'&&activeScenario().positions.length&&!confirm(`Replace all ${activeScenario().positions.length} positions in “${activeScenario().name}” with ${pendingImport.positions.length} imported positions?\n\nOther scenarios and company branding will not change. People records are retained for reassignment.`))return;
     const next=structuredClone(workspace),index=next.scenarios.findIndex(s=>s.id===workspace.activeScenarioId);next.scenarios[index]={...nextScenario,updatedAt:new Date().toISOString()};commitPlanning(next,`${pendingImport.positions.length} positions imported into ${activeScenario().name}`);
-    hidePositionEditor();collapsed.clear();setupChips();closeDialog('importModal');pendingImport=null;render();
+    hidePositionEditor();collapsed.clear();setupChips();closeDialog('importModal');pendingImport=null;pendingImportText='';pendingImportName='';pendingImportOverrides={};render();
   }catch(error){$('#importIssues').innerHTML=`<div class="issue error">${esc(error.message)}</div>`;}
 }
 function exportComparisonCSV(){
@@ -1138,7 +1257,12 @@ function applyBulkEdit(){
   if($('#bulkGroup')?.value.trim())patch.group=$('#bulkGroup').value.trim();
   if($('#bulkSite')?.value.trim())patch.location=$('#bulkSite').value.trim();
   if($('#bulkStatus')?.value)patch.status=$('#bulkStatus').value;
-  if(!Object.keys(patch).length){toast('Choose a type, group, site or approval to apply');return;}
+  if($('#bulkHiring')?.value)patch.hiringState=$('#bulkHiring').value;
+  if($('#bulkStart')?.value)patch.startDate=$('#bulkStart').value;
+  if($('#bulkEnd')?.value)patch.endDate=$('#bulkEnd').value;
+  if($('#bulkCostCenter')?.value.trim())patch.costCenter=$('#bulkCostCenter').value.trim();
+  if($('#bulkJobFamily')?.value.trim())patch.jobFamily=$('#bulkJobFamily').value.trim();
+  if(!Object.keys(patch).length){toast('Choose a field to apply');return;}
   try{
     updateScenario(s=>{s.positions=bulkPatchPositions(s.positions,[...selectedIds],patch,workspace.positionLevels);},`Updated ${selectedIds.size} positions`);
     toast(`Updated ${selectedIds.size} positions`);
@@ -1162,6 +1286,7 @@ async function saveWorkspaceToDisk(saveAs=false){
   try{
     if(window.showSaveFilePicker&&(saveAs||!workspaceFileHandle)){
       workspaceFileHandle=await window.showSaveFilePicker({suggestedName:`orgflow-workspace-${today}.json`,types:[{description:'OrgFlow workspace',accept:{'application/json':['.json']}}]});
+      syncAutosaveUi();
     }
     if(workspaceFileHandle?.createWritable){
       const writable=await workspaceFileHandle.createWritable();
@@ -1180,7 +1305,7 @@ async function restoreWorkspacePicker(){
   if(window.showOpenFilePicker){
     try{
       const [handle]=await window.showOpenFilePicker({types:[{description:'OrgFlow workspace',accept:{'application/json':['.json']}}]});
-      workspaceFileHandle=handle;
+      workspaceFileHandle=handle;syncAutosaveUi();
       await restoreWorkspace(await handle.getFile());
       return;
     }catch(error){if(error?.name==='AbortError')return;}
@@ -1342,6 +1467,13 @@ $('#backupBtn').onclick=async()=>{if(await allowEnterpriseExport('workspace'))ex
 
 
 svg.addEventListener('pointerdown',e=>{const node=e.target.closest?.('.node');if(node)beginCardDrag(e,node);});
+wrap.addEventListener('pointerdown',e=>{
+  if(e.pointerType==='touch'||e.button!==0||e.target.closest?.('.node')||e.target.closest?.('[data-action="collapse"]')||e.target.closest?.('[data-select]'))return;
+  const sx=e.clientX,sy=e.clientY,sl=wrap.scrollLeft,st=wrap.scrollTop;let moved=false;
+  const move=ev=>{const dx=ev.clientX-sx,dy=ev.clientY-sy;if(!moved&&Math.hypot(dx,dy)<5)return;moved=true;wrap.classList.add('panning');wrap.scrollLeft=sl-dx;wrap.scrollTop=st-dy;ev.preventDefault();};
+  const up=()=>{window.removeEventListener('pointermove',move);window.removeEventListener('pointerup',up);wrap.classList.remove('panning');};
+  window.addEventListener('pointermove',move);window.addEventListener('pointerup',up);
+});
 svg.addEventListener('pointerover',e=>{const node=e.target.closest?.('.node');const id=node?.dataset.id||null;if(id===pathHoverId)return;pathHoverId=id;applyPathClasses();});
 svg.addEventListener('pointerleave',()=>{pathHoverId=null;applyPathClasses();});
 svg.addEventListener('click',e=>{
@@ -1358,7 +1490,7 @@ svg.addEventListener('click',e=>{
 $('#themeBtn').onclick=()=>setTheme(document.documentElement.dataset.theme==='dark'?'light':'dark');
 $('#paletteBtn').onclick=e=>{e.stopPropagation();$('#exportMenu').classList.remove('open');$('#paletteMenu').classList.toggle('open')};
 $('#paletteMenu').onclick=e=>{const b=e.target.closest('button[data-palette]');if(!b)return;setPalette(b.dataset.palette);closeMenus();toast(`${b.querySelector('b')?.textContent||'Palette'} palette applied`)};
-$('#drawerClose').onclick=hidePositionEditor;$('#saveBtn').onclick=saveDrawer;$('#deleteBtn').onclick=deleteSelected;$('#addBtn').onclick=()=>openDrawer('',true);
+$('#drawerClose').onclick=requestCloseDrawer;$('#drawerCancel').onclick=requestCloseDrawer;$('#saveBtn').onclick=saveDrawer;$('#deleteBtn').onclick=deleteSelected;$('#addBtn').onclick=()=>openDrawer('',true);
 $('#search').addEventListener('input',()=>{const q=$('#search').value.trim().toLowerCase();if(q){const hits=people.filter(p=>baseVisible(p)&&matchesSearch(p,q));if(hits.length){maxDepth=99;$$('#depthSeg button').forEach(b=>b.classList.toggle('active',b.dataset.depth==='99'));for(const hit of hits){let id=hit.managerId;const guard=new Set();while(id&&!guard.has(id)){guard.add(id);collapsed.delete(id);id=people.find(x=>x.id===id)?.managerId||''}}}}render()});
 $('#asOf').onchange=render;$('#dateFilter').onchange=render;$('#depthSeg').onclick=e=>{const b=e.target.closest('button[data-depth]');if(!b)return;maxDepth=+b.dataset.depth;$$('#depthSeg button').forEach(x=>x.classList.toggle('active',x===b));render()};
 $('#expandBtn').onclick=()=>{collapsed.clear();maxDepth=99;$$('#depthSeg button').forEach(x=>x.classList.toggle('active',x.dataset.depth==='99'));render();centerChart();};
@@ -1381,17 +1513,28 @@ $('#exportBtn').onclick=e=>{e.stopPropagation();$('#paletteMenu').classList.remo
   else if(kind==='saveAs')saveWorkspaceToDisk(true);
   else exportCSV();
 };document.addEventListener('click',e=>{if(!e.target.closest('.menu-wrap'))closeMenus()});
-$('#importClose').onclick=$('#importCancel').onclick=()=>closeDialog('importModal');$('#importModal').addEventListener('click',e=>{if(e.target===$('#importModal'))$('#importModal').classList.remove('open')});$('#importConfirm').onclick=confirmImport;
+$('#importClose').onclick=$('#importCancel').onclick=()=>closeDialog('importModal');$('#importModal').addEventListener('click',e=>{if(e.target===$('#importModal'))$('#importModal').classList.remove('open')});$('#importConfirm').onclick=confirmImport;$('#importMapGrid').addEventListener('change',e=>{if(e.target.closest('select[data-map-col]'))reimportWithMapping();});
 window.addEventListener('keydown',e=>{
   const tag=(e.target.tagName||'').toLowerCase();
   const typing=tag==='textarea'||tag==='select'||(tag==='input'&&e.target.type!=='checkbox');
   if((e.metaKey||e.ctrlKey)&&e.key.toLowerCase()==='k'){if(tag==='textarea'||(tag==='input'&&e.target.id!=='search'))return;e.preventDefault();$('#search').focus();return;}
   if((e.metaKey||e.ctrlKey)&&e.key.toLowerCase()==='z'&&!typing){e.preventDefault();if(e.shiftKey)redoChange();else undoChange();return;}
   if((e.metaKey||e.ctrlKey)&&e.key.toLowerCase()==='s'){e.preventDefault();if(!typing)saveWorkspaceToDisk(e.shiftKey);return;}
-  if(e.key==='Escape'){if(selectedIds.size){clearSelection();return;}if($('#brandingModal').classList.contains('open')){closeBranding();return;}if($('#welcomeModal')?.classList.contains('open')){closeWelcome();return;}if($('#historyModal')?.classList.contains('open')){closeDialog('historyModal');return;}hidePositionEditor();$('#importModal').classList.remove('open');closeMenus()}
+  if(e.key==='Escape'){
+    const modalOpen=id=>$('#'+id)?.classList.contains('open');
+    if(modalOpen('brandingModal')){closeBranding();return;}
+    if(modalOpen('welcomeModal')){closeWelcome();return;}
+    if(modalOpen('historyModal')){closeDialog('historyModal');return;}
+    if(modalOpen('importModal')){$('#importModal').classList.remove('open');return;}
+    if(modalOpen('scenarioModal')||modalOpen('directoryModal')||modalOpen('personModal'))return;
+    if($('.layout')?.classList.contains('filters-open')){setFiltersOpen(false);return;}
+    if($('#drawer').classList.contains('open')){requestCloseDrawer();return;}
+    if(selectedIds.size){clearSelection();return;}
+    closeMenus();
+  }
 });window.addEventListener('resize',render);
 function paintPlanner(){
-  loadSavedPlanningView();setupTheme();setupChips();setupPlanningEvents();updateUndoButtons();
+  loadSavedPlanningView();setupTheme();setupChips();setupPlanningEvents();updateUndoButtons();syncAutosaveUi();
 }
 function startLocalPlanner(){
   initPlanning();paintPlanner();
@@ -1412,6 +1555,7 @@ window.applyEnterpriseWorkspace=applyEnterpriseWorkspace;
 window.enterpriseWorkspacePayload=()=>workspacePayload();
 $('#undoBtn').onclick=undoChange;$('#redoBtn').onclick=redoChange;$('#helpBtn').onclick=()=>openWelcome(true);
 $('#historyBtn').onclick=openHistory;$('#historyClose').onclick=()=>closeDialog('historyModal');
+$('#autoSaveFile').onchange=e=>{if(e.target.checked&&!workspaceFileHandle?.createWritable){e.target.checked=false;toast('Save the workspace once to pick the file — auto-save then keeps it current.');return;}try{localStorage.setItem(AUTOSAVE_KEY,e.target.checked?'1':'0');}catch{}if(e.target.checked){scheduleFileAutosave();toast('Auto-save on — the picked file stays current.');}};
 $('#historyRows').onclick=e=>{const b=e.target.closest('[data-history]');if(b)restoreHistoryIndex(Number(b.dataset.history));};
 $('#welcomeClose').onclick=$('#welcomeSkip').onclick=closeWelcome;
 $('#welcomeHarbor').onclick=()=>{const skip=welcomeFirstRun;closeWelcome();loadSampleWorkspace('harbor-and-co',{skipConfirm:skip});};

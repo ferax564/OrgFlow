@@ -44,8 +44,12 @@ jobs:
           python -m playwright install --with-deps chromium
       - name: Run native browser regression gate
         run: python tests/browser-regressions.py --browser chromium 2>&1 | tee /tmp/orgflow-verification/browser.log
-      - name: Publish verified source to the same PR branch
+      - name: Publish verified application source to the same PR branch
         run: |
+          # Workflow edits are published separately by the authorized connector.
+          # This job retains its existing contents-only permission.
+          cp .github/workflows/ci.yml /tmp/orgflow-verification/verified-ci.yml
+          git restore --source=HEAD --staged --worktree .github/workflows/ci.yml
           if ! git diff --quiet || [ -n "$(git ls-files --others --exclude-standard)" ]; then
             git config user.name 'OrgFlow maintenance'
             git config user.email 'orgflow-maintenance@users.noreply.github.com'
@@ -59,6 +63,7 @@ jobs:
           mkdir -p /tmp/orgflow-verification
           git diff --stat > /tmp/orgflow-verification/diff-stat.txt
           git status --short > /tmp/orgflow-verification/status.txt
+          git rev-parse HEAD > /tmp/orgflow-verification/commit.txt
           tar --exclude=.git --exclude=node_modules --exclude=test-results -czf /tmp/orgflow-verification/orgflow-source.tgz .
           if [ -d test-results/browser ]; then cp -r test-results/browser /tmp/orgflow-verification/; fi
       - uses: actions/upload-artifact@v4

@@ -1,0 +1,43 @@
+name: PR14 implementation verification
+on:
+  push:
+    branches: [ux/planner-backlog]
+    paths:
+      - .github/workflows/pr14-maintenance.yml
+      - scripts/pr14-apply.py
+permissions:
+  contents: write
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Apply reviewed source changes when present
+        run: |
+          if [ -f scripts/pr14-apply.py ]; then python3 scripts/pr14-apply.py; fi
+      - name: Run domain and server tests
+        run: npm test
+      - name: Publish verified implementation to the same PR branch
+        run: |
+          if ! git diff --quiet; then
+            git config user.name 'OrgFlow maintenance'
+            git config user.email 'orgflow-maintenance@users.noreply.github.com'
+            git add -u
+            git commit -m 'fix: apply reviewed OrgFlow integrity and management changes'
+            git push origin HEAD:refs/heads/ux/planner-backlog
+          fi
+      - name: Package exact source and test log
+        if: always()
+        run: tar --exclude=.git --exclude=node_modules -czf /tmp/orgflow-source.tgz .
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: orgflow-review-source
+          path: /tmp/orgflow-source.tgz
+          retention-days: 3

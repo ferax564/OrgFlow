@@ -9,6 +9,8 @@ const { validateDocument, emptyDocument, MAX_BYTES } = require('./document');
 const { filterDocument, mergeDocument, canWriteRole } = require('./subtree');
 const query = require('./org-query');
 const auth = require('./auth');
+const governance = require('./governance');
+const Management = require('../../js/management-core');
 
 const ROOT = path.resolve(__dirname, '../..');
 const EXPORT_KINDS = ['png', 'groups', 'pdf', 'html', 'csv', 'people', 'workspace', 'compare'];
@@ -383,32 +385,41 @@ function createApp(options = {}) {
           let incoming;
           try { incoming = validateDocument(parsed.workspace || parsed, raw.length); }
           catch (err) { sendError(res, 400, err.message); return; }
-          const row = store.getWorkspaceRow();
-          let stored;
-          try { stored = JSON.parse(row.document); }
-          catch { sendError(res, 500, 'Stored workspace is unreadable.'); return; }
-          const expected = parsed.version != null ? parsed.version : (req.headers['if-match'] ? Number(String(req.headers['if-match']).replace(/"/g, '')) : row.version);
-          let next;
+          const expected = parsed.workspace ? parsed.version ?? Number(String(req.headers['if-match'] || '').replace(/"/g, '')) : Number(String(req.headers['if-match'] || '').replace(/"/g, ''));
           try {
-            next = membership.scope_position_id
-              ? validateDocument(mergeDocument(stored, incoming, membership.scope_position_id))
-              : incoming;
+            const saved = governance.atomicSave(store, incoming, membership, user, expected);
+            send(res, 200, { ok: true, ...saved, workspace: filterDocument(saved.workspace, membership.scope_position_id || '') });
           } catch (err) {
-            sendError(res, 400, err.message);
-            return;
+            sendError(res, err.status || 400, err.message, { code: err.code, currentVersion: err.currentVersion });
           }
+          return;
+        }
+
+        if (p === '/api/proposals' && method === 'POST') {
+          const body=await readJson(req,res,1024*1024);if(!body)return;
+          try { send(res,201,governance.proposalCommand(store,body,membership,user)); }
+          catch(error) { sendError(res,error.status||400,error.message,{currentVersion:error.currentVersion,code:error.code}); }
+          return;
+        }
+
+        const decisionMatch = p.match(/^\/api\/scenarios\/([^/]+)\/decision$/);
+        if (decisionMatch && method === 'POST') {
+          const body = await readJson(req, res, 1024 * 1024);if (!body) return;
           try {
-            const saved = store.saveWorkspace(next, user.id, expected);
-            store.audit({ userId: user.id, action: 'save', detail: { version: saved.version, scoped: Boolean(membership.scope_position_id) } });
-            const vis = filterDocument(next, membership.scope_position_id || '');
-            send(res, 200, { ok: true, version: saved.version, updatedAt: saved.updatedAt, workspace: vis });
+            const saved = governance.decisionCommand(store, decodeURIComponent(decisionMatch[1]), body.action, body.input || {}, membership, user, body.version);
+            send(res, 200, { ok: true, ...saved });
           } catch (err) {
-            if (err.code === 'version_conflict') {
-              sendError(res, 409, err.message, { code: 'version_conflict', currentVersion: err.currentVersion });
-              return;
-            }
-            throw err;
+            sendError(res, err.status || 400, err.message, { code: err.code, currentVersion: err.currentVersion, conflicts: err.conflicts });
           }
+          return;
+        }
+
+        if (p === '/api/org/forecast' && method === 'GET') {
+          const vis = visibleDocument(store, membership);
+          const scenario = vis.doc.planning.scenarios.find(s => s.id === (url.searchParams.get('scenario') || 'current'));
+          if (!scenario) { sendError(res, 404, 'Scenario not found.');return; }
+          try { send(res, 200, { scenario: scenario.id, version: vis.version, rows: Management.forecast(scenario, { startMonth: url.searchParams.get('month') || undefined, months: Number(url.searchParams.get('months') || 12), group: url.searchParams.get('group') || '' }) }); }
+          catch (err) { sendError(res, 400, err.message); }
           return;
         }
 
@@ -426,7 +437,7 @@ function createApp(options = {}) {
         }
 
         if (p === '/api/org/summary' && method === 'GET') {
-          send(res, 200, query.summary(visibleDocument(store, membership).doc, url.searchParams.get('scenario')));
+          const vis=visibleDocument(store,membership);send(res,200,{...query.summary(vis.doc,url.searchParams.get('scenario')),version:vis.version});
           return;
         }
         if (p === '/api/org/positions' && method === 'GET') {
@@ -576,8 +587,8 @@ function createApp(options = {}) {
   return { server, store, db, config: cfg };
 }
 
-function mcpTools() {
-  return [
+function mcpTools({ allowProposals = false } = {}) {
+  const tools = [
     { name: 'get_org', description: 'Summary of the visible organization (counts, groups, active scenario).', inputSchema: { type: 'object', properties: { scenario: { type: 'string' } } } },
     { name: 'search_positions', description: 'Search visible positions by title, name, group or id.', inputSchema: { type: 'object', properties: { q: { type: 'string' }, scenario: { type: 'string' } } } },
     { name: 'get_person', description: 'Look up one visible person and their seat.', inputSchema: { type: 'object', properties: { personId: { type: 'string' }, scenario: { type: 'string' } }, required: ['personId'] } },
@@ -586,10 +597,15 @@ function mcpTools() {
     { name: 'list_vacancies', description: 'Vacant and recruiting seats in the visible organization.', inputSchema: { type: 'object', properties: { scenario: { type: 'string' } } } },
     { name: 'diff_scenarios', description: 'Position changes between two scenarios the caller can see.', inputSchema: { type: 'object', properties: { from: { type: 'string' }, to: { type: 'string' } }, required: ['to'] } }
   ];
+  tools.push({name:'workforce_forecast',description:'Read monthly headcount, capacity and position budget assumptions. Currencies remain separate.',inputSchema:{type:'object',properties:{scenario:{type:'string'},month:{type:'string'},months:{type:'integer',minimum:1,maximum:36},group:{type:'string'}}}});
+  for(const tool of tools)tool.annotations={readOnlyHint:true,destructiveHint:false};
+  if(allowProposals)tools.push({name:'propose_changes',description:'Create a Draft proposal only. Does not change Current, approve or apply. Requires an unscoped editor/admin and the current workspace version.',annotations:{readOnlyHint:false,destructiveHint:false,openWorldHint:false},inputSchema:{type:'object',required:['version','name','rationale','changes'],properties:{version:{type:'integer',minimum:1},name:{type:'string',maxLength:80},rationale:{type:'string',maxLength:3000},changes:{type:'array',maxItems:500,items:{type:'object',required:['entity','id','operation'],properties:{entity:{type:'string',enum:Management.COLLECTIONS},id:{type:'string'},operation:{type:'string',enum:['upsert','remove']},values:{type:'object'}}}}}}});
+  return tools;
 }
 
 function callMcpTool(name, args, doc) {
   switch (name) {
+    case 'workforce_forecast': {const s=doc.planning.scenarios.find(s=>s.id===(args.scenario||'current'));if(!s)throw new Error('Scenario not found.');return {rows:Management.forecast(s,{startMonth:args.month,months:args.months??12,group:args.group||''})};}
     case 'get_org': return query.summary(doc, args.scenario);
     case 'search_positions': return { positions: query.searchPositions(doc, args.q, args.scenario) };
     case 'get_person': return query.getPerson(doc, args.personId, args.scenario);

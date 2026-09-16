@@ -4,6 +4,9 @@
  * (managerId cleared) so missing parents do not leak or fail validation.
  */
 'use strict';
+const Management = require('../../js/management-core');
+// Permissions follow reporting relationships effective today, not editable legacy anchors.
+const scopedIds = (scenario, rootId) => descendantIds(Management.effectivePositions(scenario), rootId);
 
 function descendantIds(positions, rootId) {
   if (!rootId) return null;
@@ -38,22 +41,22 @@ function filterPeople(employees, positions) {
   return (employees || []).filter(e => used.has(e.id)).map(e => structuredClone(e));
 }
 
-function filterScenarioTree(scenario, scopePositionId) {
+function filterScenarioTree(scenario, scopePositionId, nested = false) {
   if (!scopePositionId) return structuredClone(scenario);
-  const allowed = descendantIds(scenario.positions, scopePositionId);
+  const allowed = scopedIds(scenario, scopePositionId);
   const positions = scenario.positions.filter(p => allowed.has(p.id)).map(p => clipPosition(p, allowed));
-  const employees = filterPeople(scenario.employees, positions);
-  let baseSnapshot = null;
-  if (scenario.baseSnapshot) {
-    const snapAllowed = descendantIds(scenario.baseSnapshot.positions, scopePositionId);
-    const snapPositions = (scenario.baseSnapshot.positions || []).filter(p => snapAllowed.has(p.id)).map(p => clipPosition(p, snapAllowed));
-    baseSnapshot = {
-      ...scenario.baseSnapshot,
-      positions: snapPositions,
-      employees: filterPeople(scenario.baseSnapshot.employees, snapPositions)
-    };
-  }
-  return { ...structuredClone({ ...scenario, positions: undefined, employees: undefined, baseSnapshot: undefined }), positions, employees, baseSnapshot };
+  const assignments = (scenario.assignments || []).filter(r => allowed.has(r.positionId));
+  const used = new Set([...positions.map(p => p.personId), ...assignments.map(r => r.personId)].filter(Boolean));
+  const employees = (scenario.employees || []).filter(e => used.has(e.id));
+  const out = { ...structuredClone(scenario), positions, employees: structuredClone(employees), assignments: structuredClone(assignments),
+    reportingLines: (scenario.reportingLines || []).filter(r => allowed.has(r.positionId)).map(r => ({ ...r, managerId: allowed.has(r.managerId) ? r.managerId : '' })),
+    costs: (scenario.costs || []).filter(r => allowed.has(r.positionId)).map(r => ({ ...r })),
+    allocations: (scenario.allocations || []).filter(r => used.has(r.personId)).map(r => ({ ...r })),
+    // Free-form organization-wide commitments and decision notes are not subtree-scoped records.
+    commitments: [], description: '' };
+  if (scenario.workflow) out.workflow = { ...scenario.workflow, owner: '', rationale: '', reviewers: [], comments: [], events: [], approvedBy: '' };
+  if (!nested) for (const field of ['baseSnapshot', 'applicationBaseline', 'appliedBefore', 'appliedAfter']) out[field] = scenario[field] ? filterScenarioTree(scenario[field], scopePositionId, true) : null;
+  return out;
 }
 
 function filterDocument(doc, scopePositionId) {
@@ -61,9 +64,10 @@ function filterDocument(doc, scopePositionId) {
   if (!scopePositionId) return structuredClone(doc);
   const planning = doc.planning;
   return {
-    ...structuredClone({ ...doc, planning: undefined }),
+    ...structuredClone({ ...doc, planning: undefined }), view: {},
     planning: {
       ...planning,
+      namedViews: [], importProfiles: [],
       scenarios: planning.scenarios.map(s => filterScenarioTree(s, scopePositionId))
     }
   };
@@ -73,7 +77,7 @@ function mergeScenario(stored, incoming, scopePositionId) {
   if (!scopePositionId) return structuredClone(incoming);
   const storedById = new Map(stored.positions.map(p => [p.id, p]));
   const incomingById = new Map((incoming?.positions || []).map(p => [p.id, p]));
-  const allowed = descendantIds(stored.positions, scopePositionId);
+  const allowed = scopedIds(stored, scopePositionId);
   if (!allowed.size) return structuredClone(stored);
 
   const included = new Map();
@@ -86,7 +90,7 @@ function mergeScenario(stored, incoming, scopePositionId) {
     if (id === scopePositionId) {
       const storedRoot = storedById.get(id);
       const inc = incomingById.get(id) || storedRoot;
-      included.set(id, { ...structuredClone(inc), id, managerId: storedRoot.managerId });
+      included.set(id, { ...structuredClone(inc), id, managerId: storedRoot.managerId, secondaryManagerId: storedRoot.secondaryManagerId, reportingMode: storedRoot.reportingMode });
       continue;
     }
     const inc = incomingById.get(id);
@@ -110,29 +114,30 @@ function mergeScenario(stored, incoming, scopePositionId) {
   }
 
   const positions = [...included.values()];
-  const usedPeople = new Set(positions.map(p => p.personId).filter(Boolean));
-  const peopleById = new Map();
-  for (const e of stored.employees || []) {
-    if (usedPeople.has(e.id)) peopleById.set(e.id, structuredClone(e));
+  // Merge only records belonging to allowed positions/people; preserve outside and unassigned people.
+  const allowedPeople = new Set([...stored.positions.filter(p => allowed.has(p.id)).map(p => p.personId), ...(stored.assignments || []).filter(r => allowed.has(r.positionId)).map(r => r.personId)].filter(Boolean));
+  const existingPeople = new Set(stored.employees.map(e => e.id));
+  for (const e of incoming.employees || []) if (!existingPeople.has(e.id)) allowedPeople.add(e.id);
+  const outsiders = new Set([...stored.positions.filter(p => !allowed.has(p.id)).map(p => p.personId), ...(stored.assignments || []).filter(r => !allowed.has(r.positionId)).map(r => r.personId)].filter(Boolean));
+  for (const p of positions) if (growing.has(p.id) && p.personId && outsiders.has(p.personId)) {
+    const original=storedById.get(p.id);p.personId=original?.personId || '';p.hiringState=original?.hiringState || 'Vacant';
   }
-  for (const e of incoming.employees || []) {
-    if (usedPeople.has(e.id)) peopleById.set(e.id, structuredClone(e));
+  const peopleById = new Map(stored.employees.map(e => [e.id, structuredClone(e)]));
+  for (const e of incoming.employees || []) if (allowedPeople.has(e.id) && !outsiders.has(e.id)) peopleById.set(e.id, structuredClone(e));
+  function mergeRows(key, inScope, accepts = () => true) {
+    const original=stored[key] || [], externalIds=new Set(original.filter(r => !inScope(r)).map(r => r.id));
+    return [...original.filter(r => !inScope(r)), ...(incoming[key] || []).filter(r => inScope(r) && !externalIds.has(r.id) && accepts(r))].map(r => structuredClone(r));
   }
+  const assignments = mergeRows('assignments', r => growing.has(r.positionId), r => allowedPeople.has(r.personId) && !outsiders.has(r.personId));
+  const reportingLines = mergeRows('reportingLines', r => growing.has(r.positionId) && r.positionId !== scopePositionId, r => !r.managerId || growing.has(r.managerId));
+  // A scoped root may not detach itself through its dated reporting line.
+  for(const r of reportingLines) if(r.positionId===scopePositionId) { const prior=(stored.reportingLines||[]).find(x=>x.id===r.id); if(prior) r.managerId=prior.managerId; }
   return {
-    ...structuredClone(stored),
-    ...pickIncomingMeta(incoming, stored),
-    positions,
-    employees: [...peopleById.values()],
+    ...structuredClone(stored), positions, employees: [...peopleById.values()], assignments, reportingLines,
+    costs: mergeRows('costs', r => growing.has(r.positionId)),
+    allocations: mergeRows('allocations', r => allowedPeople.has(r.personId) && !outsiders.has(r.personId)),
+    commitments: structuredClone(stored.commitments || []),
     baseSnapshot: stored.baseSnapshot ? structuredClone(stored.baseSnapshot) : null
-  };
-}
-
-function pickIncomingMeta(incoming, stored) {
-  if (!incoming) return { name: stored.name, description: stored.description, updatedAt: stored.updatedAt };
-  return {
-    name: stored.id === 'current' ? 'Current' : (incoming.name || stored.name),
-    description: incoming.description != null ? incoming.description : stored.description,
-    updatedAt: incoming.updatedAt || stored.updatedAt
   };
 }
 
@@ -151,7 +156,7 @@ function mergeDocument(stored, incoming, scopePositionId) {
         : stored.planning.activeScenarioId,
       scenarios
     },
-    view: incoming.view || stored.view
+    view: structuredClone(stored.view)
   };
 }
 
@@ -161,6 +166,7 @@ function canWriteRole(role) {
 
 module.exports = {
   descendantIds,
+  scopedIds,
   filterDocument,
   filterScenarioTree,
   mergeDocument,

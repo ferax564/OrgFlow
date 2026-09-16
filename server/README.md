@@ -88,3 +88,7 @@ Read tools: `get_org`, `search_positions`, `get_person`, `span_of_control`, `dot
 - Dev sign-in when `AUTH_MODE=oidc`
 
 Load, save, and export are written to the audit log.
+
+## Version 2.1 management safeguards
+
+See [Management guide](../MANAGEMENT.md) for version-required writes, transactional decision/audit updates, proposal-only AI/API writes, dated subtree access, forecast assumptions, and browser test commands. Node 22.16+ is required. The stdio MCP bridge now uses newline-delimited JSON-RPC; `ORGFLOW_ALLOW_PROPOSALS=true` explicitly enables Draft proposal creation for authorized unscoped editors/admins. The default remains read-only.

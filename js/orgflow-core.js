@@ -7,6 +7,7 @@
   root.OrgFlow = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this, function () {
   'use strict';
+  const Management = typeof module === 'object' && module.exports ? require('./management-core.js') : globalThis.OrgFlowManagement;
 
   const ROLE_TYPES = ['Head', 'Team Leader', 'Engineer', 'Specialist', 'Graduate', 'Intern'];
   const STATUSES = ['Approved', 'Not approved'];
@@ -18,7 +19,8 @@
     ['hiringState', 'Hiring state'], ['personId', 'Assigned person'],
     ['startDate', 'Position start'], ['endDate', 'Position end'],
     ['location', 'Location'], ['costCenter', 'Cost center'], ['jobFamily', 'Job family'],
-    ['sortOrder', 'Reporting order'], ['stacked', 'Stacked reports']
+    ['sortOrder', 'Reporting order'], ['stacked', 'Stacked reports'],
+    ['assignmentMode', 'Assignment mode'], ['reportingMode', 'Reporting mode'], ['externalId', 'External position ID']
   ];
   const POSITION_CSV_COLUMNS = ['positionId', 'reportsToPositionId', 'secondaryManagerId', 'title', 'type', 'group', 'fte', 'approval', 'hiringState', 'personId', 'name', 'employeeNumber', 'startDate', 'endDate', 'location', 'costCenter', 'jobFamily', 'sortOrder', 'stacked'];
   const CARD_DISPLAY_DEFAULTS = { fte: true, site: true, group: true, type: true, approval: true, hiring: true, cumulative: false, span: true, groupGap: 32, chartDots: true };
@@ -153,20 +155,21 @@
     return rows;
   }
   function normHeader(s) { return String(s || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, ''); }
-  function headerMap(headers, overrides = {}) {
-    const normalized = headers.map(normHeader), map = {};
-    for (const [key, aliases] of Object.entries(ALIASES)) {
-      const indexes = normalized.flatMap((h, i) => aliases.map(normHeader).includes(h) ? [i] : []);
-      if (indexes.length > 1) throw new Error(`Multiple columns map to ${key}. Keep only one.`);
-      if (indexes.length) map[key] = indexes[0];
+  function headerMap(headers, overrides = {}, issues = null) {
+    const map = {}, duplicates = new Set();
+    const explicitKeys = new Set(Object.entries(overrides || {}).filter(([i, key]) => Number.isInteger(Number(i)) && Number(i) >= 0 && Number(i) < headers.length && Object.prototype.hasOwnProperty.call(ALIASES, key)).map(([, key]) => key));
+    for (let i = 0; i < headers.length; i++) {
+      let key;
+      if (Object.prototype.hasOwnProperty.call(overrides || {}, String(i))) key = overrides[i];
+      else key = Object.keys(ALIASES).find(k => !explicitKeys.has(k) && ALIASES[k].some(alias => normHeader(alias) === normHeader(headers[i])));
+      if (!key || !Object.prototype.hasOwnProperty.call(ALIASES, key)) continue;
+      if (map[key] !== undefined) duplicates.add(key);
+      else map[key] = i;
     }
-    for (const [column, key] of Object.entries(overrides || {})) {
-      const i = Number(column);
-      if (!Number.isInteger(i) || i < 0 || i >= headers.length) continue;
-      for (const k of Object.keys(map)) if (map[k] === i) delete map[k];
-      if (!key || !ALIASES[key]) continue;
-      delete map[key];
-      map[key] = i;
+    for (const key of duplicates) {
+      const message = `Multiple columns map to ${key}. Choose one column and ignore or remap the other.`;
+      if (!issues) throw new Error(message);
+      issues.push(message);
     }
     return map;
   }
@@ -277,11 +280,11 @@
       const id = cleanString(p.id, 'Person ID', 150, true), name = cleanString(p.name, 'Person name', 150, true);
       if (personIds.has(id)) throw new Error(`Duplicate person ID: ${id}.`);
       personIds.add(id);
-      return { id, name, employeeNumber: cleanString(p.employeeNumber || '', 'Employee number', 80), photo: validPersonPhoto(p.photo) };
+      return { id, name, employeeNumber: cleanString(p.employeeNumber || '', 'Employee number', 80), photo: validPersonPhoto(p.photo), ...Management.personExtras(p) };
     });
     const positions = data.positions.map(p => {
       if (!p || typeof p !== 'object') throw new Error('Invalid position record.');
-      const out = {};
+      const out = Management.positionExtras(p);
       for (const key of POSITION_FIELDS.filter(k => k !== 'fte')) out[key] = cleanString(p[key] || '', key === 'title' ? 'Position title' : key, ['title', 'group', 'location', 'jobFamily'].includes(key) ? 200 : 150, ['id', 'title', 'type', 'status', 'hiringState'].includes(key));
       if (ids.has(out.id)) throw new Error(`Duplicate position ID: ${out.id}.`);
       ids.add(out.id);
@@ -322,7 +325,7 @@
       }
       for (const key of path) done.add(key);
     }
-    return { positions, employees };
+    return { positions, employees, ...Management.validateTemporal(data, positions, employees) };
   }
   function validatePlanning(input) {
     if (!input || input.version !== 2 || !Array.isArray(input.scenarios) || !input.scenarios.length || input.scenarios.length > 30) throw new Error('Invalid planning workspace (maximum 30 scenarios).');
@@ -334,13 +337,22 @@
       ids.add(id); names.add(name.toLocaleLowerCase());
       const data = validateScenarioData(s, positionLevels);
       const baseSnapshot = s.baseSnapshot ? { ...validateScenarioData(s.baseSnapshot, positionLevels), name: cleanString(s.baseSnapshot.name || 'Original baseline', 'Baseline name', 80), capturedAt: String(s.baseSnapshot.capturedAt || '').slice(0, 40) } : null;
-      return { id, name, description: cleanString(s.description || '', 'Scenario notes', 1000), createdAt: String(s.createdAt || '').slice(0, 40), updatedAt: String(s.updatedAt || '').slice(0, 40), baseScenarioId: typeof s.baseScenarioId === 'string' ? s.baseScenarioId.slice(0, 150) : '', archived: id === 'current' ? false : s.archived === true, baseSnapshot, ...data };
+      return { id, name, description: cleanString(s.description || '', 'Scenario notes', 1000), createdAt: String(s.createdAt || '').slice(0, 40), updatedAt: String(s.updatedAt || '').slice(0, 40), baseScenarioId: typeof s.baseScenarioId === 'string' ? s.baseScenarioId.slice(0, 150) : '', archived: id === 'current' ? false : s.archived === true, baseSnapshot, workflow: Management.workflow(s.workflow, id), applicationBaseline: s.applicationBaseline ? validateScenarioData(s.applicationBaseline, positionLevels) : null, appliedBefore: s.appliedBefore ? validateScenarioData(s.appliedBefore, positionLevels) : null, appliedAfter: s.appliedAfter ? validateScenarioData(s.appliedAfter, positionLevels) : null, ...data };
     });
     if (!ids.has('current')) throw new Error('Workspace must include the protected Current scenario.');
     if (scenarios.find(s => s.id === 'current').name !== 'Current') throw new Error('The Current scenario cannot be renamed.');
     if (!ids.has(input.activeScenarioId)) throw new Error('Active scenario was not found.');
+    const activeScenarioId = scenarios.find(s => s.id === input.activeScenarioId).archived ? 'current' : input.activeScenarioId;
     const todayStamp = new Date().toISOString().slice(0, 10);
-    const planning = { version: 2, activeScenarioId: input.activeScenarioId, scenarios, positionLevels };
+    const planning = { version: 2, activeScenarioId, scenarios, positionLevels };
+    planning.importProfiles = (Array.isArray(input.importProfiles)?input.importProfiles:[]).slice(0,20).map(profile=>{
+      const name=cleanString(profile.name,'Import profile name',80,true),columns={};
+      if(!profile.columns||typeof profile.columns!=='object'||Array.isArray(profile.columns))throw new Error('Invalid import column profile.');
+      for(const [header,field] of Object.entries(profile.columns)){cleanString(header,'Source column',200,true);if(typeof field!=='string'||(field!=='ignore'&&!Object.hasOwn(ALIASES,field)))throw new Error('Invalid import profile field.');Object.defineProperty(columns,header,{value:field,enumerable:true,writable:true,configurable:true});}
+      if(Object.keys(columns).length>100)throw new Error('Import profiles support at most 100 source columns.');
+      return{name,columns,ownedFields:[...new Set((profile.ownedFields||[]).filter(f=>Object.hasOwn(ALIASES,f)))],mode:['update','append','replace'].includes(profile.mode)?profile.mode:'update'};
+    });
+    if(new Set(planning.importProfiles.map(p=>p.name.toLowerCase())).size!==planning.importProfiles.length)throw new Error('Import profile names must be unique.');
     planning.namedViews = sanitizeNamedViews(input.namedViews, planning, todayStamp);
     return planning;
   }
@@ -403,7 +415,7 @@
     const result = { positions, employees, errors, warnings, filename: fileName, scenarioId: source.id };
     if (rows.length < 2) { errors.push('The CSV has no data rows.'); return result; }
     if (rows.length > 2501) { errors.push('Import supports at most 2,500 positions at a time.'); return result; }
-    const headers = rows.shift(), map = headerMap(headers, overrides);
+    const headers = rows.shift(), map = headerMap(headers, overrides, errors);
     result.columns = Object.keys(map);
     result.headers = headers;
     result.map = map;
@@ -472,7 +484,12 @@
     const s = structuredClone(source);
     if (result.scenarioId !== s.id) throw new Error('The active scenario changed. Select the file again.');
     const allPeople = new Map(s.employees.map(p => [p.id, p]));
-    result.employees.forEach(p => allPeople.set(p.id, structuredClone(p)));
+    const suppliedPeople = new Set(result.columns || Object.keys(ALIASES));
+    result.employees.forEach(p => {
+      const old=allPeople.get(p.id), next={...structuredClone(old || {}),...structuredClone(p)};
+      if(old&&!suppliedPeople.has('employeeNumber'))next.employeeNumber=old.employeeNumber;
+      allPeople.set(p.id,next);
+    });
     s.employees = [...allPeople.values()];
     if (mode === 'replace') s.positions = structuredClone(result.positions);
     else if (mode === 'append') {
@@ -481,8 +498,10 @@
     } else if (mode === 'update') {
       const byId = new Map(s.positions.map(p => [p.id, p])), supplied = new Set(result.columns || Object.keys(ALIASES));
       result.positions.forEach(p => {
-        const next = structuredClone(p), old = byId.get(p.id);
+        const old = byId.get(p.id), next = {...structuredClone(old || {}),...structuredClone(p)};
         if (old) {
+          if(old.assignmentMode==='timeline'&&['personId','name','hiringState'].some(k=>supplied.has(k))&&(next.personId!==old.personId||next.hiringState!==old.hiringState))throw new Error(`Position ${old.id} uses dated assignments. Import structural fields only and edit staffing in Timeline.`);
+          if(old.reportingMode==='timeline'&&(supplied.has('managerId')||supplied.has('managerName')||supplied.has('secondaryManagerId'))&&(next.managerId!==old.managerId||next.secondaryManagerId!==old.secondaryManagerId))throw new Error(`Position ${old.id} uses dated reporting. Edit reporting lines in Timeline.`);
           for (const key of ['title', 'type', 'group', 'fte', 'status', 'startDate', 'endDate', 'location', 'costCenter', 'jobFamily', 'secondaryManagerId', 'sortOrder', 'stacked']) if (!supplied.has(key)) {
             if (key === 'stacked' && old.stacked !== true && old.stacked !== false) { delete next.stacked; continue; }
             next[key] = old[key];
@@ -772,7 +791,7 @@
       search: String(d.search || '').slice(0, 1000),
       asOf: isISODate(d.asOf || '') ? d.asOf : today,
       dateFilter: d.dateFilter === true,
-      view: ['chart', 'positions', 'compare'].includes(d.view) ? d.view : 'chart',
+      view: ['chart', 'positions', 'compare', 'management'].includes(d.view) ? d.view : 'chart',
       zoom: typeof d.zoom === 'number' && d.zoom >= .15 && d.zoom <= 1.75 ? d.zoom : 1,
       showChartChanges: d.showChartChanges !== false,
       compareBaselineId: String(d.compareBaselineId || 'current').slice(0, 150),

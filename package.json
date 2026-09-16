@@ -1,7 +1,7 @@
 {
   "name": "orgflow",
   "private": true,
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "Interactive organization-chart and workforce-planning app that runs entirely in the browser.",
   "author": "OrgFlow contributors",
   "license": "MIT",
@@ -18,10 +18,13 @@
     "dist": "electron-builder --publish never",
     "dist:win": "electron-builder --win portable --x64 --publish never",
     "dist:mac": "electron-builder --mac zip --publish never",
-    "dist:linux": "electron-builder --linux AppImage --x64 --publish never"
+    "dist:linux": "electron-builder --linux AppImage --x64 --publish never",
+    "check": "node scripts/check.cjs",
+    "lint": "npx --yes eslint@9.39.1 .",
+    "test:browser": "python3 tests/browser-regressions.py"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=22.16.0"
   },
   "devDependencies": {
     "electron": "^36.9.5",

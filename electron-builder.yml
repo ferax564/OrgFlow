@@ -12,6 +12,7 @@ files:
   - 404.html
   - LICENSE
   - README.md
+  - MANAGEMENT.md
   - manifest.webmanifest
   - robots.txt
   - css/**/*

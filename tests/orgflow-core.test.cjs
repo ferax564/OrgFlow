@@ -420,6 +420,35 @@ test('bulk patch updates selected positions only', () => {
   assert.throws(() => OrgFlow.bulkPatchPositions(positions, ['a'], { type: 'Wizard' }), /Unknown position type/);
 });
 
+test('bulk patch covers hiring, dates and custom fields', () => {
+  const positions = [
+    { id: 'a', type: 'Engineer', hiringState: 'Filled', personId: 'person-1', startDate: '', endDate: '', costCenter: '', jobFamily: '' },
+    { id: 'b', type: 'Engineer', hiringState: 'Vacant', personId: '', startDate: '2026-01-01', endDate: '', costCenter: 'ENG', jobFamily: 'Engineering' }
+  ];
+  const next = OrgFlow.bulkPatchPositions(positions, ['a', 'b'], { hiringState: 'Recruiting', startDate: '2026-03-01', endDate: '2026-12-31', costCenter: 'OPS', jobFamily: 'Operations' });
+  assert.equal(next[0].hiringState, 'Recruiting');
+  assert.equal(next[0].personId, '', 'vacating a seat unassigns the person');
+  assert.equal(next[0].startDate, '2026-03-01');
+  assert.equal(next[0].endDate, '2026-12-31');
+  assert.equal(next[0].costCenter, 'OPS');
+  assert.equal(next[0].jobFamily, 'Operations');
+  assert.throws(() => OrgFlow.bulkPatchPositions(positions, ['a'], { hiringState: 'Filled' }), /cannot assign people/);
+  assert.throws(() => OrgFlow.bulkPatchPositions(positions, ['a'], { startDate: '03/01/2026' }), /YYYY-MM-DD/);
+  assert.throws(() => OrgFlow.bulkPatchPositions(positions, ['a'], { startDate: '2026-12-31', endDate: '2026-01-01' }), /precedes start date/);
+});
+
+test('CSV header overrides remap and ignore columns', () => {
+  const map = OrgFlow.headerMap(['Position ID', 'Dept', 'Title'], { 1: 'group' });
+  assert.equal(map.id, 0);
+  assert.equal(map.group, 1, 'foreign Dept column remapped to group');
+  assert.equal(map.title, 2);
+  const ignored = OrgFlow.headerMap(['Position ID', 'Title', 'Group'], { 2: 'ignore' });
+  assert.equal(ignored.group, undefined, 'ignore unmaps a detected column');
+  const stolen = OrgFlow.headerMap(['Position ID', 'Name', 'Title'], { 2: 'name' });
+  assert.equal(stolen.name, 2, 'explicit mapping steals the field from its auto-detected column');
+  assert.equal(stolen.title, undefined);
+});
+
 test('placeSibling reorders among the same manager', () => {
   const positions = [
     { id: 'm', managerId: '', sortOrder: 0 },

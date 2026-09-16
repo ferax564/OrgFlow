@@ -60,7 +60,7 @@
         <button data-export="pdf">Board pack (PDF)</button>
         <button data-export="a3">Print / A3 pages (PDF)</button>
         <button data-export="print">Print this view…</button>
-        <button data-export="html">Shareable HTML snapshot</button>
+        <button data-export="html">Chart-only HTML</button>
         <div class="sep"></div>
         <div class="menu-label">Data</div>
         <button data-export="csv">Positions + assignments (CSV)</button>
@@ -124,7 +124,8 @@
   <div class="section">
     <h3>Active on date</h3>
     <div class="field"><input id="asOf" type="date" /></div>
-    <label class="check"><input type="checkbox" id="dateFilter" /> Respect position start / end dates</label>
+    <label class="check"><input type="checkbox" id="dateFilter" /> Only show positions active on this date</label>
+    <p class="hint" id="asOfHint">All dates — positions show regardless of start or end.</p>
   </div>
   <div class="section"><h3>Matching position capacity</h3><div class="stats"><div class="stat"><b id="countVisible">0</b><span>Positions</span></div><div class="stat"><b id="countTotal">0</b><span>Filled</span></div><div class="stat"><b id="countApproved">0</b><span>Open</span></div><div class="stat"><b id="countOpen">0</b><span>Recruiting</span></div><div class="stat"><b id="countFte">0</b><span>Total FTE</span></div><div class="stat"><b id="countApprovedFte">0</b><span>Approved FTE</span></div></div><p class="hint" id="visibleCardsHint"></p><button class="btn ghost sidebar-reset" id="resetFilters">Reset filters · all dates</button></div>
   <div class="section always-available">
@@ -132,6 +133,7 @@
     <div class="data-actions">
       <button class="btn" id="sideImportBtn">Import CSV</button>
       <button class="btn" id="csvBtn">Export CSV</button>
+      <button class="btn" id="directoryBtn">People directory</button>
       <button class="btn ghost" id="templateBtn">Download CSV template</button>
       <div class="data-divider"></div>
       <button class="btn" id="backupBtn">Back up workspace</button>
@@ -140,6 +142,8 @@
       <button class="btn ghost" id="restoreBtn">Restore workspace</button>
       <button class="btn ghost" id="historyBtn">Earlier versions</button>
       <input id="restoreInput" type="file" accept=".json,application/json" hidden />
+      <p id="saveStatus" class="save-status" role="status" aria-live="polite">Saved in this browser</p><button class="btn ghost" id="retrySave" hidden>Retry file save</button><button class="btn ghost" id="unlinkFile" hidden>Unlink saved file</button>
+      <label class="check autosave-check"><input type="checkbox" id="autoSaveFile" /> Keep the saved file up to date</label>
     </div>
     <div class="hint">CSV updates the active scenario. JSON backup keeps scenarios, people, branding, saved views and chart settings. Save workspace overwrites the last file you picked, when the browser allows it.</div>
   </div>
@@ -164,20 +168,25 @@
     <button class="iconbtn" id="scenarioSettingsBtn" title="Scenario details" aria-label="Scenario details">⋯</button>
     <button class="iconbtn" id="filterToggle" aria-label="Open filters" title="Filters" aria-expanded="false">☷</button>
   </div>
-  <nav class="plan-tabs" aria-label="Workspace views"><button data-view="chart" class="active" aria-pressed="true">Org chart</button><button data-view="positions" aria-pressed="false">Positions</button><button data-view="compare" aria-pressed="false">Compare</button></nav>
+  <nav class="plan-tabs" aria-label="Workspace views"><button data-view="chart" class="active" aria-pressed="true">Org chart</button><button data-view="positions" aria-pressed="false">Positions</button><button data-view="compare" aria-pressed="false">Compare</button><button data-view="management" aria-pressed="false">Planning</button></nav>
+  <span id="saveStatusCompact" class="save-status-compact" role="status"></span>
 </div>
+<section class="plan-panel hidden management-panel" id="managementPanel" aria-label="Workforce planning">
+  <header class="management-header"><div><div class="eyebrow">Workforce planning</div><h2 id="managementTitle">Plan with evidence</h2><p id="managementScope"></p></div><nav class="management-tabs" aria-label="Planning tools"><button class="btn" data-management-tab="overview">Overview</button><button class="btn" data-management-tab="forecast">Forecast</button><button class="btn" data-management-tab="timeline">Timeline</button><button class="btn" data-management-tab="decisions">Decisions</button><button class="btn" data-management-tab="imports">Imports</button></nav></header>
+  <div id="managementContent"></div>
+</section>
 <section class="plan-panel hidden" id="positionsPanel" aria-labelledby="positionsTitle">
   <div class="panel-heading"><div><div class="eyebrow">Position register</div><h2 id="positionsTitle">Structure first. People second.</h2><p>Keep approved headcount visible, even before someone joins.</p></div><button class="btn primary" id="registerAddBtn">＋ Add position</button></div>
   <div class="register-summary" id="registerSummary"></div>
-  <div class="planning-table-wrap"><table class="planning-table"><thead><tr><th class="check-col"><input type="checkbox" id="registerSelectAll" aria-label="Select all visible positions" /></th><th>Position</th><th>Assigned person</th><th>Group</th><th>Location</th><th>Hiring</th><th>Approval</th><th>FTE</th><th>Reports to</th><th>Active dates</th><th><span class="hidden">Edit</span></th></tr></thead><tbody id="positionsRows"></tbody></table></div>
-  <p class="table-footnote" id="registerFootnote"></p>
+  <div class="planning-table-wrap"><table class="planning-table"><thead><tr><th class="check-col"><input type="checkbox" id="registerSelectAll" aria-label="Select all matching positions across every page" /></th><th>Position</th><th>Assigned person</th><th>Group</th><th>Location</th><th>Hiring</th><th>Approval</th><th>FTE</th><th>Reports to</th><th>Active dates</th><th><span class="hidden">Edit</span></th></tr></thead><tbody id="positionsRows"></tbody></table></div>
+  <div id="registerPagination" class="pagination" aria-label="Positions pages"></div><p class="table-footnote" id="registerFootnote"></p>
 </section>
 <section class="plan-panel hidden" id="comparePanel" aria-labelledby="compareTitle">
-  <div id="compareWelcome" class="compare-welcome hidden"><div class="welcome-mark">⇄</div><div class="eyebrow" style="margin-top:20px">Make room for what’s next</div><h2>Plan without changing Current.</h2><p>Create a scenario, then add positions, move teams or change assignments. Compare the result with Current or the snapshot you started from.</p><button class="btn primary" id="compareCreateBtn">Create your first scenario</button><p style="font-size:11px">Copies are independent. There is no automatic merge or approval workflow.</p></div>
+  <div id="compareWelcome" class="compare-welcome hidden"><div class="welcome-mark">⇄</div><div class="eyebrow" style="margin-top:20px">Make room for what’s next</div><h2>Plan without changing Current.</h2><p>Create a scenario, then add positions, move teams or change assignments. Compare the result with Current or the snapshot you started from.</p><button class="btn primary" id="compareCreateBtn">Create your first scenario</button><p style="font-size:11px">Copies stay independent until reviewed and explicitly applied from Planning → Decisions.</p></div>
   <div id="compareContent">
     <div class="panel-heading"><div><div class="eyebrow">Scenario comparison</div><h2 id="compareTitle">See exactly what changes.</h2><p>Position-by-position differences, matched by stable IDs.</p></div><div class="right"><button class="btn" id="comparisonCSVBtn">Export CSV</button><button class="btn" id="comparisonPNGBtn">Export PNG</button></div></div>
     <div class="compare-controls"><div class="field"><label for="compareBaseline">Baseline · before</label><select id="compareBaseline"></select></div><div class="compare-arrow" aria-hidden="true">→</div><div class="field"><label for="compareTarget">Scenario · after</label><select id="compareTarget"></select></div></div>
-    <div class="comparison-metrics" id="comparisonMetrics"></div>
+    <div id="comparisonRecordChanges" class="planning-callout"></div><div class="comparison-metrics" id="comparisonMetrics"></div>
     <div class="comparison-scope"><div><b>Full snapshots · all dates.</b> Chart filters and collapsed levels do not affect this comparison.<br>Filled means a person is assigned. FTE is position capacity, not salary or attendance.</div><div id="baselineContext"></div></div>
     <div class="comparison-filters"><div class="chips" id="changeChips"></div><div class="search"><input id="compareSearch" aria-label="Filter comparison results" placeholder="Find a position, person or group…" /></div></div>
     <div class="planning-table-wrap"><table class="planning-table"><thead><tr><th>Change</th><th>Position</th><th>What changed</th><th>Details</th></tr></thead><tbody id="comparisonRows"></tbody></table></div>
@@ -201,17 +210,8 @@
     </div>
   </div>
   <div class="canvas-wrap" id="canvasWrap"><div class="chart-stage" id="chartStage"><svg id="chart" aria-label="Organization chart"></svg></div></div>
-  <div class="bulk-bar" id="bulkBar" hidden>
-    <span id="bulkCount">0 selected</span>
-    <label class="bulk-field">Type <select id="bulkType"></select></label>
-    <label class="bulk-field">Group <input id="bulkGroup" list="groupSuggestions" maxlength="200" /></label>
-    <label class="bulk-field">Site <input id="bulkSite" list="locationSuggestions" maxlength="200" /></label>
-    <label class="bulk-field">Approval <select id="bulkStatus"><option value="Approved">Approved</option><option value="Not approved">Not approved</option></select></label>
-    <button class="btn primary" id="bulkApplyBtn" type="button">Apply</button>
-    <button class="btn ghost" id="bulkClearBtn" type="button">Clear</button>
-    <span class="bulk-hint">⌘/Ctrl-click cards to select. Drop a card onto a sibling to reorder; drop onto someone else to change manager.</span>
-  </div>
-  <div class="empty" id="empty"><div class="empty-card"><h2>No positions match these filters</h2><p>Re-enable a position type or approval state, or change the active date.</p><button class="btn" id="emptyClearFilters" type="button" style="margin-top:14px">Clear all filters &amp; search</button></div></div>
+  <div class="bulk-bar" id="bulkBar" hidden><span id="bulkCount">0 selected</span><button class="btn primary" id="bulkOpenBtn">Edit selected</button><button class="btn ghost" id="bulkClearBtn">Clear selection</button></div>
+  <div class="empty" id="empty"><div class="empty-card"><h2>No positions match these filters</h2><p>Re-enable a position type or approval state, or turn off the active-date filter.</p><button class="btn" id="emptyClearFilters" type="button" style="margin-top:14px">Clear all filters &amp; search</button></div></div>
 <section class="drawer" id="drawer" aria-label="Edit position" inert>
   <div class="drawer-head"><div><div class="eyebrow" id="drawerScenario">Current / position</div><h2 id="drawerTitle">Position</h2><p>Reporting lines belong to positions, not people.</p></div><button class="iconbtn" id="drawerClose" aria-label="Close position editor">×</button></div>
   <div class="drawer-body">
@@ -235,9 +235,9 @@
     <div class="field"><label for="fHiring">Hiring state</label><select id="fHiring"><option>Vacant</option><option>Recruiting</option><option>Filled</option></select><div class="hint">Separate from approval. Only Filled has an assigned person.</div></div>
     <div class="assignment-fields hidden" id="assignmentFields"><div class="field"><label for="fPerson">Assign a person</label><select id="fPerson"></select></div><div class="field"><label for="fName">Person name *</label><input id="fName" maxlength="150" autocomplete="off" /></div><div class="field"><label for="fEmployeeNo">Employee number</label><input id="fEmployeeNo" maxlength="80" placeholder="Optional staff / badge ID" /></div><div class="field"><label>Photo</label><div class="logo-actions"><button class="btn" type="button" id="uploadPhotoBtn">Upload photo</button><button class="btn ghost" type="button" id="removePhotoBtn">Remove</button></div><input type="file" id="photoInput" accept=".png,.jpg,.jpeg,.webp,.svg,image/png,image/jpeg,image/webp,image/svg+xml" hidden /><p class="assignment-note" id="photoNote">Optional. Processed locally to a small PNG.</p></div><p class="assignment-note" id="assignmentNote">A person can occupy one position per scenario.</p></div>
     <p class="assignment-note" id="vacancyNote">No placeholder employee is needed. Unassigning a person preserves their record, so you can place them in another position.</p>
-    <p class="assignment-note">Dates describe the position’s lifecycle. Scenarios capture assignments; this is not a historical employment record.</p>
+    <p class="assignment-note">Position dates describe the seat lifecycle. Use Planning → Timeline for dated assignments and reporting lines. Snapshot assignments do not reconstruct employment history.</p>
   </div>
-  <div class="drawer-foot"><button class="btn danger" id="deleteBtn">Remove position</button><button class="btn primary" id="saveBtn">Save position</button></div>
+  <div class="drawer-foot"><button class="btn danger" id="deleteBtn">Remove position</button><button class="btn" id="drawerCancel" type="button">Close</button><button class="btn primary" id="saveBtn">Save position</button></div>
 </section>
 </main>
 </div>
@@ -245,12 +245,28 @@
 <div id="loadError" class="load-error hidden" role="alert"></div>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
+<div class="modal-backdrop" id="bulkModal"><div class="modal wide-modal" role="dialog" aria-modal="true" aria-labelledby="bulkTitle">
+<div class="modal-head"><div><h2 id="bulkTitle">Edit selected positions</h2><p>Review explicit field changes before applying. One undo restores the whole edit.</p></div><button class="iconbtn" data-close-dialog="bulkModal" aria-label="Close bulk editor">×</button></div>
+<div class="modal-body"><div class="bulk-fields" id="bulkFields">    <label class="bulk-field">Type <select id="bulkType"></select></label>
+    <label class="bulk-field">Group <select data-bulk-operation="bulkGroup" aria-label="Group operation"><option value="keep">Keep</option><option value="set">Set</option><option value="clear">Clear</option></select> <input id="bulkGroup" list="groupSuggestions" maxlength="200" /></label>
+    <label class="bulk-field">Site <select data-bulk-operation="bulkSite" aria-label="Site operation"><option value="keep">Keep</option><option value="set">Set</option><option value="clear">Clear</option></select> <input id="bulkSite" list="locationSuggestions" maxlength="200" /></label>
+    <label class="bulk-field">Approval <select id="bulkStatus"><option value="" selected>Keep approval</option><option value="Approved">Approved</option><option value="Not approved">Not approved</option></select></label>
+    <label class="bulk-field">Hiring <select id="bulkHiring"><option value="">Keep hiring</option><option value="Vacant">Vacant</option><option value="Recruiting">Recruiting</option></select></label>
+    <label class="bulk-field">Start <select data-bulk-operation="bulkStart" aria-label="Start operation"><option value="keep">Keep</option><option value="set">Set</option><option value="clear">Clear</option></select> <input id="bulkStart" type="date" aria-label="Bulk start date" /></label>
+    <label class="bulk-field">End <select data-bulk-operation="bulkEnd" aria-label="End operation"><option value="keep">Keep</option><option value="set">Set</option><option value="clear">Clear</option></select> <input id="bulkEnd" type="date" aria-label="Bulk end date" /></label>
+    <label class="bulk-field">Cost ctr <select data-bulk-operation="bulkCostCenter" aria-label="Cost center operation"><option value="keep">Keep</option><option value="set">Set</option><option value="clear">Clear</option></select> <input id="bulkCostCenter" maxlength="80" aria-label="Bulk cost center" /></label>
+    <label class="bulk-field">Job family <select data-bulk-operation="bulkJobFamily" aria-label="Job family operation"><option value="keep">Keep</option><option value="set">Set</option><option value="clear">Clear</option></select> <input id="bulkJobFamily" maxlength="200" aria-label="Bulk job family" /></label>
+</div><div id="bulkPreview" role="status" aria-live="polite"></div></div>
+<div class="modal-foot"><button class="btn" data-close-dialog="bulkModal">Cancel</button><button class="btn primary" id="bulkApplyBtn">Apply changes</button></div></div></div>
+
 <div class="modal-backdrop" id="importModal">
   <div class="modal" role="dialog" aria-modal="true" aria-labelledby="importTitle">
     <div class="modal-head"><div><h2 id="importTitle">Review CSV import</h2><p id="importFileName">Validate the file before changing the chart.</p></div><button class="iconbtn" id="importClose" aria-label="Close">×</button></div>
     <div class="modal-body">
       <div class="import-summary"><div class="summary-box"><b id="impRows">0</b><span>Positions</span></div><div class="summary-box"><b id="impWarnings">0</b><span>Warnings</span></div><div class="summary-box"><b id="impErrors">0</b><span>Errors</span></div></div>
       <p class="scope-warning">Only the active scenario changes. Update by ID preserves fields whose columns are omitted; blank cells clear values or apply defaults. Replace replaces all positions and retains the people directory. Back up the workspace first.</p><div class="issues" id="importIssues"></div>
+      <div class="import-profile-row"><label>Saved mapping <select id="importProfileSelect"><option value="">No profile</option></select></label><button class="btn" type="button" id="loadImportProfile">Load mapping</button><button class="btn" type="button" id="saveImportProfile">Save mapping</button></div><label class="check"><input id="importAsProposal" type="checkbox" checked /> Import into a new Draft proposal, leaving the source unchanged</label><p class="hint">Stable position and person IDs match records. Omitted or ignored columns remain owned by OrgFlow in Update mode. A saved mapping records which fields the source owns.</p>
+      <details class="map-details" id="importMapWrap"><summary id="importMapSummary">Column mapping</summary><div class="map-grid" id="importMapGrid"></div></details>
       <div class="preview"><table><thead><tr><th>Position ID</th><th>Title</th><th>Person</th><th>Group</th><th>Hiring</th><th>Approval</th><th>FTE</th><th>Reports to</th></tr></thead><tbody id="importPreview"></tbody></table></div>
     </div>
     <div class="modal-foot">
@@ -303,11 +319,22 @@
 
 <div class="modal-backdrop" id="scenarioModal"><div class="modal scenario-modal" role="dialog" aria-modal="true" aria-labelledby="scenarioModalTitle">
   <div class="modal-head"><div><div class="settings-kicker">Workspace / planning</div><h2 id="scenarioModalTitle">Create a scenario</h2><p id="scenarioModalSubtitle">Explore a new structure without changing your source.</p></div><button class="iconbtn" id="scenarioClose" aria-label="Close scenario dialog">×</button></div>
-  <div class="modal-body"><div class="validation" id="scenarioValidation" role="alert"></div><div class="field" id="scenarioSourceField"><label for="scenarioSource">Copy from</label><select id="scenarioSource"></select></div><div class="field"><label for="scenarioName">Scenario name *</label><input id="scenarioName" maxlength="80" placeholder="e.g. 2027 proposed" /></div><div class="field"><label for="scenarioDescription">Notes (optional)</label><textarea id="scenarioDescription" maxlength="1000" placeholder="What are you exploring?"></textarea></div><p class="settings-note" id="scenarioModalNote">Copies keep position IDs and include a frozen source snapshot for comparison. Edits stay in the new scenario. Approval labels are not an authorization workflow.</p></div>
-  <div class="modal-foot"><button class="btn danger hidden" id="scenarioDelete">Delete scenario</button><div class="right"><button class="btn" id="scenarioCancel">Cancel</button><button class="btn primary" id="scenarioSave">Create scenario</button></div></div>
+  <div class="modal-body"><div class="validation" id="scenarioValidation" role="alert"></div><div class="field" id="scenarioSourceField"><label for="scenarioSource">Copy from</label><select id="scenarioSource"></select></div><div class="field"><label for="scenarioName">Scenario name *</label><input id="scenarioName" maxlength="80" placeholder="e.g. 2027 proposed" /></div><div class="field"><label for="scenarioDescription">Notes (optional)</label><textarea id="scenarioDescription" maxlength="1000" placeholder="What are you exploring?"></textarea></div><p class="settings-note" id="scenarioModalNote">Copies keep position IDs and include a frozen source snapshot for comparison. Edits stay in the new scenario. Approval labels are not an authorization workflow.</p><div id="archivedScenarios" class="hidden"></div></div>
+  <div class="modal-foot"><button class="btn danger hidden" id="scenarioDelete">Delete scenario</button><button class="btn hidden" id="scenarioArchive">Archive scenario</button><div class="right"><button class="btn" id="scenarioCancel">Cancel</button><button class="btn primary" id="scenarioSave">Create scenario</button></div></div>
 </div></div>
 
-<div class="modal-backdrop" id="directoryModal"><div class="modal scenario-modal" role="dialog" aria-modal="true" aria-labelledby="directoryTitle"><div class="modal-head"><div><h2 id="directoryTitle">Unassigned people</h2><p>Select a person here from any filled position’s assignment menu.</p></div><button class="iconbtn" id="directoryClose" aria-label="Close directory">×</button></div><div class="modal-body"><div class="planning-table-wrap"><table class="planning-table"><thead><tr><th>Name</th><th>Person ID</th></tr></thead><tbody id="directoryRows"></tbody></table></div><p class="table-footnote">These people are not counted as filled positions. Workspace backup retains this directory.</p></div></div></div>
+<div class="modal-backdrop" id="directoryModal"><div class="modal scenario-modal" role="dialog" aria-modal="true" aria-labelledby="directoryTitle"><div class="modal-head"><div><h2 id="directoryTitle">People</h2><p id="directorySubtitle">Everyone in this scenario — seated or unassigned. Seat assignment happens in the position editor.</p></div><button class="iconbtn" id="directoryClose" aria-label="Close directory">×</button></div><div class="modal-body"><div class="directory-filters"><label>Search people <input id="directorySearch" type="search" placeholder="Name, ID or capability" /></label><label>Assignments <select id="directoryFilter"><option value="">Everyone</option><option value="seated">Seated</option><option value="unassigned">Unassigned</option></select></label></div><div class="planning-table-wrap"><table class="planning-table"><thead><tr><th>Name</th><th>Employee no</th><th>Seat</th><th>Person ID</th><th><span class="hidden">Actions</span></th></tr></thead><tbody id="directoryRows"></tbody></table><div id="directoryPagination" class="pagination" aria-label="People pages"></div></div><p class="table-footnote">People are records, not seats. Unassigned people stay available to fill any position in this scenario; the workspace backup retains this directory.</p></div><div class="modal-foot"><span class="settings-save-note" id="directoryCount"></span><div class="right"><button class="btn primary" id="directoryAdd">＋ Add person</button></div></div></div></div>
+
+<div class="modal-backdrop" id="personModal"><div class="modal scenario-modal" role="dialog" aria-modal="true" aria-labelledby="personTitle">
+  <div class="modal-head"><div><div class="settings-kicker">People</div><h2 id="personTitle">Add person</h2><p>Available capacity and dated allocations are validated separately from the position budget.</p></div><button class="iconbtn" id="personClose" aria-label="Close">×</button></div>
+  <div class="modal-body">
+    <div class="validation" id="personValidation" role="alert"></div>
+    <div class="field"><label for="personName">Name *</label><input id="personName" maxlength="150" autocomplete="off" /></div>
+    <div class="filter-row"><div class="field"><label for="personCapacity">Available capacity (FTE)</label><input id="personCapacity" type="number" min="0" max="1" step="0.01" value="1" /></div><div class="field"><label for="personExternalId">External HRIS person ID</label><input id="personExternalId" maxlength="150" /></div></div><div class="field"><label for="personSkills">Capabilities (comma separated)</label><input id="personSkills" maxlength="3200" placeholder="e.g. Simulation, Aerodynamics" /></div><div class="field"><label for="personEmployeeNo">Employee number</label><input id="personEmployeeNo" maxlength="80" placeholder="Optional staff / badge ID" /></div>
+    <div class="field"><label>Photo</label><div class="logo-actions"><button class="btn" type="button" id="personPhotoUpload">Upload photo</button><button class="btn ghost" type="button" id="personPhotoRemove">Remove</button></div><input type="file" id="personPhotoInput" accept=".png,.jpg,.jpeg,.webp,.svg,image/png,image/jpeg,image/webp,image/svg+xml" hidden /><p class="assignment-note" id="personPhotoNote">Optional. Processed locally to a small PNG.</p></div>
+  </div>
+  <div class="modal-foot"><div class="right"><button class="btn" id="personCancel">Cancel</button><button class="btn primary" id="personSave">Save person</button></div></div>
+</div></div>
 
 <div class="modal-backdrop" id="welcomeModal"><div class="modal branding-modal" role="dialog" aria-modal="true" aria-labelledby="welcomeTitle">
   <div class="modal-head"><div><div class="settings-kicker">Welcome</div><h2 id="welcomeTitle">Plan an organization without uploading it.</h2><p>Positions stay separate from people. Everything stays in this browser until you export a file.</p></div><button class="iconbtn" id="welcomeClose" aria-label="Close tour">×</button></div>
@@ -325,10 +352,14 @@
   <div class="modal-body"><div class="planning-table-wrap"><table class="planning-table"><thead><tr><th>When</th><th>Note</th><th></th></tr></thead><tbody id="historyRows"></tbody></table></div></div>
 </div></div>
 
+<div class="modal-backdrop" id="planningRecordModal"><div class="modal wide-modal" role="dialog" aria-modal="true" aria-labelledby="planningRecordTitle"><div class="modal-head"><div><h2 id="planningRecordTitle">Planning record</h2><p id="planningRecordHint"></p></div><button class="iconbtn" data-close-dialog="planningRecordModal" aria-label="Close planning editor">×</button></div><div class="modal-body"><div id="planningRecordError" class="validation" role="alert"></div><form id="planningRecordForm"></form></div><div class="modal-foot"><button class="btn" data-close-dialog="planningRecordModal">Cancel</button><button class="btn primary" id="planningRecordSave">Save record</button></div></div></div>
+<script src="js/management-core.js"></script>
+<script src="js/persistence.js"></script>
 <script src="js/orgflow-core.js"></script>
 <script src="js/examples.js"></script>
 <script src="js/templates.js"></script>
 <script src="js/app.js"></script>
+<script src="js/planning-ui.js"></script>
 <script src="js/enterprise.js"></script>
 </body>
 </html>

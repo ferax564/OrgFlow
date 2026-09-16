@@ -13,24 +13,17 @@ const { mcpTools } = require('./lib/app');
 
 const base = (process.env.ORGFLOW_API_URL || 'http://127.0.0.1:8787').replace(/\/$/, '');
 const token = process.env.ORGFLOW_API_TOKEN || '';
+const allowProposals = process.env.ORGFLOW_ALLOW_PROPOSALS === 'true';
 
-function write(msg) {
-  const json = JSON.stringify(msg);
-  const buf = Buffer.from(json, 'utf8');
-  process.stdout.write(`Content-Length: ${buf.length}\r\n\r\n`);
-  process.stdout.write(buf);
-}
-
-async function api(pathname) {
-  const res = await fetch(base + pathname, {
-    headers: { authorization: 'Bearer ' + token, accept: 'application/json' }
-  });
-  const body = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(body.error || res.statusText || 'API error');
-  return body;
+// MCP stdio uses one UTF-8 JSON-RPC message per line, not LSP Content-Length framing.
+function write(msg) { process.stdout.write(JSON.stringify(msg)+'\n'); }
+async function api(pathname, data) {
+  const res=await fetch(base+pathname,{method:data?'POST':'GET',headers:{authorization:'Bearer '+token,accept:'application/json',...(data?{'content-type':'application/json'}:{})},...(data?{body:JSON.stringify(data)}:{})});
+  const body=await res.json().catch(()=>({}));if(!res.ok)throw new Error(body.error||res.statusText||'API error');return body;
 }
 
 const TOOL_ROUTES = {
+  workforce_forecast: args => '/api/org/forecast?'+new URLSearchParams(Object.entries(args).filter(([,v])=>v!=null)),
   get_org: args => '/api/org/summary' + (args.scenario ? '?scenario=' + encodeURIComponent(args.scenario) : ''),
   search_positions: args => '/api/org/positions?q=' + encodeURIComponent(args.q || '') + (args.scenario ? '&scenario=' + encodeURIComponent(args.scenario) : ''),
   get_person: args => '/api/org/people/' + encodeURIComponent(args.personId) + (args.scenario ? '?scenario=' + encodeURIComponent(args.scenario) : ''),
@@ -44,17 +37,17 @@ async function handle(message) {
   const id = message.id ?? null;
   const method = message.method;
   if (method === 'initialize') {
-    return { jsonrpc: '2.0', id, result: { protocolVersion: '2024-11-05', capabilities: { tools: {} }, serverInfo: { name: 'orgflow', version: '1.0.0' } } };
+    return { jsonrpc: '2.0', id, result: { protocolVersion: '2025-11-25', capabilities: { tools: {} }, serverInfo: { name: 'orgflow', version: '2.1.0' } } };
   }
   if (method === 'notifications/initialized') return null;
-  if (method === 'tools/list') return { jsonrpc: '2.0', id, result: { tools: mcpTools() } };
+  if (method === 'tools/list') return { jsonrpc: '2.0', id, result: { tools: mcpTools({allowProposals}) } };
   if (method === 'tools/call') {
     const name = message.params?.name;
     const args = message.params?.arguments || {};
     const route = TOOL_ROUTES[name];
-    if (!route) return { jsonrpc: '2.0', id, error: { code: -32601, message: 'Unknown tool' } };
+    if (!route && !(allowProposals && name==='propose_changes')) return { jsonrpc: '2.0', id, error: { code: -32601, message: 'Unknown tool' } };
     try {
-      const result = await api(route(args));
+      const result = name==='propose_changes'?await api('/api/proposals',args):await api(route(args));
       return { jsonrpc: '2.0', id, result: { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] } };
     } catch (err) {
       return { jsonrpc: '2.0', id, error: { code: -32000, message: err.message } };
@@ -70,27 +63,15 @@ if (!token) {
   process.exit(1);
 }
 
-let buffer = Buffer.alloc(0);
-process.stdin.on('data', async chunk => {
-  buffer = Buffer.concat([buffer, chunk]);
-  while (true) {
-    const headerEnd = buffer.indexOf('\r\n\r\n');
-    if (headerEnd === -1) break;
-    const header = buffer.slice(0, headerEnd).toString('utf8');
-    const match = header.match(/Content-Length:\s*(\d+)/i);
-    if (!match) {
-      buffer = buffer.slice(headerEnd + 4);
-      continue;
-    }
-    const length = Number(match[1]);
-    const start = headerEnd + 4;
-    if (buffer.length < start + length) break;
-    const json = buffer.slice(start, start + length).toString('utf8');
-    buffer = buffer.slice(start + length);
-    let message;
-    try { message = JSON.parse(json); }
-    catch { continue; }
-    const reply = await handle(message);
-    if (reply) write(reply);
+let input='',chain=Promise.resolve();
+process.stdin.setEncoding('utf8');
+process.stdin.on('data',chunk=>{
+  input+=chunk;
+  if(Buffer.byteLength(input)>2*1024*1024){console.error('MCP message exceeds 2 MB.');process.exitCode=1;process.stdin.destroy();return;}
+  let end;
+  while((end=input.indexOf('\n'))>=0){const line=input.slice(0,end);input=input.slice(end+1);if(!line.trim())continue;
+    chain=chain.then(async()=>{let message;try{message=JSON.parse(line);}catch{write({jsonrpc:'2.0',id:null,error:{code:-32700,message:'Invalid JSON'}});return;}
+      try{const reply=await handle(message);if(reply)write(reply);}catch(error){write({jsonrpc:'2.0',id:message?.id??null,error:{code:-32600,message:'Invalid request'}});}
+    });
   }
 });

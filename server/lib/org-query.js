@@ -1,5 +1,6 @@
 'use strict';
 
+const Management = require('../../js/management-core.js');
 const OrgFlow = require('../../js/orgflow-core.js');
 const { descendantIds } = require('./subtree');
 
@@ -7,7 +8,7 @@ function activeScenario(doc, scenarioId) {
   const id = scenarioId || doc.planning.activeScenarioId;
   const scenario = doc.planning.scenarios.find(s => s.id === id);
   if (!scenario) throw new Error('Scenario was not found.');
-  return scenario;
+  return {...scenario, positions:Management.effectivePositions(scenario)};
 }
 
 function summary(doc, scenarioId) {
@@ -18,6 +19,7 @@ function summary(doc, scenarioId) {
     chartTitle: doc.branding?.chartTitle || '',
     scenarioId: scenario.id,
     scenarioName: scenario.name,
+    assignmentsAsOf:Management.isoToday(),
     positions: t.positions,
     filled: t.filled,
     open: t.open,
@@ -64,11 +66,13 @@ function getPerson(doc, personId, scenarioId) {
   const scenario = activeScenario(doc, scenarioId);
   const person = scenario.employees.find(e => e.id === personId);
   if (!person) throw new Error('Person was not found in the visible organization.');
-  const seat = scenario.positions.find(p => p.personId === personId);
+  const seats=scenario.positions.filter(p=>p.personId===personId),seat=seats[0];
   return {
     id: person.id,
     name: person.name,
     employeeNumber: person.employeeNumber || '',
+    capacityFte:person.capacityFte??1, skills:person.skills||[],
+    positions:seats.map(p=>({id:p.id,title:p.title,group:p.group,managerId:p.managerId,assignedFte:p.assignedFte})),
     position: seat ? { id: seat.id, title: seat.title, group: seat.group, managerId: seat.managerId } : null
   };
 }

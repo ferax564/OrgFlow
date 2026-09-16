@@ -48,7 +48,7 @@ function validateDocument(input, rawBytes = 0) {
     branding,
     theme: input.theme === 'dark' ? 'dark' : 'light',
     palette,
-    view: input.view && typeof input.view === 'object' ? input.view : {}
+    view: OrgFlow.sanitizeViewState(input.view, planning, new Date().toISOString().slice(0,10))
   };
 }
 

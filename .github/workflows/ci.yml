@@ -1,25 +1,48 @@
 name: CI
-
 on:
   push:
     branches: [main]
   pull_request:
-
+permissions:
+  contents: read
 jobs:
-  test:
+  domain-and-server:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Run domain tests
+      - name: Check syntax and static wiring
+        run: npm run check
+      - name: Lint JavaScript
+        run: npm run lint
+      - name: Test data integrity, governance and server access
         run: npm test
-      - name: Check example screenshots exist
+  browser:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [chromium, firefox, webkit]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install pinned browser test runtime
         run: |
-          test -f examples/harbor-and-co/chart.png
-          test -f examples/harbor-and-co/positions.png
-          test -f examples/harbor-and-co/compare.png
-          test -f examples/northstar-commerce/chart.png
-          test -f examples/northstar-commerce/positions.png
-          test -f examples/northstar-commerce/compare.png
+          pip install playwright==1.57.0
+          python -m playwright install --with-deps ${{ matrix.browser }}
+      - name: Real navigation, management workflows and export regression tests
+        run: python tests/browser-regressions.py --browser ${{ matrix.browser }}
+      - name: Preserve screenshots, downloads and test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: browser-${{ matrix.browser }}
+          path: test-results/browser/
+          retention-days: 7

@@ -25,6 +25,12 @@
   const EMPTY_GROUP = 'No group';
   const EMPTY_SITE = 'No site';
   const CARD_W = 248;
+  const SCHEMA_VERSION = 2;
+  const KNOWN_POSITION_KEYS = new Set([...POSITION_FIELDS, 'fte', 'sortOrder', 'stacked']);
+  const KNOWN_EMPLOYEE_KEYS = new Set(['id', 'name', 'employeeNumber', 'photo']);
+  const KNOWN_SCENARIO_KEYS = new Set(['id', 'name', 'description', 'createdAt', 'updatedAt', 'baseScenarioId', 'archived', 'baseSnapshot', 'positions', 'employees']);
+  const KNOWN_WORKSPACE_KEYS = new Set(['version', 'schema', 'workspaceId', 'revision', 'lastCommittedAt', 'activeScenarioId', 'scenarios', 'positionLevels', 'namedViews']);
+  const KNOWN_SNAPSHOT_KEYS = new Set(['name', 'capturedAt', 'positions', 'employees']);
   const ALIASES = {
     id: ['positionid', 'id'],
     managerId: ['reportstopositionid', 'managerpositionid', 'managerid', 'reportstoid', 'parentid'],
@@ -61,6 +67,22 @@
     if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return false;
     const parsed = new Date(d + 'T12:00:00Z');
     return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === d;
+  }
+  // Fields this build does not understand are carried through validation so a
+  // workspace round-trip does not silently delete data written by a newer
+  // version. Only JSON-serializable values under a per-field budget are kept.
+  function jsonExtras(source, known, fieldBudget = 65536) {
+    const out = {};
+    if (!source || typeof source !== 'object') return out;
+    for (const [key, value] of Object.entries(source)) {
+      if (known.has(key) || value === undefined || typeof value === 'function' || typeof value === 'symbol') continue;
+      try {
+        const text = JSON.stringify(value);
+        if (text === undefined || text.length > fieldBudget) continue;
+        out[key] = JSON.parse(text);
+      } catch { /* unserializable fields are dropped, never crash validation */ }
+    }
+    return out;
   }
   function cleanString(v, label, max = 1000, required = false) {
     if (typeof v !== 'string' || v.length > max || /[\u0000-\u0008\u000b\u000c\u000e-\u001f]/.test(v)) throw new Error(`Invalid ${label}.`);
@@ -277,11 +299,11 @@
       const id = cleanString(p.id, 'Person ID', 150, true), name = cleanString(p.name, 'Person name', 150, true);
       if (personIds.has(id)) throw new Error(`Duplicate person ID: ${id}.`);
       personIds.add(id);
-      return { id, name, employeeNumber: cleanString(p.employeeNumber || '', 'Employee number', 80), photo: validPersonPhoto(p.photo) };
+      return { id, name, employeeNumber: cleanString(p.employeeNumber || '', 'Employee number', 80), photo: validPersonPhoto(p.photo), ...jsonExtras(p, KNOWN_EMPLOYEE_KEYS) };
     });
     const positions = data.positions.map(p => {
       if (!p || typeof p !== 'object') throw new Error('Invalid position record.');
-      const out = {};
+      const out = jsonExtras(p, KNOWN_POSITION_KEYS);
       for (const key of POSITION_FIELDS.filter(k => k !== 'fte')) out[key] = cleanString(p[key] || '', key === 'title' ? 'Position title' : key, ['title', 'group', 'location', 'jobFamily'].includes(key) ? 200 : 150, ['id', 'title', 'type', 'status', 'hiringState'].includes(key));
       if (ids.has(out.id)) throw new Error(`Duplicate position ID: ${out.id}.`);
       ids.add(out.id);
@@ -333,14 +355,27 @@
       if (ids.has(id) || names.has(name.toLocaleLowerCase())) throw new Error('Scenario names and IDs must be unique.');
       ids.add(id); names.add(name.toLocaleLowerCase());
       const data = validateScenarioData(s, positionLevels);
-      const baseSnapshot = s.baseSnapshot ? { ...validateScenarioData(s.baseSnapshot, positionLevels), name: cleanString(s.baseSnapshot.name || 'Original baseline', 'Baseline name', 80), capturedAt: String(s.baseSnapshot.capturedAt || '').slice(0, 40) } : null;
-      return { id, name, description: cleanString(s.description || '', 'Scenario notes', 1000), createdAt: String(s.createdAt || '').slice(0, 40), updatedAt: String(s.updatedAt || '').slice(0, 40), baseScenarioId: typeof s.baseScenarioId === 'string' ? s.baseScenarioId.slice(0, 150) : '', archived: id === 'current' ? false : s.archived === true, baseSnapshot, ...data };
+      const baseSnapshot = s.baseSnapshot ? { ...validateScenarioData(s.baseSnapshot, positionLevels), name: cleanString(s.baseSnapshot.name || 'Original baseline', 'Baseline name', 80), capturedAt: String(s.baseSnapshot.capturedAt || '').slice(0, 40), ...jsonExtras(s.baseSnapshot, KNOWN_SNAPSHOT_KEYS) } : null;
+      return { id, name, description: cleanString(s.description || '', 'Scenario notes', 1000), createdAt: String(s.createdAt || '').slice(0, 40), updatedAt: String(s.updatedAt || '').slice(0, 40), baseScenarioId: typeof s.baseScenarioId === 'string' ? s.baseScenarioId.slice(0, 150) : '', archived: id === 'current' ? false : s.archived === true, baseSnapshot, ...data, ...jsonExtras(s, KNOWN_SCENARIO_KEYS) };
     });
     if (!ids.has('current')) throw new Error('Workspace must include the protected Current scenario.');
     if (scenarios.find(s => s.id === 'current').name !== 'Current') throw new Error('The Current scenario cannot be renamed.');
     if (!ids.has(input.activeScenarioId)) throw new Error('Active scenario was not found.');
+    const declaredSchema = Number.isInteger(input.schema) ? input.schema : SCHEMA_VERSION;
+    if (declaredSchema > SCHEMA_VERSION) {
+      const error = new Error(`This workspace was written by a newer OrgFlow (schema ${declaredSchema} > ${SCHEMA_VERSION}). Update the app before editing — saving here would drop fields it does not understand.`);
+      error.code = 'SCHEMA_TOO_NEW';
+      throw error;
+    }
     const todayStamp = new Date().toISOString().slice(0, 10);
-    const planning = { version: 2, activeScenarioId: input.activeScenarioId, scenarios, positionLevels };
+    const planning = {
+      version: 2, schema: SCHEMA_VERSION,
+      workspaceId: typeof input.workspaceId === 'string' && input.workspaceId.trim() ? input.workspaceId.slice(0, 150) : makeId('ws'),
+      revision: Number.isInteger(input.revision) && input.revision >= 0 ? input.revision : 0,
+      lastCommittedAt: String(input.lastCommittedAt || '').slice(0, 40),
+      activeScenarioId: input.activeScenarioId, scenarios, positionLevels,
+      ...jsonExtras(input, KNOWN_WORKSPACE_KEYS)
+    };
     planning.namedViews = sanitizeNamedViews(input.namedViews, planning, todayStamp);
     return planning;
   }
@@ -927,6 +962,85 @@
     return { all, width, height, cardW: CARD_W, connectors, groupGap };
   }
 
+  // The interactive share file embeds ONLY this dataset — fields and subtrees
+  // excluded here cannot be recovered from the file by a recipient.
+  const SHARE_FIELD_OPTIONS = ['group', 'location', 'status', 'hiringState', 'fte', 'startDate', 'endDate', 'costCenter', 'jobFamily', 'personName', 'employeeNumber', 'photo'];
+  function subtreePositionIds(positions, rootId) {
+    if (!rootId) return null;
+    const childrenOf = new Map();
+    for (const p of positions) {
+      const key = p.managerId || '';
+      if (!childrenOf.has(key)) childrenOf.set(key, []);
+      childrenOf.get(key).push(p.id);
+    }
+    const keep = new Set(), queue = [rootId];
+    while (queue.length) {
+      const id = queue.shift();
+      if (keep.has(id)) continue;
+      keep.add(id);
+      for (const child of childrenOf.get(id) || []) queue.push(child);
+    }
+    return keep;
+  }
+  function buildShareDataset(planning, { scenarioId = '', rootId = '', include = {}, initialDepth = 99, companyName = '', chartTitle = '', exportedAt = new Date().toISOString() } = {}) {
+    if (!planning || !Array.isArray(planning.scenarios)) throw new Error('A planning workspace is required to share.');
+    const scenario = planning.scenarios.find(s => s.id === scenarioId) || planning.scenarios.find(s => s.id === planning.activeScenarioId) || planning.scenarios[0];
+    if (!scenario) throw new Error('No scenario available to share.');
+    if (rootId && !scenario.positions.some(p => p.id === rootId)) throw new Error('The selected team was not found in this scenario.');
+    const keepIds = subtreePositionIds(scenario.positions, rootId);
+    const people = new Map(scenario.employees.map(e => [e.id, e]));
+    const picked = key => include[key] === true;
+    const positions = scenario.positions
+      .filter(p => !keepIds || keepIds.has(p.id))
+      .map(p => {
+        const out = { id: p.id, managerId: p.managerId || '', title: p.title, type: p.type };
+        if (p.secondaryManagerId) out.secondaryManagerId = p.secondaryManagerId;
+        if (p.sortOrder) out.sortOrder = p.sortOrder;
+        if (p.stacked === true || p.stacked === false) out.stacked = p.stacked;
+        for (const key of ['group', 'location', 'status', 'hiringState', 'fte', 'startDate', 'endDate', 'costCenter', 'jobFamily']) {
+          if (picked(key) && p[key] !== undefined && p[key] !== '') out[key] = p[key];
+        }
+        const person = p.personId ? people.get(p.personId) : null;
+        if (person && (picked('personName') || picked('employeeNumber') || picked('photo'))) {
+          out.person = {};
+          if (picked('personName')) out.person.name = person.name;
+          if (picked('employeeNumber') && person.employeeNumber) out.person.employeeNumber = person.employeeNumber;
+          if (picked('photo') && person.photo?.data) out.person.photo = { data: person.photo.data, width: person.photo.width, height: person.photo.height };
+        } else if (person) {
+          out.person = {};
+        }
+        return out;
+      });
+    const depth = [1, 2, 3, 99].includes(initialDepth) ? initialDepth : 99;
+    return {
+      format: 'orgflow.share', version: 1, redacted: true,
+      workspaceId: planning.workspaceId || '', revision: planning.revision || 0,
+      exportedAt,
+      scenario: { id: scenario.id, name: scenario.name },
+      scope: rootId ? { rootId, rootTitle: scenario.positions.find(p => p.id === rootId)?.title || rootId } : { rootId: '', rootTitle: 'Whole organization' },
+      fields: SHARE_FIELD_OPTIONS.filter(picked),
+      initialDepth: depth,
+      companyName: String(companyName || '').slice(0, 200),
+      chartTitle: String(chartTitle || '').slice(0, 200),
+      positions
+    };
+  }
+  // Revision metadata makes two stored copies of a workspace comparable without
+  // reading every record: newer revision wins, ties break on the timestamp.
+  function touchWorkspace(planning, now = new Date().toISOString()) {
+    const next = { ...planning, revision: (Number.isInteger(planning.revision) ? planning.revision : 0) + 1, lastCommittedAt: now };
+    if (!next.workspaceId) next.workspaceId = makeId('ws');
+    return next;
+  }
+  function workspaceStamp(planning) {
+    return { workspaceId: planning?.workspaceId || '', revision: Number.isInteger(planning?.revision) ? planning.revision : 0, lastCommittedAt: String(planning?.lastCommittedAt || '') };
+  }
+  function compareWorkspaceStamps(a, b) {
+    const ar = Number.isInteger(a?.revision) ? a.revision : 0, br = Number.isInteger(b?.revision) ? b.revision : 0;
+    if (ar !== br) return ar - br;
+    return String(a?.lastCommittedAt || '').localeCompare(String(b?.lastCommittedAt || ''));
+  }
+
   return {
     ROLE_TYPES, STATUSES, HIRING_STATES, LEGACY_ROLE_TYPES, POSITION_FIELDS, DIFF_FIELDS, POSITION_CSV_COLUMNS, ALIASES,
     CARD_DISPLAY_DEFAULTS, CARD_W, EMPTY_GROUP, EMPTY_SITE,
@@ -938,6 +1052,8 @@
     defaultStacked, nodeStacked, wrapText, showsCumulativeCount, personLabel, sanitizeCardDisplay,
     cardMetrics, subtreePeopleCount, reorderSiblings, siblingIndex, applyCardSizes, layoutOrgChart,
     filterLabel, chipValues, spanOfControl, pathToRoot, bulkPatchPositions, placeSibling,
-    tileChartPages, sanitizeViewState, sanitizeNamedViews
+    tileChartPages, sanitizeViewState, sanitizeNamedViews,
+    SCHEMA_VERSION, SHARE_FIELD_OPTIONS, buildShareDataset, subtreePositionIds,
+    touchWorkspace, workspaceStamp, compareWorkspaceStamps, jsonExtras
   };
 });

@@ -11,7 +11,7 @@ const {
     sanitizeCardDisplay, cardMetrics, subtreePeopleCount, reorderSiblings, siblingIndex,
     applyCardSizes, layoutOrgChart, EMPTY_GROUP, EMPTY_SITE, filterLabel, chipValues,
     spanOfControl, pathToRoot, bulkPatchPositions, placeSibling, tileChartPages,
-    sanitizeViewState
+    sanitizeViewState, buildShareDataset, touchWorkspace, workspaceStamp, compareWorkspaceStamps
 } = OrgFlow;
 
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
@@ -19,7 +19,7 @@ const svg=$('#chart'),wrap=$('#canvasWrap'),stage=$('#chartStage');
 // Chart projection only; workspace.scenarios is the source of truth.
 let people=[];
 let activeRoles=new Set(ROLE_TYPES),activeStatuses=new Set(STATUSES),maxDepth=99,collapsed=new Set(),selectedId=null,pendingImport=null;
-let activeGroups=null,activeSites=null,knownGroups=null,knownSites=null,selectedIds=new Set(),workspaceFileHandle=null,pathHoverId=null;
+let activeGroups=null,activeSites=null,knownGroups=null,knownSites=null,selectedIds=new Set(),workspaceFileHandle=null,fileHandleNeedsReconnect=false,pathHoverId=null;
 let cardDisplay=sanitizeCardDisplay(),stackedTouched=false;
 const now=new Date();const today=[now.getFullYear(),String(now.getMonth()+1).padStart(2,'0'),String(now.getDate()).padStart(2,'0')].join('-');
 $('#asOf').value=today;
@@ -168,6 +168,37 @@ async function exportShareableHTML(){
     const html=`<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><title>${esc(branding.companyName||'OrgFlow')} · ${esc(s.name)} snapshot</title><style>${css.replace(/<\//g,'<\\/')}</style></head><body><main class="snapshot"><p class="eyebrow">OrgFlow snapshot · opens without the app</p><h1>${esc(branding.companyName||'Organization')} — ${esc(s.name)}</h1><p>${esc(branding.chartTitle||'Organization')} · ${esc(today)} · ${t.positions} positions · ${fteText(t.approvedFte)} approved FTE. Data in this file was exported locally.</p><div class="metrics"><div class="metric"><b>${t.positions}</b><span>Positions</span></div><div class="metric"><b>${t.filled}</b><span>Filled</span></div><div class="metric"><b>${t.open}</b><span>Open</span></div><div class="metric"><b>${fteText(t.approvedFte)}</b><span>Approved FTE</span></div></div><div class="chart">${art.xml}</div><h2>Restore in OrgFlow</h2><p>Open the app, choose Export → Restore workspace, and paste the JSON below or save it as a .json file first.</p><pre id="workspace-json">${esc(JSON.stringify(payload,null,2))}</pre><script type="application/json" id="orgflow-workspace">${JSON.stringify(payload).replace(/</g,'\\u003c')}</script></main></body></html>`;
     downloadBlob(new Blob([html],{type:'text/html;charset=utf-8'}),`orgflow-${slug(s.name)}-snapshot.html`);toast('Shareable HTML snapshot exported');
   }catch(error){toast(error.message||'HTML export failed');}
+}
+const SHARE_FIELD_DEFS=[['personName','Person names',true],['employeeNumber','Employee numbers',false],['photo','Photos',false],['group','Group / team',true],['location','Location / site',true],['status','Approval',true],['hiringState','Hiring state',true],['fte','FTE',true],['dates','Start & end dates',false],['costCenter','Cost center',false],['jobFamily','Job family',false]];
+function openShareDialog(){
+  const s=activeScenario();
+  const rows=[];
+  const walk=(id,d)=>{const p=s.positions.find(x=>x.id===id);if(!p)return;rows.push({id:p.id,title:p.title,d});s.positions.filter(c=>c.managerId===id).forEach(c=>walk(c.id,d+1));};
+  s.positions.filter(p=>!p.managerId||!s.positions.some(x=>x.id===p.managerId)).forEach(p=>walk(p.id,0));
+  $('#shareScope').innerHTML=`<option value="">Whole organization · ${s.name}</option>`+rows.map(r=>`<option value="${esc(r.id)}">${'— '.repeat(r.d)}${esc(r.title)}</option>`).join('');
+  $('#shareFields').innerHTML=SHARE_FIELD_DEFS.map(([key,label,on])=>`<label class="check stack-check"><input type="checkbox" data-share-field="${key}" ${on?'checked':''}/> ${esc(label)}</label>`).join('');
+  openDialog('shareModal');
+}
+async function exportInteractiveChart(){
+  const rootId=$('#shareScope').value||'';
+  const include={};
+  $$('#shareFields input[data-share-field]').forEach(cb=>{
+    const k=cb.dataset.shareField;
+    if(k==='dates'){include.startDate=cb.checked;include.endDate=cb.checked;}
+    else include[k]=cb.checked;
+  });
+  try{
+    const dataset=buildShareDataset(workspace,{scenarioId:workspace.activeScenarioId,rootId,include,initialDepth:+$('#shareDepth').value,companyName:branding.companyName,chartTitle:branding.chartTitle});
+    if(!dataset.positions.length){toast('Nothing to export in that scope.');return;}
+    const [coreRes,viewerRes]=await Promise.all([fetch('js/orgflow-core.js'),fetch('js/share-viewer.js')]);
+    if(!coreRes.ok||!viewerRes.ok)throw new Error('The viewer assets could not be loaded — interactive export needs the hosted or desktop app.');
+    const staticSvg=OrgFlowShare.shareStaticSvg(dataset);
+    const html=OrgFlowShare.buildShareHtml(dataset,{coreSrc:await coreRes.text(),viewerSrc:await viewerRes.text(),staticSvg});
+    const name=rootId?slug(dataset.scope.rootTitle):slug(dataset.scenario.name);
+    downloadBlob(new Blob([html],{type:'text/html;charset=utf-8'}),`orgflow-${name}-interactive.html`);
+    closeDialog('shareModal');
+    toast(`Interactive chart exported — ${dataset.positions.length} positions, ${dataset.fields.length} fields included`);
+  }catch(error){toast(error.message||'Interactive export failed');}
 }
 let exportingGroupPack=false;
 async function exportGroups(){
@@ -330,16 +361,69 @@ function activeScenario(){return workspace.scenarios.find(s=>s.id===workspace.ac
 function scenarioById(id){return workspace.scenarios.find(s=>s.id===id);}
 function projection(scenario=activeScenario()){return projectScenario(scenario);}
 function syncProjection(){people=projection();}
-function initPlanning(){
+// Copies of the workspace can live in localStorage, IndexedDB and (on the
+// desktop build) the main-process journal. On startup the newest revision
+// wins so an eviction or a failed write in one area cannot lose newer work.
+async function readDurableCopies(){
+  const copies=[];
+  const local=safeGet(PLANNING_KEY);
+  if(local)copies.push({source:'browser storage',text:local,branding:loadBranding(),theme:safeGet('orgflow.theme')||'',palette:safeGet('orgflow.palette')||''});
+  try{
+    const row=await OrgFlowStore.readDocument();
+    if(row?.planning)copies.push({source:'app storage',text:JSON.stringify(row.planning),branding:row.branding||null,theme:row.theme||'',palette:row.palette||''});
+  }catch{}
+  if(window.orgflowDesktop?.loadWorkspace){
+    try{
+      const journaled=await window.orgflowDesktop.loadWorkspace();
+      if(journaled)copies.push({source:'desktop file',text:journaled});
+    }catch{}
+  }
+  return copies;
+}
+function newestCopy(copies){
+  let best=null;
+  for(const copy of copies){
+    let parsed=null;
+    try{parsed=JSON.parse(copy.text);}catch{continue;}
+    // Durable copies may be a full workspace envelope or bare planning data.
+    const raw=parsed?.format==='orgflow.workspace'?parsed.planning:parsed;
+    if(parsed?.format==='orgflow.workspace'){copy.branding=copy.branding||parsed.branding||null;copy.theme=copy.theme||parsed.theme||'';copy.palette=copy.palette||parsed.palette||'';}
+    let planning=null;
+    try{planning=validatePlanning(raw);}catch(error){
+      if(error?.code==='SCHEMA_TOO_NEW'){copy.schemaTooNew=true;copy.planning=raw;}
+      continue;
+    }
+    copy.planning=planning;
+    if(!best||compareWorkspaceStamps(planning,best.planning)>0)best=copy;
+  }
+  if(!best){const newer=copies.find(c=>c.schemaTooNew);if(newer)best=newer;}
+  return best;
+}
+async function initPlanning(){
   try {
-    const saved=localStorage.getItem(PLANNING_KEY);
-    if(saved){workspace=validatePlanning(JSON.parse(saved));lastSavedPlanningText=saved;}
+    const copies=await readDurableCopies();
+    const pick=newestCopy(copies);
+    if(pick?.schemaTooNew)throw Object.assign(new Error(`This workspace was written by a newer OrgFlow. Update the app before editing — saving here would drop fields it does not understand.`),{code:'SCHEMA_TOO_NEW'});
+    if(pick){
+      workspace=pick.planning;lastSavedPlanningText=JSON.stringify(workspace);
+      // The durable envelope carries the workspace chrome so a restored copy
+      // looks like the workspace that was saved — not a fresh install.
+      if(pick.branding){branding=cleanBranding(pick.branding);try{localStorage.setItem(BRANDING_KEY,JSON.stringify(branding));}catch{}}
+      if(pick.theme){try{localStorage.setItem('orgflow.theme',pick.theme);}catch{}}
+      if(pick.palette){try{localStorage.setItem('orgflow.palette',pick.palette);}catch{}}
+      if(pick.source!=='browser storage'){
+        try{localStorage.setItem(PLANNING_KEY,lastSavedPlanningText);}catch{}
+        toast(`Workspace restored from ${pick.source} — it was ahead of the copy in browser storage.`);
+      }
+    }
     else {
       const old=localStorage.getItem('orgflow.people');
       if(old!==null) workspace=validatePlanning(migrateLegacy(JSON.parse(old)));
       else workspace=validatePlanning(ORGFLOW_EXAMPLES['harbor-and-co'].planning);
+      workspace=touchWorkspace(workspace);
       lastSavedPlanningText=JSON.stringify(workspace);localStorage.setItem(PLANNING_KEY,lastSavedPlanningText);
       if(old===null) applySampleChrome('harbor-and-co', true);
+      writeDurable(workspace,lastSavedPlanningText);
     }
   }catch(error){
     modelLoadError=error.message||'Browser storage is unavailable.';
@@ -374,9 +458,10 @@ function persistLocalHistory(planningText,note){
   }catch{}
 }
 function applyPlanningSnapshot(text,message){
-  const checked=validatePlanning(JSON.parse(text));
+  const checked=validatePlanning(touchWorkspace(JSON.parse(text)));
   const serialized=JSON.stringify(checked);
   try{localStorage.setItem(PLANNING_KEY,serialized);}catch{throw new Error('Browser storage is full or unavailable. The change was not applied.');}
+  writeDurable(checked,serialized);
   lastSavedPlanningText=serialized;workspace=checked;modelLoadError='';$('#loadError').classList.add('hidden');
   syncProjection();hidePositionEditor();render();updateUndoButtons();if(message)toast(message);
 }
@@ -408,15 +493,30 @@ async function allowEnterpriseExport(kind){
   if(!window.OrgFlowEnterprise?.enabled) return true;
   return window.OrgFlowEnterprise.recordExport(kind);
 }
+// Every durable copy of the workspace is written through the same path so no
+// store can quietly fall behind. localStorage remains the synchronous check
+// against another tab; IndexedDB and the desktop journal catch up async.
+function writeDurable(planning,serialized){
+  // The durable copies keep the full workspace envelope — planning plus the
+  // chrome that made it look like this workspace — so restoring is complete.
+  const doc={...workspacePayload(),planning};
+  OrgFlowStore.writeDocument(doc);
+  if(window.orgflowDesktop?.saveWorkspace){try{window.orgflowDesktop.saveWorkspace(JSON.stringify(doc));}catch{}}
+}
+async function checkpointWorkspace(note){
+  if(!workspace)return null;
+  try{return await OrgFlowStore.addCheckpoint(workspace,note,{branding});}catch{return null;}
+}
 function commitPlanning(next,message='',opts={}){
   if(enterpriseBlocksWrite())throw new Error('You can view this organization but you cannot save changes.');
   if(modelLoadError)throw new Error('Saved workspace could not be loaded. Restore a backup or reopen in a browser with local storage before editing.');
-  const checked=validatePlanning(next);
+  const checked=validatePlanning(touchWorkspace(next));
   const serialized=JSON.stringify(checked);let stale=false;
   try{stale=localStorage.getItem(PLANNING_KEY)!==lastSavedPlanningText;if(stale)throw new Error('stale');localStorage.setItem(PLANNING_KEY,serialized);}catch{throw new Error(stale?'Another tab changed this workspace. Reload before editing; your unsaved change was not applied.':'Browser storage is full or unavailable. The change was not applied. Back up the workspace before continuing.');}
   const previous=lastSavedPlanningText;
   lastSavedPlanningText=serialized;
   workspace=checked;syncProjection();
+  writeDurable(checked,serialized);
   if(opts.recordUndo!==false)recordUndoFrom(previous,opts.historyNote||message||'Edit');
   render();updateUndoButtons();if(message)toast(message);afterEnterprisePersist();scheduleFileAutosave();return true;
 }
@@ -425,7 +525,34 @@ function syncAutosaveUi(){
   const cb=$('#autoSaveFile');if(!cb)return;
   const can=!!workspaceFileHandle?.createWritable;cb.disabled=!can;
   let pref=false;try{pref=localStorage.getItem(AUTOSAVE_KEY)==='1';}catch{}
-  cb.checked=can&&pref;
+  cb.checked=can&&pref&&!fileHandleNeedsReconnect;
+  const rb=$('#reconnectFile');if(rb)rb.classList.toggle('hidden',!(workspaceFileHandle&&fileHandleNeedsReconnect));
+}
+// The file handle survives restarts in IndexedDB; the permission does not.
+// On relaunch we either resume silently (granted) or ask to reconnect.
+async function resumeFileHandle(){
+  if(!window.showSaveFilePicker)return;
+  try{
+    const row=await OrgFlowStore.getHandle();
+    if(!row?.handle?.createWritable)return;
+    workspaceFileHandle=row.handle;
+    let perm='prompt';
+    try{perm=await row.handle.queryPermission({mode:'readwrite'});}catch{}
+    fileHandleNeedsReconnect=perm!=='granted';
+    if(fileHandleNeedsReconnect)toast(`“${row.name||'Saved file'}” needs to be reconnected before auto-save can update it.`);
+    syncAutosaveUi();
+  }catch{}
+}
+async function reconnectSavedFile(){
+  try{
+    const handle=workspaceFileHandle||(await OrgFlowStore.getHandle())?.handle;
+    if(!handle?.createWritable){toast('No saved file to reconnect.');return;}
+    const perm=await handle.requestPermission({mode:'readwrite'});
+    if(perm==='granted'){
+      workspaceFileHandle=handle;fileHandleNeedsReconnect=false;syncAutosaveUi();
+      toast('Saved file reconnected — auto-save can update it again.');scheduleFileAutosave();
+    }else toast('Permission was not granted — the file stays disconnected.');
+  }catch(error){toast(error.message||'Could not reconnect the saved file.');}
 }
 function scheduleFileAutosave(){
   if(!$('#autoSaveFile')?.checked||!workspaceFileHandle?.createWritable)return;
@@ -857,14 +984,16 @@ function setupPlanningEvents(){
     const el=$('#'+id);if(el)el.onchange=readCardDisplayFromUi;
   }
   if($('#groupGap'))$('#groupGap').oninput=readCardDisplayFromUi;
-  for(const id of ['scenarioModal','directoryModal','personModal','welcomeModal','historyModal']){
+  for(const id of ['scenarioModal','directoryModal','personModal','welcomeModal','historyModal','shareModal']){
     if(!$('#'+id))continue;
     $('#'+id).addEventListener('click',e=>{if(e.target===$('#'+id))closeDialog(id);});
     $('#'+id).addEventListener('keydown',e=>trapDialogFocus(e,id));
   }
   $('#importModal').addEventListener('keydown',e=>trapDialogFocus(e,'importModal'));
+  $('#shareClose').onclick=$('#shareCancel').onclick=()=>closeDialog('shareModal');
+  $('#shareExport').onclick=exportInteractiveChart;
   $('#drawer').addEventListener('keydown',e=>{trapDialogFocus(e,'drawer');if(e.key==='Escape'){e.stopPropagation();requestCloseDrawer();}if((e.metaKey||e.ctrlKey)&&e.key==='Enter'){e.preventDefault();saveDrawer();}});
-  window.addEventListener('keydown',e=>{if(e.key==='Escape')for(const id of ['scenarioModal','directoryModal','personModal','welcomeModal','historyModal'])if($('#'+id)?.classList.contains('open')){if(id==='welcomeModal')markWelcomeSeen();closeDialog(id);}});
+  window.addEventListener('keydown',e=>{if(e.key==='Escape')for(const id of ['scenarioModal','directoryModal','personModal','welcomeModal','historyModal','shareModal'])if($('#'+id)?.classList.contains('open')){if(id==='welcomeModal')markWelcomeSeen();closeDialog(id);}});
   // Ignore unrelated keys; desktop shortcuts do not fire while writing in forms.
   svg.addEventListener('keydown',e=>{if(['Enter',' '].includes(e.key)&&e.target.closest('.node')){e.preventDefault();e.target.dispatchEvent(new MouseEvent('click',{bubbles:true}));}});
 }
@@ -1142,11 +1271,12 @@ async function importFile(file){
     openImportReview(prepareImport(pendingImportText,pendingImportName));
   }catch(error){pendingImportText='';pendingImportName='';pendingImportOverrides={};openImportReview({positions:[],employees:[],errors:[error.message||'Could not read this CSV.'],warnings:[],filename:file.name,scenarioId:workspace.activeScenarioId});}
 }
-function confirmImport(){
+async function confirmImport(){
   if(!pendingImport||pendingImport.errors.length)return;
   try{
     const mode=$('input[name="importMode"]:checked').value,nextScenario=makeImportScenario(pendingImport,mode);
-    if(mode==='replace'&&activeScenario().positions.length&&!confirm(`Replace all ${activeScenario().positions.length} positions in “${activeScenario().name}” with ${pendingImport.positions.length} imported positions?\n\nOther scenarios and company branding will not change. People records are retained for reassignment.`))return;
+    if(mode==='replace'&&activeScenario().positions.length&&!confirm(`Replace all ${activeScenario().positions.length} positions in “${activeScenario().name}” with ${pendingImport.positions.length} imported positions?\n\nOther scenarios and company branding will not change. People records are retained for reassignment. The current workspace is checkpointed first.`))return;
+    if(mode==='replace')await checkpointWorkspace('Before replacing positions via CSV import');
     const next=structuredClone(workspace),index=next.scenarios.findIndex(s=>s.id===workspace.activeScenarioId);next.scenarios[index]={...nextScenario,updatedAt:new Date().toISOString()};commitPlanning(next,`${pendingImport.positions.length} positions imported into ${activeScenario().name}`);
     hidePositionEditor();collapsed.clear();setupChips();closeDialog('importModal');pendingImport=null;pendingImportText='';pendingImportName='';pendingImportOverrides={};render();
   }catch(error){$('#importIssues').innerHTML=`<div class="issue error">${esc(error.message)}</div>`;}
@@ -1286,6 +1416,7 @@ async function saveWorkspaceToDisk(saveAs=false){
   try{
     if(window.showSaveFilePicker&&(saveAs||!workspaceFileHandle)){
       workspaceFileHandle=await window.showSaveFilePicker({suggestedName:`orgflow-workspace-${today}.json`,types:[{description:'OrgFlow workspace',accept:{'application/json':['.json']}}]});
+      fileHandleNeedsReconnect=false;OrgFlowStore.putHandle(workspaceFileHandle,workspaceFileHandle.name||'');
       syncAutosaveUi();
     }
     if(workspaceFileHandle?.createWritable){
@@ -1305,7 +1436,7 @@ async function restoreWorkspacePicker(){
   if(window.showOpenFilePicker){
     try{
       const [handle]=await window.showOpenFilePicker({types:[{description:'OrgFlow workspace',accept:{'application/json':['.json']}}]});
-      workspaceFileHandle=handle;syncAutosaveUi();
+      workspaceFileHandle=handle;fileHandleNeedsReconnect=false;OrgFlowStore.putHandle(handle,handle.name||'');syncAutosaveUi();
       await restoreWorkspace(await handle.getFile());
       return;
     }catch(error){if(error?.name==='AbortError')return;}
@@ -1342,11 +1473,12 @@ async function restoreWorkspace(file){
   if(!file)return;try{
     if(file.size>12*1024*1024)throw new Error('Workspace file is too large (12 MB maximum).');let raw;try{raw=JSON.parse(await file.text());}catch{throw new Error('This file is not valid JSON.');}
     const next=await validateWorkspace(raw),count=next.planning.scenarios.length;
-    if(!confirm(`Restore “${next.branding.companyName||'OrgFlow'} / ${next.branding.chartTitle}” with ${count} scenario(s)?\n\nThis replaces ALL current scenarios, people, logos, palette and view. Back up your current workspace first. Older v1 backups become a Current scenario.`))return;
+    if(!confirm(`Restore “${next.branding.companyName||'OrgFlow'} / ${next.branding.chartTitle}” with ${count} scenario(s)?\n\nThis replaces ALL current scenarios, people, logos, palette and view. The current workspace is checkpointed first and can be recovered from Recovery & backups.`))return;
+    await checkpointWorkspace('Before restoring a workspace backup');
     const entries={[BRANDING_KEY]:JSON.stringify(next.branding),'orgflow.theme':next.theme,'orgflow.palette':next.palette,'orgflow.planning.view.v2':JSON.stringify(next.view),[PLANNING_KEY]:JSON.stringify(next.planning)},previous={};
     try{for(const key of Object.keys(entries))previous[key]=localStorage.getItem(key);for(const [key,value] of Object.entries(entries))localStorage.setItem(key,value);}
     catch{for(const [key,value] of Object.entries(previous)){try{value===null?localStorage.removeItem(key):localStorage.setItem(key,value);}catch{}}throw new Error('Browser storage is unavailable or full. Restore was not applied.');}
-    workspace=next.planning;lastSavedPlanningText=JSON.stringify(workspace);branding=next.branding;modelLoadError='';$('#loadError').classList.add('hidden');undoStack=[];redoStack=[];updateUndoButtons();syncProjection();hidePositionEditor();setPalette(next.palette,false);setTheme(next.theme,false);restoreView(next.view);applyBranding();render();centerChart();toast(`Restored ${count} scenario(s)${activeDateNote()}`);afterEnterprisePersist();
+    workspace=next.planning;lastSavedPlanningText=JSON.stringify(workspace);branding=next.branding;writeDurable(workspace,lastSavedPlanningText);modelLoadError='';$('#loadError').classList.add('hidden');undoStack=[];redoStack=[];updateUndoButtons();syncProjection();hidePositionEditor();setPalette(next.palette,false);setTheme(next.theme,false);restoreView(next.view);applyBranding();render();centerChart();toast(`Restored ${count} scenario(s)${activeDateNote()}`);afterEnterprisePersist();
   }catch(error){alert(`Workspace not restored.\n\n${error.message||'The file could not be read.'}`);}
 }
 function safeGet(key){try{return localStorage.getItem(key);}catch{return null;}}
@@ -1364,7 +1496,7 @@ function applySampleChrome(sampleId, persist=true){
 function replaceWorkspace(next,{brandingNext=null,palette='indigo',theme='light',view=null,sampleId='',message=''}={}){
   if(enterpriseBlocksWrite())throw new Error('You can view this organization but you cannot replace it.');
   if(window.OrgFlowEnterprise?.enabled && !window.OrgFlowEnterprise.isAdmin)throw new Error('Only admins can replace the shared organization.');
-  const previous=lastSavedPlanningText,checked=validatePlanning(next),serialized=JSON.stringify(checked);
+  const previous=lastSavedPlanningText,checked=validatePlanning(touchWorkspace(next)),serialized=JSON.stringify(checked);
   localStorage.setItem(PLANNING_KEY,serialized);
   lastSavedPlanningText=serialized;workspace=checked;modelLoadError='';$('#loadError').classList.add('hidden');
   recordUndoFrom(previous,message||'Loaded workspace');
@@ -1374,16 +1506,18 @@ function replaceWorkspace(next,{brandingNext=null,palette='indigo',theme='light'
     applyBranding();
   }
   setPalette(palette,false);setTheme(theme,false);
+  writeDurable(checked,serialized);
   syncProjection();
   if(view)restoreView(view);else applyDefaultFilters();
   hidePositionEditor();render();centerChart();updateUndoButtons();
   const aside=document.querySelector('aside');if(aside)aside.scrollTop=0;
   afterEnterprisePersist();
 }
-function loadSampleWorkspace(sampleId,{empty=false,skipConfirm=false}={}){
+async function loadSampleWorkspace(sampleId,{empty=false,skipConfirm=false}={}){
   if(modelLoadError){toast('Restore your workspace before loading an example.');return;}
   const label=empty?'a blank organization':(ORGFLOW_EXAMPLES[sampleId]?.branding?.companyName||'this example');
-  if(!skipConfirm&&!confirm(`Replace the current workspace with ${label}?\n\nThis overwrites scenarios, people and branding in this browser. Export a workspace backup first if you want to keep your work.`))return;
+  if(!skipConfirm&&!confirm(`Replace the current workspace with ${label}?\n\nThis overwrites scenarios, people and branding in this browser. The current workspace is checkpointed first and stays recoverable under Recovery & backups.`))return;
+  await checkpointWorkspace(`Before loading ${empty?'a blank organization':'an example'}`);
   try{
     if(empty){
       replaceWorkspace(emptyWorkspace(today),{brandingNext:BRANDING_DEFAULTS,palette:'indigo',theme:window.matchMedia?.('(prefers-color-scheme: dark)').matches?'dark':'light',message:'Blank organization'});
@@ -1396,11 +1530,12 @@ function loadSampleWorkspace(sampleId,{empty=false,skipConfirm=false}={}){
     }
   }catch(error){toast(error.message||'Could not load the example.');}
 }
-function loadStarterTemplate(id,{skipConfirm=false}={}){
+async function loadStarterTemplate(id,{skipConfirm=false}={}){
   const t=typeof ORGFLOW_TEMPLATES==='undefined'?null:ORGFLOW_TEMPLATES[id];
   if(!t){toast('Template was not found.');return;}
   if(modelLoadError){toast('Restore your workspace before loading a template.');return;}
-  if(!skipConfirm&&!confirm(`Replace the current workspace with ${t.branding.companyName}?\n\nThis overwrites scenarios, people and branding in this browser.`))return;
+  if(!skipConfirm&&!confirm(`Replace the current workspace with ${t.branding.companyName}?\n\nThis overwrites scenarios, people and branding in this browser. The current workspace is checkpointed first.`))return;
+  await checkpointWorkspace('Before loading a template');
   try{
     replaceWorkspace(t.planning,{brandingNext:t.branding,palette:t.palette||'indigo',theme:'light',message:`Loaded ${t.branding.companyName}`});
     toast(`Loaded ${t.branding.companyName}${activeDateNote()}`);
@@ -1431,12 +1566,69 @@ function renderHistory(){
   let list=[];try{list=JSON.parse(localStorage.getItem(HISTORY_KEY)||'[]');}catch{list=[];}
   $('#historyRows').innerHTML=list.length?list.map((item,i)=>`<tr><td>${esc(item.at?.replace('T',' ').slice(0,19)||'')}</td><td>${esc(item.note||'Saved')}</td><td><button class="btn compact-btn" data-history="${i}">Restore</button></td></tr>`).join(''):'<tr><td colspan="3" class="empty-row">No earlier versions in this browser yet. Edits create snapshots automatically.</td></tr>';
 }
-function openHistory(){renderHistory();openDialog('historyModal');}
-function restoreHistoryIndex(index){
+function recoveryLocationText(){
+  const places=['browser storage'];
+  if(OrgFlowStore.supported)places.push('app storage');
+  if(window.orgflowDesktop?.storagePath)places.push(window.orgflowDesktop.storagePath());
+  return places.join(' · ');
+}
+async function renderRecovery(){
+  const s=workspace,stamp=workspaceStamp(s);
+  const t=totals(activeScenario());
+  const fileInfo=workspaceFileHandle?`Saved file: ${esc(workspaceFileHandle.name||'picked file')}${fileHandleNeedsReconnect?' · needs reconnect':''}`:'No saved file picked';
+  $('#recoveryWorkspace').innerHTML=`<div class="meta-grid">`
+    +`<div><span>Workspace</span><b>${esc(stamp.workspaceId||'—')}</b></div>`
+    +`<div><span>Revision</span><b>${stamp.revision}</b></div>`
+    +`<div><span>Last committed</span><b>${esc(stamp.lastCommittedAt?stamp.lastCommittedAt.replace('T',' ').slice(0,19):'—')}</b></div>`
+    +`<div><span>Scenarios</span><b>${s.scenarios.length} · ${s.scenarios.filter(x=>x.archived).length} archived</b></div>`
+    +`<div><span>Positions / people</span><b>${t.positions} / ${s.scenarios.find(x=>x.id===s.activeScenarioId).employees.length}</b></div>`
+    +`<div><span>Stored in</span><b>${esc(recoveryLocationText())}</b></div>`
+    +`<div><span>File</span><b>${fileInfo}</b></div>`
+    +`</div>`;
+  const pending=await OrgFlowStore.getPending();
+  const pendBox=$('#recoveryPending');
+  if(pending?.planning){
+    pendBox.classList.remove('hidden');
+    pendBox.innerHTML=`<div class="pending-box"><b>Recoverable changes</b> — edits saved ${esc(String(pending.savedAt||'').replace('T',' ').slice(0,19))} never reached the shared workspace.<div class="pending-actions"><button class="btn compact-btn" data-pending-restore>Review &amp; restore</button><button class="btn compact-btn" data-pending-discard>Discard</button></div></div>`;
+  }else{pendBox.classList.add('hidden');pendBox.innerHTML='';}
+  const cps=await OrgFlowStore.listCheckpoints();
+  $('#checkpointRows').innerHTML=cps.length?cps.map(c=>{
+    const m=c.summary||{};
+    return `<tr><td>${esc(String(c.at||'').replace('T',' ').slice(0,19))}</td><td class="title-cell">${esc(c.note||'Checkpoint')}<span class="sub">${m.scenarios??'?'} scenario(s) · ${m.positions??'?'} positions · ${m.people??'?'} people · rev ${m.revision??'?'}</span></td><td style="white-space:nowrap"><button class="btn compact-btn" data-checkpoint-restore="${esc(c.id)}">Restore</button> <button class="btn compact-btn" data-checkpoint-copy="${esc(c.id)}">Restore as copy</button> <button class="btn compact-btn" data-checkpoint-del="${esc(c.id)}" aria-label="Delete checkpoint">×</button></td></tr>`;
+  }).join(''):'<tr><td colspan="3" class="empty-row">No checkpoints yet. They are created before restores, imports and sample loads.</td></tr>';
+  renderHistory();
+}
+function openHistory(){renderRecovery();openDialog('historyModal');}
+async function restoreCheckpoint(id,asCopy=false){
+  const row=await OrgFlowStore.readCheckpoint(id);
+  if(!row?.planning){toast('That checkpoint is no longer available.');renderRecovery();return;}
+  const label=asCopy?'Restore this checkpoint as a separate workspace copy':'Restore this checkpoint';
+  if(!confirm(`${label}? The current workspace is checkpointed first and stays recoverable.`))return;
+  try{
+    await checkpointWorkspace('Before restoring a checkpoint');
+    let planning=row.planning;
+    if(asCopy){planning=structuredClone(planning);planning.workspaceId=makeId('ws');planning.recoveredFrom={workspaceId:row.planning.workspaceId||'',revision:row.planning.revision||0,checkpointId:id};}
+    if(row.branding){branding=cleanBranding(row.branding);try{localStorage.setItem(BRANDING_KEY,JSON.stringify(branding));}catch{}applyBranding();}
+    commitPlanning(planning,asCopy?'Checkpoint restored as a copy':'Checkpoint restored');
+    closeDialog('historyModal');
+  }catch(error){toast(error.message);}
+}
+async function restorePendingSave(){
+  const pending=await OrgFlowStore.getPending();
+  if(!pending?.planning){toast('Nothing pending to restore.');renderRecovery();return;}
+  if(!confirm('Restore the changes that never reached the shared workspace? The current workspace is checkpointed first.'))return;
+  try{
+    await checkpointWorkspace('Before restoring unsynchronized changes');
+    commitPlanning(validatePlanning(pending.planning),'Recovered unsynchronized changes');
+    await OrgFlowStore.clearPending();
+    closeDialog('historyModal');
+  }catch(error){toast(error.message);}
+}
+async function restoreHistoryIndex(index){
   let list=[];try{list=JSON.parse(localStorage.getItem(HISTORY_KEY)||'[]');}catch{list=[];}
   const item=list[index];if(!item?.planning)return;
-  if(!confirm('Restore this earlier version? Current work stays in Undo for this session.'))return;
-  try{commitPlanning(item.planning,'Restored earlier version',{historyNote:'Before restoring a local version'});closeDialog('historyModal');}catch(error){toast(error.message);}
+  if(!confirm('Restore this earlier version? Current work stays in Undo for this session and is checkpointed first.'))return;
+  try{await checkpointWorkspace('Before restoring an earlier version');commitPlanning(item.planning,'Restored earlier version',{historyNote:'Before restoring a local version'});closeDialog('historyModal');}catch(error){toast(error.message);}
 }
 async function normalizePersonPhoto(file){
   const logo=await normalizeLogoFile(file);
@@ -1507,6 +1699,7 @@ $('#exportBtn').onclick=e=>{e.stopPropagation();$('#paletteMenu').classList.remo
   else if(kind==='a3')exportA3Pages();
   else if(kind==='print')printChartView();
   else if(kind==='html')exportShareableHTML();
+  else if(kind==='interactive')openShareDialog();
   else if(kind==='people')exportPeopleCSV();
   else if(kind==='workspace')exportWorkspace();
   else if(kind==='save')saveWorkspaceToDisk(false);
@@ -1526,7 +1719,7 @@ window.addEventListener('keydown',e=>{
     if(modalOpen('welcomeModal')){closeWelcome();return;}
     if(modalOpen('historyModal')){closeDialog('historyModal');return;}
     if(modalOpen('importModal')){$('#importModal').classList.remove('open');return;}
-    if(modalOpen('scenarioModal')||modalOpen('directoryModal')||modalOpen('personModal'))return;
+    if(modalOpen('scenarioModal')||modalOpen('directoryModal')||modalOpen('personModal')||modalOpen('shareModal'))return;
     if($('.layout')?.classList.contains('filters-open')){setFiltersOpen(false);return;}
     if($('#drawer').classList.contains('open')){requestCloseDrawer();return;}
     if(selectedIds.size){clearSelection();return;}
@@ -1536,15 +1729,22 @@ window.addEventListener('keydown',e=>{
 function paintPlanner(){
   loadSavedPlanningView();setupTheme();setupChips();setupPlanningEvents();updateUndoButtons();syncAutosaveUi();
 }
-function startLocalPlanner(){
-  initPlanning();paintPlanner();
-  render();setTimeout(centerChart,0);maybeShowWelcome();
+async function startLocalPlanner(){
+  await initPlanning();paintPlanner();
+  render();setTimeout(centerChart,0);maybeShowWelcome();resumeFileHandle();
 }
-function applyEnterpriseWorkspace(doc){
+async function applyEnterpriseWorkspace(doc){
   const next=validatePlanning(doc.planning);
+  // The server document must not silently overwrite edits that never synced.
+  // A pending record stays recoverable in the recovery center either way.
+  const pending=await OrgFlowStore.getPending();
+  if(pending?.planning&&JSON.stringify(pending.planning)!==JSON.stringify(next)){
+    toast('Local changes that never reached the server were kept — see Recovery & backups.');
+  }
   workspace=next;lastSavedPlanningText=JSON.stringify(next);modelLoadError='';$('#loadError').classList.add('hidden');
   try{localStorage.setItem(PLANNING_KEY,lastSavedPlanningText);}catch{}
   branding=cleanBranding(doc.branding);try{localStorage.setItem(BRANDING_KEY,JSON.stringify(branding));}catch{}
+  writeDurable(next,lastSavedPlanningText);
   undoStack=[];redoStack=[];syncProjection();hidePositionEditor();
   setPalette(doc.palette||'indigo',false);setTheme(doc.theme==='dark'?'dark':'light',false);
   applyBranding();paintPlanner();
@@ -1557,6 +1757,16 @@ $('#undoBtn').onclick=undoChange;$('#redoBtn').onclick=redoChange;$('#helpBtn').
 $('#historyBtn').onclick=openHistory;$('#historyClose').onclick=()=>closeDialog('historyModal');
 $('#autoSaveFile').onchange=e=>{if(e.target.checked&&!workspaceFileHandle?.createWritable){e.target.checked=false;toast('Save the workspace once to pick the file — auto-save then keeps it current.');return;}try{localStorage.setItem(AUTOSAVE_KEY,e.target.checked?'1':'0');}catch{}if(e.target.checked){scheduleFileAutosave();toast('Auto-save on — the picked file stays current.');}};
 $('#historyRows').onclick=e=>{const b=e.target.closest('[data-history]');if(b)restoreHistoryIndex(Number(b.dataset.history));};
+$('#checkpointRows').onclick=e=>{
+  const restore=e.target.closest('[data-checkpoint-restore]');if(restore){restoreCheckpoint(restore.dataset.checkpointRestore,false);return;}
+  const copy=e.target.closest('[data-checkpoint-copy]');if(copy){restoreCheckpoint(copy.dataset.checkpointCopy,true);return;}
+  const del=e.target.closest('[data-checkpoint-del]');if(del){OrgFlowStore.deleteCheckpoint(del.dataset.checkpointDel).then(renderRecovery);}
+};
+$('#recoveryPending').onclick=e=>{
+  if(e.target.closest('[data-pending-restore]')){restorePendingSave();return;}
+  if(e.target.closest('[data-pending-discard]')&&confirm('Discard the recoverable changes? The shared workspace stays as the server has it.')){OrgFlowStore.clearPending().then(renderRecovery);}
+};
+$('#reconnectFile').onclick=reconnectSavedFile;
 $('#welcomeClose').onclick=$('#welcomeSkip').onclick=closeWelcome;
 $('#welcomeHarbor').onclick=()=>{const skip=welcomeFirstRun;closeWelcome();loadSampleWorkspace('harbor-and-co',{skipConfirm:skip});};
 $('#templateGrid').onclick=e=>{const b=e.target.closest('.template-card');if(!b)return;const skip=welcomeFirstRun;closeWelcome();if(b.dataset.kind==='example')loadSampleWorkspace(b.dataset.id,{skipConfirm:skip});else loadStarterTemplate(b.dataset.id,{skipConfirm:skip});};

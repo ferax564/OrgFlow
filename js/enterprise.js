@@ -60,6 +60,25 @@
     api.canWrite = Boolean(body.session?.canWrite);
     api.canExport = Boolean(body.session?.canExport);
     api.isAdmin = Boolean(body.session?.isAdmin);
+    // Flush edits that never reached the server before its document replaces
+    // the local copy. A failed retry leaves the pending record recoverable.
+    try {
+      const pending = await window.OrgFlowStore?.getPending?.();
+      if (pending?.payload) {
+        const resent = await fetch('/api/workspace', {
+          method: 'PUT',
+          credentials: 'same-origin',
+          headers: { 'content-type': 'application/json', 'if-match': String(pending.baseVersion ?? api.version) },
+          body: JSON.stringify({ workspace: pending.payload, version: pending.baseVersion ?? api.version })
+        });
+        if (resent.ok) {
+          const rb = await resent.json().catch(() => ({}));
+          api.version = rb.version;
+          body.workspace = { ...body.workspace, planning: pending.planning };
+          await window.OrgFlowStore.clearPending();
+        }
+      }
+    } catch { /* the pending record stays recoverable */ }
     applyEnterpriseWorkspace(body.workspace);
     applyChrome(body.session);
   }
@@ -109,20 +128,38 @@
 
   async function saveNow() {
     const payload = window.enterpriseWorkspacePayload();
-    const res = await fetch('/api/workspace', {
-      method: 'PUT',
-      credentials: 'same-origin',
-      headers: { 'content-type': 'application/json', 'if-match': String(api.version) },
-      body: JSON.stringify({ workspace: payload, version: api.version })
-    });
+    let res;
+    try {
+      res = await fetch('/api/workspace', {
+        method: 'PUT',
+        credentials: 'same-origin',
+        headers: { 'content-type': 'application/json', 'if-match': String(api.version) },
+        body: JSON.stringify({ workspace: payload, version: api.version })
+      });
+    } catch (error) {
+      await persistPending(payload, 'network');
+      throw new Error('Could not reach the server — your changes are kept under Recovery & backups.');
+    }
     const body = await res.json().catch(() => ({}));
     if (res.status === 409) {
-      toast('Someone else saved. Reloading the shared workspace.');
+      // Keep the losing copy recoverable instead of reloading over it.
+      await persistPending(payload, 'conflict');
+      toast('Someone else saved first. Your copy is kept under Recovery & backups.');
       location.reload();
       return;
     }
-    if (!res.ok) throw new Error(body.error || 'Save failed.');
+    if (!res.ok) {
+      await persistPending(payload, 'error');
+      throw new Error(body.error || 'Save failed — your changes are kept under Recovery & backups.');
+    }
     api.version = body.version;
+    await window.OrgFlowStore?.clearPending?.();
+  }
+
+  async function persistPending(payload, reason) {
+    try {
+      await window.OrgFlowStore?.putPending?.({ planning: payload.planning, payload, baseVersion: api.version, reason });
+    } catch { /* pending recovery is best-effort */ }
   }
 
   async function recordExport(kind) {

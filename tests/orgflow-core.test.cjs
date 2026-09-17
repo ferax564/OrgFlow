@@ -449,6 +449,93 @@ test('CSV header overrides remap and ignore columns', () => {
   assert.equal(stolen.title, undefined);
 });
 
+test('validatePlanning mints and preserves workspace identity', () => {
+  const fresh = OrgFlow.validatePlanning(OrgFlow.emptyWorkspace('2026-09-16'));
+  assert.ok(fresh.workspaceId, 'workspaceId is minted');
+  assert.equal(fresh.schema, 2);
+  assert.equal(fresh.revision, 0);
+  const again = OrgFlow.validatePlanning({ ...fresh, workspaceId: 'ws-keep-me', revision: 41, lastCommittedAt: '2026-09-16T10:00:00Z' });
+  assert.equal(again.workspaceId, 'ws-keep-me');
+  assert.equal(again.revision, 41);
+  assert.equal(again.lastCommittedAt, '2026-09-16T10:00:00Z');
+});
+
+test('unknown fields survive a validation round-trip (forward compatibility)', () => {
+  const base = OrgFlow.emptyWorkspace('2026-09-16');
+  const s = base.scenarios[0];
+  s.positions[0].budget = { amount: 120000, currency: 'EUR' };
+  s.positions[0].skills = ['Simulation'];
+  s.employees.push({ id: 'p-1', name: 'Extra Person', employeeNumber: '', photo: null, capacity: 0.8 });
+  s.timelineNote = 'future field';
+  base.workforcePlan = { quarters: ['Q1'] };
+  const rt = OrgFlow.validatePlanning(JSON.parse(JSON.stringify(base)));
+  assert.deepEqual(rt.scenarios[0].positions[0].budget, { amount: 120000, currency: 'EUR' });
+  assert.deepEqual(rt.scenarios[0].positions[0].skills, ['Simulation']);
+  assert.equal(rt.scenarios[0].employees.find(e => e.id === 'p-1').capacity, 0.8);
+  assert.equal(rt.scenarios[0].timelineNote, 'future field');
+  assert.deepEqual(rt.workforcePlan, { quarters: ['Q1'] });
+});
+
+test('newer schema workspaces are refused, not silently downgraded', () => {
+  const future = JSON.parse(JSON.stringify(OrgFlow.emptyWorkspace('2026-09-16')));
+  future.schema = 3;
+  assert.throws(() => OrgFlow.validatePlanning(future), /newer OrgFlow/);
+  try { OrgFlow.validatePlanning(future); } catch (e) { assert.equal(e.code, 'SCHEMA_TOO_NEW'); }
+});
+
+test('touchWorkspace bumps revision and keeps identity', () => {
+  const w = OrgFlow.validatePlanning({ ...OrgFlow.emptyWorkspace('2026-09-16'), workspaceId: 'ws-1', revision: 7 });
+  const t = OrgFlow.touchWorkspace(w, '2026-09-16T12:00:00Z');
+  assert.equal(t.revision, 8);
+  assert.equal(t.workspaceId, 'ws-1');
+  assert.equal(t.lastCommittedAt, '2026-09-16T12:00:00Z');
+  assert.ok(OrgFlow.compareWorkspaceStamps(t, w) > 0, 'newer revision wins');
+  assert.ok(OrgFlow.compareWorkspaceStamps(w, t) < 0);
+});
+
+function shareFixture() {
+  const base = OrgFlow.emptyWorkspace('2026-09-16');
+  const s = base.scenarios[0];
+  s.positions[0].personId = '';
+  s.positions[0].hiringState = 'Vacant';
+  s.positions.push(
+    { id: 'eng', managerId: 'POS-001', secondaryManagerId: '', title: 'Head of Engineering', type: 'Head', group: 'Engineering', fte: 1, status: 'Approved', hiringState: 'Filled', personId: 'p-eng', startDate: '2026-01-01', endDate: '', location: 'Berlin', costCenter: 'ENG-1', jobFamily: 'Eng', sortOrder: 0 },
+    { id: 'dev', managerId: 'eng', secondaryManagerId: '', title: 'Developer', type: 'Engineer', group: 'Engineering', fte: 1, status: 'Approved', hiringState: 'Filled', personId: 'p-dev', startDate: '', endDate: '', location: 'Berlin', costCenter: '', jobFamily: '', sortOrder: 0 },
+    { id: 'sales', managerId: 'POS-001', secondaryManagerId: '', title: 'Head of Sales', type: 'Head', group: 'Sales', fte: 1, status: 'Approved', hiringState: 'Vacant', personId: '', startDate: '', endDate: '', location: '', costCenter: '', jobFamily: '', sortOrder: 1 }
+  );
+  s.employees.push({ id: 'p-eng', name: 'Edith Engineer', employeeNumber: 'E-9', photo: null }, { id: 'p-dev', name: 'Dan Dev', employeeNumber: 'E-2', photo: null });
+  return OrgFlow.validatePlanning(base);
+}
+
+test('share dataset redacts excluded fields and folds in people', () => {
+  const planning = shareFixture();
+  const ds = OrgFlow.buildShareDataset(planning, {
+    scenarioId: 'current', include: { personName: true, group: true, hiringState: true },
+    initialDepth: 2, companyName: 'Acme', chartTitle: 'Org'
+  });
+  assert.equal(ds.format, 'orgflow.share');
+  assert.equal(ds.positions.length, 4);
+  const dev = ds.positions.find(p => p.id === 'dev');
+  assert.equal(dev.person.name, 'Dan Dev');
+  assert.equal(dev.person.employeeNumber, undefined, 'employee number excluded');
+  assert.equal(dev.costCenter, undefined, 'cost center excluded');
+  assert.equal(dev.startDate, undefined);
+  assert.deepEqual(ds.fields.sort(), ['group', 'hiringState', 'personName']);
+  const text = JSON.stringify(ds);
+  assert.ok(!text.includes('E-9'), 'no excluded employee number leaks');
+  assert.ok(!text.includes('ENG-1'), 'no excluded cost center leaks');
+});
+
+test('share dataset subtree scope excludes other departments entirely', () => {
+  const planning = shareFixture();
+  const ds = OrgFlow.buildShareDataset(planning, { scenarioId: 'current', rootId: 'eng', include: { personName: true }, initialDepth: 1 });
+  assert.deepEqual(ds.positions.map(p => p.id).sort(), ['dev', 'eng']);
+  assert.equal(ds.scope.rootTitle, 'Head of Engineering');
+  assert.equal(ds.initialDepth, 1);
+  assert.ok(!JSON.stringify(ds).includes('Sales'), 'sales subtree is absent, not just hidden');
+  assert.throws(() => OrgFlow.buildShareDataset(planning, { scenarioId: 'current', rootId: 'nope' }), /not found/);
+});
+
 test('placeSibling reorders among the same manager', () => {
   const positions = [
     { id: 'm', managerId: '', sortOrder: 0 },

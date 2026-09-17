@@ -15,12 +15,18 @@ function ok(title) { findings.push({ type: 'ok', title }); console.log('OK:', ti
   const pageErrors = [];
   const consoleErrors = [];
   const browser = await puppeteer.launch({
-    executablePath: '/usr/bin/google-chrome',
+    executablePath: process.env.CHROME_PATH || '/usr/bin/google-chrome',
     headless: 'new',
     args: ['--no-sandbox', '--disable-gpu', '--disable-dev-shm-usage', '--window-size=1440,900']
   });
   const page = await browser.newPage();
   await page.setViewport({ width: 1440, height: 900 });
+  // The drawer slides in over ~220ms; its controls are offscreen until it lands.
+  const drawerSettled = () => page.waitForFunction(() => {
+    const d = document.querySelector('#drawer');
+    const m = new DOMMatrixReadOnly(getComputedStyle(d).transform);
+    return d.classList.contains('open') && Math.abs(m.e) < 50;
+  });
   page.on('pageerror', err => pageErrors.push(String(err)));
   page.on('console', msg => { if (msg.type() === 'error') consoleErrors.push(msg.text()); });
   page.on('dialog', async dialog => { await dialog.accept(); });
@@ -77,10 +83,10 @@ function ok(title) { findings.push({ type: 'ok', title }); console.log('OK:', ti
     const node = [...document.querySelectorAll('#chart .node')].find(n => n.getAttribute('aria-label')?.includes('Alex Morgan'));
     node?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
   });
-  await page.waitForSelector('#drawer.open');
+  await page.waitForSelector('#drawer.open');await drawerSettled();
   await page.click('#drawerClose');
   await page.click('#addBtn');
-  await page.waitForSelector('#drawer.open');
+  await page.waitForSelector('#drawer.open');await drawerSettled();
   const addTitle = await page.$eval('#fTitle', el => el.value);
   const addHeading = await page.$eval('#drawerTitle', el => el.textContent);
   if (addTitle) bug('Add position reused previous title', addTitle);
@@ -107,7 +113,7 @@ function ok(title) { findings.push({ type: 'ok', title }); console.log('OK:', ti
   // Changing as-of without enabling the date filter should not stamp new positions
   await page.$eval('#asOf', el => { el.value = '2024-01-01'; el.dispatchEvent(new Event('change')); });
   await page.click('#addBtn');
-  await page.waitForSelector('#drawer.open');
+  await page.waitForSelector('#drawer.open');await drawerSettled();
   const stamped = await page.$eval('#fStart', el => el.value);
   if (stamped === '2024-01-01') bug('New position inherited as-of date while date filter is off', stamped);
   else if (stamped === today) ok('New position start date stays today when date filter is off');
@@ -120,7 +126,7 @@ function ok(title) { findings.push({ type: 'ok', title }); console.log('OK:', ti
     const node = [...document.querySelectorAll('#chart .node')].find(n => n.getAttribute('aria-label')?.includes('Alex Morgan'));
     node?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
   });
-  await page.waitForSelector('#drawer.open');
+  await page.waitForSelector('#drawer.open');await drawerSettled();
   await page.click('#fFte', { clickCount: 3 });
   await page.type('#fFte', '2');
   await page.click('#saveBtn');
@@ -136,7 +142,7 @@ function ok(title) { findings.push({ type: 'ok', title }); console.log('OK:', ti
     });
   });
   await page.click('#addBtn');
-  await page.waitForSelector('#drawer.open');
+  await page.waitForSelector('#drawer.open');await drawerSettled();
   await page.type('#fTitle', 'Hidden Specialist QA');
   await page.select('#fType', 'Specialist');
   await page.select('#fHiring', 'Vacant');
@@ -154,7 +160,7 @@ function ok(title) { findings.push({ type: 'ok', title }); console.log('OK:', ti
   if (rows < 17) bug('Position register row count', String(rows));
   else ok('Position register lists rows');
   await page.click('#positionsRows [data-edit-position]');
-  await page.waitForSelector('#drawer.open');
+  await page.waitForSelector('#drawer.open');await drawerSettled();
   ok('Register Edit opens drawer');
   await page.click('#drawerClose');
 
@@ -163,7 +169,7 @@ function ok(title) { findings.push({ type: 'ok', title }); console.log('OK:', ti
     const btn = [...document.querySelectorAll('[data-edit-position]')].find(b => b.closest('tr')?.innerText.includes('Alex Morgan'));
     btn?.click();
   });
-  await page.waitForSelector('#drawer.open');
+  await page.waitForSelector('#drawer.open');await drawerSettled();
   await page.select('#fHiring', 'Vacant');
   await page.click('#saveBtn');
   await page.waitForFunction(() => !document.querySelector('#drawer.open'));
@@ -203,8 +209,7 @@ function ok(title) { findings.push({ type: 'ok', title }); console.log('OK:', ti
   // Branding
   await page.click('#brandingBtn');
   await page.waitForSelector('#brandingModal.open');
-  await page.click('#brandChartTitle', { clickCount: 3 });
-  await page.keyboard.press('Backspace');
+  await page.$eval('#brandChartTitle', el => { el.value = ''; el.dispatchEvent(new Event('input', { bubbles: true })); });
   await page.click('#brandingSave');
   const brandErr = await page.$eval('#brandingError', el => el.classList.contains('show'));
   if (!brandErr) bug('Empty chart title was saved');

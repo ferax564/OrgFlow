@@ -20,7 +20,18 @@
       const loaded=await jsonFetch('/api/workspace',{headers:{accept:'application/json'}});
       if(!loaded.res.ok)throw new Error(loaded.body.error||'Could not load the shared organization. Reload to retry.');
       const body=loaded.body;api.enabled=true;api.session=body.session;api.version=body.version;api.canWrite=Boolean(body.session?.canWrite);api.canExport=Boolean(body.session?.canExport);api.isAdmin=Boolean(body.session?.isAdmin);
-      api.applying=true;applyEnterpriseWorkspace(body.workspace);api.applying=false;baseline=structuredClone(window.enterpriseWorkspacePayload());applyChrome(body.session);status('Saved');
+      // Flush edits that never reached the server before its document
+      // replaces the local copy. A failed retry stays recoverable.
+      try{
+        const pending=await window.OrgFlowStore?.getPending?.();
+        if(pending?.payload){
+          const resent=await jsonFetch('/api/workspace',{method:'PUT',headers:{'content-type':'application/json','if-match':String(pending.baseVersion??api.version)},body:JSON.stringify({workspace:pending.payload,version:pending.baseVersion??api.version})});
+          if(resent.res.ok){api.version=resent.body.version;body.workspace=pending.payload;await window.OrgFlowStore.clearPending();}
+        }
+      }catch{/* the pending record stays recoverable */}
+      api.applying=true;
+      try{await applyEnterpriseWorkspace(body.workspace);}finally{api.applying=false;}
+      baseline=structuredClone(window.enterpriseWorkspacePayload());applyChrome(body.session);status('Saved');
     }catch(error){api.enabled=true;api.canWrite=false;api.canExport=false;const el=document.getElementById('loadError');el.classList.remove('hidden');el.textContent=error.message;}
   }
   function applyChrome(session){
@@ -44,16 +55,21 @@
     api.busy=true;status('Saving');
     try{
       const{res,body}=await jsonFetch('/api/workspace',{method:'PUT',headers:{'content-type':'application/json','if-match':String(api.version)},body:JSON.stringify({workspace:payload,version:api.version})});
-      if(res.status===409){conflict={base:structuredClone(baseline),local:structuredClone(payload),remote:null,version:null,resolutions:{},page:0};status('Conflict');throw new Error('Someone else saved. Your edits remain here. Use Resolve save conflict.');}
+      if(res.status===409){conflict={base:structuredClone(baseline),local:structuredClone(payload),remote:null,version:null,resolutions:{},page:0};status('Conflict');await persistPending(payload,'conflict');throw new Error('Someone else saved. Your edits remain here. Use Resolve save conflict.');}
       if(!res.ok)throw new Error(body.error||'Save failed.');
       accept(body);dirty=false;status('Saved');
-    }catch(error){if(api.saveState!=='Conflict')status('Save failed');throw error;}
+    }catch(error){if(api.saveState!=='Conflict'){status('Save failed');await persistPending(payload,'error');}throw error;}
     finally{api.busy=false;document.body.classList.remove('enterprise-busy');renderSaveStatus();}
   }
   function accept(body,{preserveView=true}={}){
     api.version=body.version;api.applying=true;
-    try{acceptEnterpriseSnapshot(body.workspace,{preserveView});baseline=structuredClone(window.enterpriseWorkspacePayload());}
+    try{acceptEnterpriseSnapshot(body.workspace,{preserveView});baseline=structuredClone(window.enterpriseWorkspacePayload());window.OrgFlowStore?.clearPending?.().catch(()=>{});}
     finally{api.applying=false;}
+  }
+  // A save that cannot reach the server keeps its full payload + base version
+  // in IndexedDB so a crash or reload cannot lose the unsynchronized work.
+  async function persistPending(payload,reason){
+    try{await window.OrgFlowStore?.putPending?.({planning:payload.planning,payload,baseVersion:api.version,reason});}catch{/* pending recovery is best-effort */}
   }
   async function flush(){clearTimeout(timer);timer=null;await chain.catch(()=>{});if(api.saveState==='Conflict')throw new Error('Resolve the save conflict first.');if(dirty)await enqueueSave();}
   async function decision(id,action,input={}){

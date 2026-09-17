@@ -71,6 +71,12 @@ async function serve(root, port) {
     await page.waitForSelector('#chart .node.search-hit');
     await page.click('#chart .node.search-hit');
     await page.waitForSelector('#drawer.open');
+    // The drawer slides in over ~220ms; its controls are offscreen until it lands.
+    await page.waitForFunction(() => {
+      const d = document.querySelector('#drawer');
+      const m = new DOMMatrixReadOnly(getComputedStyle(d).transform);
+      return d.classList.contains('open') && Math.abs(m.e) < 50;
+    });
     const title = await page.$eval('#fTitle', el => el.value);
     assert.match(title, /Head of Product/);
     await page.click('#drawerClose');
@@ -108,6 +114,11 @@ async function serve(root, port) {
     assert.ok(dotted >= 1, 'startup template should draw a dotted line');
     await page.click('#chart .node');
     await page.waitForSelector('#drawer.open');
+    await page.waitForFunction(() => {
+      const d = document.querySelector('#drawer');
+      const m = new DOMMatrixReadOnly(getComputedStyle(d).transform);
+      return d.classList.contains('open') && Math.abs(m.e) < 50;
+    });
     const location = await page.$eval('#fLocation', el => el.value);
     assert.ok(location.length, 'cards should expose a location field');
     await page.click('#drawerClose');

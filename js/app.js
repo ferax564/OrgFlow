@@ -512,7 +512,8 @@ async function allowEnterpriseExport(kind){
 }
 // Every durable copy of the workspace is written through the same path so no
 // store can quietly fall behind. localStorage remains the synchronous check
-// against another tab; IndexedDB and the desktop journal catch up async.
+// against another tab; IndexedDB catches up async; the desktop journal writes
+// through synchronously so a quit after commit still has the file.
 function writeDurable(planning,serialized){
   // The durable copies keep the full workspace envelope — planning plus the
   // chrome that made it look like this workspace — so restoring is complete.
@@ -1190,8 +1191,12 @@ function paintChartViewport(){
   const svgRect=svg.getBoundingClientRect(),wrapRect=wrap.getBoundingClientRect(),over=220;
   const box={left:(wrapRect.left-svgRect.left)/zoom-m.offX-over,top:(wrapRect.top-svgRect.top)/zoom-m.offY-over,right:(wrapRect.right-svgRect.left)/zoom-m.offX+over,bottom:(wrapRect.bottom-svgRect.top)/zoom-m.offY+over};
   const focused=document.activeElement?.closest?.('.node'),focusId=focused?.dataset.id;
-  const visible=lay.all.length<=300?lay.all:lay.all.filter(n=>n.id===focusId||(n._x+n._w>=box.left&&n._x<=box.right&&n._y+n._h>=box.top&&n._y<=box.bottom));
-  const hit=search?lay.all.find(n=>matchesSearch(n,search)):null,pathIds=new Set(pathToRoot(people,pathHoverId||hit?.id));
+  const hits=search?lay.all.filter(n=>matchesSearch(n,search)):[];
+  const hit=hits[0]||null,hitIds=new Set(hits.map(n=>n.id));
+  // Search hits must stay in the DOM even when they sit outside the viewport
+  // clip — otherwise find-in-chart cannot reveal a match on a large org.
+  const visible=lay.all.length<=300?lay.all:lay.all.filter(n=>n.id===focusId||hitIds.has(n.id)||(n._x+n._w>=box.left&&n._x<=box.right&&n._y+n._h>=box.top&&n._y<=box.bottom));
+  const pathIds=new Set(pathToRoot(people,pathHoverId||hit?.id));
   cssValueCache={};
   const markup=visible.map(n=>positionCardSVG(n,{x:n._x,y:n._y,interactive:true,hit:!!search&&matchesSearch(n,search),children:m.childCounts.get(n.id)||0,expanded:!!n.children.length,change:m.diffs.get(n.id),peopleCount:cardDisplay.cumulative&&showsCumulativeCount(n.type)?m.counts.get(n.id)+(n.personId?1:0):null,span:cardDisplay.span?m.spans.get(n.id):null,selected:selectedIds.has(n.id),onPath:pathIds.has(n.id)})).join('');
   cssValueCache=null;
@@ -1848,15 +1853,13 @@ function paintPlanner(){
 async function startLocalPlanner(){
   await initPlanning();paintPlanner();
   render();setTimeout(centerChart,0);maybeShowWelcome();resumeFileHandle();
+  try{navigator.storage?.persist?.();}catch{}
 }
 async function applyEnterpriseWorkspace(doc){
   const next=validatePlanning(doc.planning);
-  // The server document must not silently overwrite edits that never synced.
-  // A pending record stays recoverable in the recovery center either way.
-  const pending=await OrgFlowStore.getPending();
-  if(pending?.planning&&JSON.stringify(pending.planning)!==JSON.stringify(next)){
-    toast('Local changes that never reached the server were kept — see Recovery & backups.');
-  }
+  // Put the server document in memory first. IndexedDB pending lookup must
+  // not leave `workspace` null — Firefox can take long enough that an edit
+  // after `enabled` would crash on `next.scenarios`.
   workspace=next;lastSavedPlanningText=JSON.stringify(next);modelLoadError='';$('#loadError').classList.add('hidden');
   try{localStorage.setItem(PLANNING_KEY,lastSavedPlanningText);}catch{}
   branding=cleanBranding(doc.branding);try{localStorage.setItem(BRANDING_KEY,JSON.stringify(branding));}catch{}
@@ -1866,6 +1869,15 @@ async function applyEnterpriseWorkspace(doc){
   applyBranding();paintPlanner();
   if(doc.view)restoreView(doc.view);
   render();setTimeout(centerChart,0);
+  try{navigator.storage?.persist?.();}catch{}
+  // The server document must not silently overwrite edits that never synced.
+  // A pending record stays recoverable in the recovery center either way.
+  try{
+    const pending=await OrgFlowStore.getPending();
+    if(pending?.planning&&JSON.stringify(pending.planning)!==JSON.stringify(next)){
+      toast('Local changes that never reached the server were kept — see Recovery & backups.');
+    }
+  }catch{}
 }
 function acceptEnterpriseSnapshot(doc,{preserveView=true}={}){
   const oldId=workspace?.activeScenarioId,view=preserveView?captureView():doc.view;

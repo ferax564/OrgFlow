@@ -113,8 +113,10 @@ function registerStore() {
     const found = store.load();
     return found ? found.text : null;
   });
-  ipcMain.handle('workspace:save', (_event, text) => {
-    try { return store.save(text); } catch (error) { return { error: String(error?.message || error) }; }
+  // Save is synchronous so a quit immediately after commit still hits disk.
+  ipcMain.on('workspace:save', (event, text) => {
+    try { event.returnValue = store.save(text); }
+    catch (error) { event.returnValue = { error: String(error?.message || error) }; }
   });
   ipcMain.on('workspace:paths', event => {
     event.returnValue = store.paths().join(' · ');

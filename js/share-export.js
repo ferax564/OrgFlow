@@ -73,7 +73,7 @@
       return copy;
     }
     const forest = roots.map(n => prune(n, 1));
-    const name = n => n.person?.name || (n.hiringState === 'Recruiting' ? 'Recruiting' : 'Vacant position');
+    const name = n => OF.shareDisplayName(n);
     for (const n of (function flat(l) { const o = []; l.forEach(n => { o.push(n); o.push(...flat(n.children)); }); return o; })(forest)) {
       const nameLines = OF.wrapText(name(n), 186, 7.1).slice(0, 4);
       const titleLines = OF.wrapText(n.title || '', 224, 5.7).slice(0, 3);

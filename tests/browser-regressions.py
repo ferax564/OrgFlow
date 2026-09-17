@@ -176,7 +176,7 @@ class BrowserTests(unittest.TestCase):
             login=self.context.request.post(base+'/auth/dev/login',data={'email':'browser-admin@example.test','role':'admin','canExport':True});self.assertEqual(login.status,200)
             fixture=json.loads((ROOT/'examples/harbor-and-co/workspace.json').read_text())
             saved=self.context.request.put(base+'/api/workspace',data={'workspace':fixture,'version':1});self.assertEqual(saved.status,200)
-            self.page.goto(base+'/app.html');self.page.wait_for_function('() => window.OrgFlowEnterprise?.enabled && OrgFlowEnterprise.version===2')
+            self.page.goto(base+'/app.html');self.page.wait_for_function('() => window.OrgFlowEnterprise?.enabled && OrgFlowEnterprise.version===2 && workspace && workspace.scenarios')
             # Another client saves first; this page still holds the earlier version.
             remote=self.context.request.get(base+'/api/workspace').json();remote['workspace']['planning']['scenarios'][0]['positions'][0]['location']='Remote office'
             self.assertEqual(self.context.request.put(base+'/api/workspace',data={'workspace':remote['workspace'],'version':remote['version']}).status,200)

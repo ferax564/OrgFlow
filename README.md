@@ -27,13 +27,13 @@ Then open http://localhost:4173/ or http://localhost:4173/app.html. Opening the 
 
 ### Desktop app (no installer)
 
-CI builds a portable binary for each OS. Download **v2.1.0** below, or browse [all GitHub Releases](https://github.com/ferax564/OrgFlow/releases) (or the **Desktop binaries** workflow artifacts). You do not install into Program Files or `/Applications`.
+CI builds a portable binary for each OS. Download **v2.1.1** below, or browse [all GitHub Releases](https://github.com/ferax564/OrgFlow/releases) (or the **Desktop binaries** workflow artifacts). You do not install into Program Files or `/Applications`.
 
 | OS | File | How to run |
 | --- | --- | --- |
-| Windows | [OrgFlow-2.1.0-windows.exe](https://github.com/ferax564/OrgFlow/releases/download/v2.1.0/OrgFlow-2.1.0-windows.exe) | Double-click the `.exe`. Windows may show SmartScreen on an unsigned build — More info → Run anyway. Workspace data is stored in `OrgFlow-data` next to the exe. |
-| macOS | [OrgFlow-2.1.0-mac.zip](https://github.com/ferax564/OrgFlow/releases/download/v2.1.0/OrgFlow-2.1.0-mac.zip) | Unzip and double-click `OrgFlow.app`. You can leave it in Downloads; you do not need to drag it to Applications. If Gatekeeper blocks it, right-click → Open. |
-| Linux | [OrgFlow-2.1.0-linux.AppImage](https://github.com/ferax564/OrgFlow/releases/download/v2.1.0/OrgFlow-2.1.0-linux.AppImage) | `chmod +x OrgFlow-*-linux.AppImage && ./OrgFlow-*-linux.AppImage` |
+| Windows | [OrgFlow-2.1.1-windows.exe](https://github.com/ferax564/OrgFlow/releases/download/v2.1.1/OrgFlow-2.1.1-windows.exe) | Double-click the `.exe`. Windows may show SmartScreen on an unsigned build — More info → Run anyway. Workspace data is stored in `OrgFlow-data` next to the exe. |
+| macOS | [OrgFlow-2.1.1-mac.zip](https://github.com/ferax564/OrgFlow/releases/download/v2.1.1/OrgFlow-2.1.1-mac.zip) | Unzip and double-click `OrgFlow.app`. You can leave it in Downloads; you do not need to drag it to Applications. If Gatekeeper blocks it, right-click → Open. |
+| Linux | [OrgFlow-2.1.1-linux.AppImage](https://github.com/ferax564/OrgFlow/releases/download/v2.1.1/OrgFlow-2.1.1-linux.AppImage) | `chmod +x OrgFlow-*-linux.AppImage && ./OrgFlow-*-linux.AppImage` |
 
 ```bash
 npm ci
@@ -43,7 +43,7 @@ npm run dist:win         # portable exe (Windows host)
 npm run dist:mac         # .app zip (macOS host)
 ```
 
-Tagged versions (`v2.1.0`) publish those three files onto the GitHub Release.
+Tagged versions (`v2.1.1`) publish those three files onto the GitHub Release.
 
 The desktop app loads the planner from a fixed `orgflow://` origin, so restarts and updates always find the same browser storage. Every commit is additionally journaled by the app itself into `OrgFlow-data` next to the executable **and** the OS-standard app-data folder — moving the exe to a new folder still finds the workspace, and each directory keeps the ten most recent backups of the file.
 

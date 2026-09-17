@@ -11,9 +11,23 @@ const query = require('./org-query');
 const auth = require('./auth');
 const governance = require('./governance');
 const Management = require('../../js/management-core');
+const OrgFlow = require('../../js/orgflow-core');
+const Share = require('../../js/share-export');
 
 const ROOT = path.resolve(__dirname, '../..');
-const EXPORT_KINDS = ['png', 'groups', 'pdf', 'html', 'csv', 'people', 'workspace', 'compare'];
+const APP_VERSION = require('../../package.json').version;
+const MCP_PROTOCOL = '2025-11-25';
+const EXPORT_KINDS = ['png', 'groups', 'pdf', 'html', 'csv', 'people', 'workspace', 'compare', 'interactive', 'bundle'];
+
+function visExtra(vis, membership, url) {
+  return {
+    scenario: url?.searchParams?.get('scenario') || vis.doc.planning.activeScenarioId,
+    asOf: url?.searchParams?.get('asOf') || undefined,
+    serverVersion: APP_VERSION,
+    serverDocumentVersion: vis.version,
+    scopePositionId: membership.scope_position_id || ''
+  };
+}
 
 function send(res, status, body, headers = {}) {
   let payload;
@@ -416,9 +430,10 @@ function createApp(options = {}) {
 
         if (p === '/api/org/forecast' && method === 'GET') {
           const vis = visibleDocument(store, membership);
-          const scenario = vis.doc.planning.scenarios.find(s => s.id === (url.searchParams.get('scenario') || 'current'));
+          const extra = visExtra(vis, membership, url);
+          const scenario = vis.doc.planning.scenarios.find(s => s.id === extra.scenario);
           if (!scenario) { sendError(res, 404, 'Scenario not found.');return; }
-          try { send(res, 200, { scenario: scenario.id, version: vis.version, rows: Management.forecast(scenario, { startMonth: url.searchParams.get('month') || undefined, months: Number(url.searchParams.get('months') || 12), group: url.searchParams.get('group') || '' }) }); }
+          try { send(res, 200, query.withContext(vis.doc, { scenario: scenario.id, version: vis.version, rows: Management.forecast(scenario, { startMonth: url.searchParams.get('month') || undefined, months: Number(url.searchParams.get('months') || 12), group: url.searchParams.get('group') || '' }) }, extra)); }
           catch (err) { sendError(res, 400, err.message); }
           return;
         }
@@ -437,45 +452,113 @@ function createApp(options = {}) {
         }
 
         if (p === '/api/org/summary' && method === 'GET') {
-          const vis=visibleDocument(store,membership);send(res,200,{...query.summary(vis.doc,url.searchParams.get('scenario')),version:vis.version});
+          const vis=visibleDocument(store,membership);const extra=visExtra(vis,membership,url);
+          send(res,200,query.withContext(vis.doc,{...query.summary(vis.doc,extra.scenario),version:vis.version},extra));
+          return;
+        }
+        if (p === '/api/org/status' && method === 'GET') {
+          const vis=visibleDocument(store,membership);
+          send(res,200,query.workspaceStatus(vis.doc,visExtra(vis,membership,url)));
           return;
         }
         if (p === '/api/org/positions' && method === 'GET') {
-          send(res, 200, { positions: query.searchPositions(visibleDocument(store, membership).doc, url.searchParams.get('q') || '', url.searchParams.get('scenario')) });
+          const vis=visibleDocument(store,membership);const extra=visExtra(vis,membership,url);
+          send(res, 200, query.withContext(vis.doc,{ positions: query.searchPositions(vis.doc, url.searchParams.get('q') || '', extra.scenario) }, extra));
           return;
         }
         if (p.startsWith('/api/org/people/') && method === 'GET') {
           const id = decodeURIComponent(p.slice('/api/org/people/'.length));
           if (!id) { sendError(res, 400, 'Person id required.'); return; }
-          try { send(res, 200, query.getPerson(visibleDocument(store, membership).doc, id, url.searchParams.get('scenario'))); }
+          const vis=visibleDocument(store,membership);const extra=visExtra(vis,membership,url);
+          try { send(res, 200, query.withContext(vis.doc, query.getPerson(vis.doc, id, extra.scenario), extra)); }
           catch (err) { sendError(res, 404, err.message); }
           return;
         }
         if (p.startsWith('/api/org/span/') && method === 'GET') {
           const id = decodeURIComponent(p.slice('/api/org/span/'.length));
           if (!id) { sendError(res, 400, 'Position id required.'); return; }
-          try { send(res, 200, query.spanOfControl(visibleDocument(store, membership).doc, id, url.searchParams.get('scenario'))); }
+          const vis=visibleDocument(store,membership);const extra=visExtra(vis,membership,url);
+          try { send(res, 200, query.withContext(vis.doc, query.spanOfControl(vis.doc, id, extra.scenario), extra)); }
           catch (err) { sendError(res, 404, err.message); }
           return;
         }
         if (p === '/api/org/dotted-lines' && method === 'GET') {
-          send(res, 200, { items: query.dottedLines(visibleDocument(store, membership).doc, url.searchParams.get('scenario')) });
+          const vis=visibleDocument(store,membership);const extra=visExtra(vis,membership,url);
+          send(res, 200, query.withContext(vis.doc,{ items: query.dottedLines(vis.doc, extra.scenario) }, extra));
           return;
         }
         if (p === '/api/org/vacancies' && method === 'GET') {
-          send(res, 200, { items: query.vacancies(visibleDocument(store, membership).doc, url.searchParams.get('scenario')) });
+          const vis=visibleDocument(store,membership);const extra=visExtra(vis,membership,url);
+          send(res, 200, query.withContext(vis.doc,{ items: query.vacancies(vis.doc, extra.scenario) }, extra));
           return;
         }
         if (p === '/api/org/diff' && method === 'GET') {
+          const vis=visibleDocument(store,membership);const extra=visExtra(vis,membership,url);
           try {
-            send(res, 200, {
-              changes: query.diffScenarios(
-                visibleDocument(store, membership).doc,
-                url.searchParams.get('from') || 'current',
-                url.searchParams.get('to') || ''
-              )
-            });
+            send(res, 200, query.withContext(vis.doc,{
+              changes: query.diffScenarios(vis.doc, url.searchParams.get('from') || 'current', url.searchParams.get('to') || '')
+            }, extra));
           } catch (err) { sendError(res, 400, err.message); }
+          return;
+        }
+        if (p === '/api/org/changes' && method === 'GET') {
+          const vis=visibleDocument(store,membership);const extra=visExtra(vis,membership,url);
+          const since=Number(url.searchParams.get('sinceVersion')||url.searchParams.get('sinceRevision'));
+          if(!Number.isInteger(since) || since < 1){ sendError(res,400,'sinceVersion is required.'); return; }
+          const prev=store.getWorkspaceRevision(since);
+          if(!prev){ sendError(res,404,'No stored document for that server version.',{available:store.listWorkspaceRevisions()}); return; }
+          try {
+            const previous=validateDocument(JSON.parse(prev.document));
+            send(res,200,query.withContext(vis.doc,{sinceVersion:since,currentVersion:vis.version,changes:query.positionChangesSince(vis.doc,previous,extra.scenario)},extra));
+          } catch (err) { sendError(res,400,err.message); }
+          return;
+        }
+        if (p === '/api/org/capacity-gap' && method === 'GET') {
+          const vis=visibleDocument(store,membership);const extra=visExtra(vis,membership,url);
+          try {
+            send(res,200,query.withContext(vis.doc,query.capacityGap(vis.doc,{scenario:extra.scenario,month:url.searchParams.get('month')||undefined,months:Number(url.searchParams.get('months')||12),group:url.searchParams.get('group')||''}),extra));
+          } catch (err) { sendError(res,400,err.message); }
+          return;
+        }
+        if (p === '/api/org/preview-proposal' && method === 'POST') {
+          const body=await readJson(req,res,1024*1024);if(!body)return;
+          try { send(res,200,governance.previewProposal(store,body,membership,user)); }
+          catch (err) { sendError(res,err.status||400,err.message); }
+          return;
+        }
+        if (p === '/api/org/validate-proposal' && method === 'POST') {
+          const body=await readJson(req,res,1024*1024);if(!body)return;
+          const result=governance.validateProposal(store,body,membership,user);
+          send(res, result.ok ? 200 : (result.status || 400), result);
+          return;
+        }
+        if (p === '/api/org/share-snapshot' && method === 'POST') {
+          if (!membership.can_export) { sendError(res, 403, 'You are not allowed to export this organization.'); return; }
+          const body=await readJson(req,res,1024*1024);if(!body)return;
+          const vis=visibleDocument(store,membership);const extra=visExtra(vis,membership,url);
+          try {
+            const include = body.include && typeof body.include === 'object' ? body.include : {};
+            const dataset = OrgFlow.buildShareDataset(vis.doc.planning, {
+              scenarioId: body.scenario || extra.scenario,
+              rootId: body.rootId || '',
+              include,
+              initialDepth: body.initialDepth,
+              companyName: vis.doc.branding?.companyName,
+              chartTitle: vis.doc.branding?.chartTitle
+            });
+            store.audit({ userId: user.id, action: 'export', detail: { kind: 'interactive', positions: dataset.positions.length } });
+            let html = '';
+            if (body.html) {
+              const coreSrc = fs.readFileSync(path.join(ROOT, 'js/orgflow-core.js'), 'utf8');
+              const viewerSrc = fs.readFileSync(path.join(ROOT, 'js/share-viewer.js'), 'utf8');
+              html = Share.buildShareHtml(dataset, { coreSrc, viewerSrc, staticSvg: Share.shareStaticSvg(dataset) });
+            }
+            send(res, 200, query.withContext(vis.doc, { dataset, html: html || undefined }, extra));
+          } catch (err) { sendError(res, 400, err.message); }
+          return;
+        }
+        if (p === '/api/openapi.json' && method === 'GET') {
+          send(res, 200, openApiSpec(), { 'content-type': 'application/json; charset=utf-8' });
           return;
         }
 
@@ -543,7 +626,7 @@ function createApp(options = {}) {
         if (p === '/api/mcp' && method === 'POST') {
           const body = await readJson(req, res, 1024 * 1024);
           if (!body) return;
-          send(res, 200, handleMcp(body, () => visibleDocument(store, membership).doc));
+          send(res, 200, handleMcp(body, () => visibleDocument(store, membership), membership, store));
           return;
         }
 
@@ -589,13 +672,19 @@ function createApp(options = {}) {
 
 function mcpTools({ allowProposals = false } = {}) {
   const tools = [
-    { name: 'get_org', description: 'Summary of the visible organization (counts, groups, active scenario).', inputSchema: { type: 'object', properties: { scenario: { type: 'string' } } } },
+    { name: 'get_workspace_status', description: 'Workspace identity, revision, last commit and where the copy lives. Use this to confirm the agent is looking at the same organization as the UI.', inputSchema: { type: 'object', properties: { scenario: { type: 'string' } } } },
+    { name: 'get_org', description: 'Summary of the visible organization (counts, groups, active scenario). Includes a context object with workspace id, revision and as-of date.', inputSchema: { type: 'object', properties: { scenario: { type: 'string' }, asOf: { type: 'string' } } } },
     { name: 'search_positions', description: 'Search visible positions by title, name, group or id.', inputSchema: { type: 'object', properties: { q: { type: 'string' }, scenario: { type: 'string' } } } },
     { name: 'get_person', description: 'Look up one visible person and their seat.', inputSchema: { type: 'object', properties: { personId: { type: 'string' }, scenario: { type: 'string' } }, required: ['personId'] } },
     { name: 'span_of_control', description: 'Direct reports and descendant count for a visible position.', inputSchema: { type: 'object', properties: { positionId: { type: 'string' }, scenario: { type: 'string' } }, required: ['positionId'] } },
     { name: 'dotted_lines', description: 'Matrix / dotted-line reporting in the visible organization.', inputSchema: { type: 'object', properties: { scenario: { type: 'string' } } } },
     { name: 'list_vacancies', description: 'Vacant and recruiting seats in the visible organization.', inputSchema: { type: 'object', properties: { scenario: { type: 'string' } } } },
-    { name: 'diff_scenarios', description: 'Position changes between two scenarios the caller can see.', inputSchema: { type: 'object', properties: { from: { type: 'string' }, to: { type: 'string' } }, required: ['to'] } }
+    { name: 'diff_scenarios', description: 'Position changes between two scenarios the caller can see.', inputSchema: { type: 'object', properties: { from: { type: 'string' }, to: { type: 'string' } }, required: ['to'] } },
+    { name: 'get_changes_since', description: 'Position changes since a previous server document version.', inputSchema: { type: 'object', properties: { sinceVersion: { type: 'integer', minimum: 1 }, scenario: { type: 'string' } }, required: ['sinceVersion'] } },
+    { name: 'explain_capacity_gap', description: 'Months where commitments or planned seats exceed available/filled FTE. Deterministic; not an LLM estimate.', inputSchema: { type: 'object', properties: { scenario: { type: 'string' }, month: { type: 'string' }, months: { type: 'integer', minimum: 1, maximum: 36 }, group: { type: 'string' } } } },
+    { name: 'preview_proposal', description: 'Show what a Draft proposal would change without saving it.', inputSchema: { type: 'object', properties: { name: { type: 'string' }, rationale: { type: 'string' }, changes: { type: 'array' } } } },
+    { name: 'validate_proposal', description: 'Validate a Draft proposal without saving. Returns ok or the validation error.', inputSchema: { type: 'object', properties: { name: { type: 'string' }, rationale: { type: 'string' }, changes: { type: 'array' } } } },
+    { name: 'create_share_snapshot', description: 'Build a redacted interactive-share dataset (and optional HTML). Excluded fields are not embedded.', inputSchema: { type: 'object', properties: { scenario: { type: 'string' }, rootId: { type: 'string' }, include: { type: 'object', additionalProperties: { type: 'boolean' } }, initialDepth: { type: 'integer' }, html: { type: 'boolean' } } } }
   ];
   tools.push({name:'workforce_forecast',description:'Read monthly headcount, capacity and position budget assumptions. Currencies remain separate.',inputSchema:{type:'object',properties:{scenario:{type:'string'},month:{type:'string'},months:{type:'integer',minimum:1,maximum:36},group:{type:'string'}}}});
   for(const tool of tools)tool.annotations={readOnlyHint:true,destructiveHint:false};
@@ -603,25 +692,52 @@ function mcpTools({ allowProposals = false } = {}) {
   return tools;
 }
 
-function callMcpTool(name, args, doc) {
+function callMcpTool(name, args, vis, membership, store) {
+  const doc = vis.doc;
+  const extra = { scenario: args.scenario, asOf: args.asOf, serverVersion: APP_VERSION, serverDocumentVersion: vis.version, scopePositionId: membership?.scope_position_id || '' };
   switch (name) {
-    case 'workforce_forecast': {const s=doc.planning.scenarios.find(s=>s.id===(args.scenario||'current'));if(!s)throw new Error('Scenario not found.');return {rows:Management.forecast(s,{startMonth:args.month,months:args.months??12,group:args.group||''})};}
-    case 'get_org': return query.summary(doc, args.scenario);
-    case 'search_positions': return { positions: query.searchPositions(doc, args.q, args.scenario) };
-    case 'get_person': return query.getPerson(doc, args.personId, args.scenario);
-    case 'span_of_control': return query.spanOfControl(doc, args.positionId, args.scenario);
-    case 'dotted_lines': return { items: query.dottedLines(doc, args.scenario) };
-    case 'list_vacancies': return { items: query.vacancies(doc, args.scenario) };
-    case 'diff_scenarios': return { changes: query.diffScenarios(doc, args.from || 'current', args.to) };
+    case 'get_workspace_status': return query.workspaceStatus(doc, extra);
+    case 'workforce_forecast': {const s=doc.planning.scenarios.find(s=>s.id===(args.scenario||'current'));if(!s)throw new Error('Scenario not found.');return query.withContext(doc,{rows:Management.forecast(s,{startMonth:args.month,months:args.months??12,group:args.group||''})},extra);}
+    case 'get_org': return query.withContext(doc, query.summary(doc, args.scenario), extra);
+    case 'search_positions': return query.withContext(doc, { positions: query.searchPositions(doc, args.q, args.scenario) }, extra);
+    case 'get_person': return query.withContext(doc, query.getPerson(doc, args.personId, args.scenario), extra);
+    case 'span_of_control': return query.withContext(doc, query.spanOfControl(doc, args.positionId, args.scenario), extra);
+    case 'dotted_lines': return query.withContext(doc, { items: query.dottedLines(doc, args.scenario) }, extra);
+    case 'list_vacancies': return query.withContext(doc, { items: query.vacancies(doc, args.scenario) }, extra);
+    case 'diff_scenarios': return query.withContext(doc, { changes: query.diffScenarios(doc, args.from || 'current', args.to) }, extra);
+    case 'get_changes_since': {
+      if (!store) throw new Error('Change history is only available on the shared host.');
+      const prev = store.getWorkspaceRevision(args.sinceVersion);
+      if (!prev) throw new Error('No stored document for that server version.');
+      return query.withContext(doc, { sinceVersion: args.sinceVersion, currentVersion: vis.version, changes: query.positionChangesSince(doc, validateDocument(JSON.parse(prev.document)), args.scenario) }, extra);
+    }
+    case 'explain_capacity_gap': return query.withContext(doc, query.capacityGap(doc, args), extra);
+    case 'preview_proposal': return governance.previewProposal(store, args, membership, { email: membership?.email || 'mcp' });
+    case 'validate_proposal': return governance.validateProposal(store, args, membership, { email: membership?.email || 'mcp' });
+    case 'create_share_snapshot': {
+      const dataset = OrgFlow.buildShareDataset(doc.planning, {
+        scenarioId: args.scenario, rootId: args.rootId || '', include: args.include || {},
+        initialDepth: args.initialDepth, companyName: doc.branding?.companyName, chartTitle: doc.branding?.chartTitle
+      });
+      let html = '';
+      if (args.html) {
+        html = Share.buildShareHtml(dataset, {
+          coreSrc: fs.readFileSync(path.join(ROOT, 'js/orgflow-core.js'), 'utf8'),
+          viewerSrc: fs.readFileSync(path.join(ROOT, 'js/share-viewer.js'), 'utf8'),
+          staticSvg: Share.shareStaticSvg(dataset)
+        });
+      }
+      return query.withContext(doc, { dataset, html: html || undefined }, extra);
+    }
     default: throw new Error('Unknown tool: ' + name);
   }
 }
 
-function handleMcp(message, getDoc) {
+function handleMcp(message, getVis, membership, store) {
   const id = message.id ?? null;
   const method = message.method;
   if (method === 'initialize') {
-    return { jsonrpc: '2.0', id, result: { protocolVersion: '2024-11-05', capabilities: { tools: {} }, serverInfo: { name: 'orgflow', version: '1.0.0' } } };
+    return { jsonrpc: '2.0', id, result: { protocolVersion: MCP_PROTOCOL, capabilities: { tools: {} }, serverInfo: { name: 'orgflow', version: APP_VERSION } } };
   }
   if (method === 'notifications/initialized' || method === 'initialized') {
     return { jsonrpc: '2.0', id, result: {} };
@@ -631,7 +747,9 @@ function handleMcp(message, getDoc) {
   }
   if (method === 'tools/call') {
     try {
-      const result = callMcpTool(message.params?.name, message.params?.arguments || {}, getDoc());
+      const vis = typeof getVis === 'function' ? getVis() : { doc: getVis, version: null };
+      const docVis = vis.doc ? vis : { doc: vis, version: vis?.version ?? null };
+      const result = callMcpTool(message.params?.name, message.params?.arguments || {}, docVis, membership, store);
       return { jsonrpc: '2.0', id, result: { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] } };
     } catch (err) {
       return { jsonrpc: '2.0', id, error: { code: -32000, message: err.message } };
@@ -641,4 +759,22 @@ function handleMcp(message, getDoc) {
   return { jsonrpc: '2.0', id, error: { code: -32601, message: 'Method not found' } };
 }
 
-module.exports = { createApp, loadConfig, assertProductionConfig, mcpTools, callMcpTool, handleMcp, emptyDocument, safeStatic };
+function openApiSpec() {
+  return {
+    openapi: '3.0.3',
+    info: { title: 'OrgFlow', version: APP_VERSION, description: 'Shared-host API. Every org query includes a context object with workspace id, revision, scenario and as-of date.' },
+    paths: {
+      '/api/org/status': { get: { summary: 'Workspace identity and revision', responses: { 200: { description: 'Status' } } } },
+      '/api/org/summary': { get: { summary: 'Organization summary', responses: { 200: { description: 'Summary plus context' } } } },
+      '/api/org/changes': { get: { summary: 'Changes since a server document version', parameters: [{ name: 'sinceVersion', in: 'query', required: true }], responses: { 200: { description: 'Changes' } } } },
+      '/api/org/capacity-gap': { get: { summary: 'Capacity and staffing gaps', responses: { 200: { description: 'Gaps' } } } },
+      '/api/org/preview-proposal': { post: { summary: 'Preview a Draft proposal without saving', responses: { 200: { description: 'Preview' } } } },
+      '/api/org/validate-proposal': { post: { summary: 'Validate a Draft proposal without saving', responses: { 200: { description: 'Validation' } } } },
+      '/api/org/share-snapshot': { post: { summary: 'Redacted interactive share dataset', responses: { 200: { description: 'Dataset' } } } },
+      '/api/mcp': { post: { summary: 'MCP JSON-RPC', responses: { 200: { description: 'JSON-RPC result' } } } },
+      '/api/openapi.json': { get: { summary: 'This document', responses: { 200: { description: 'OpenAPI' } } } }
+    }
+  };
+}
+
+module.exports = { createApp, loadConfig, assertProductionConfig, mcpTools, callMcpTool, handleMcp, emptyDocument, safeStatic, APP_VERSION, MCP_PROTOCOL };

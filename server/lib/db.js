@@ -89,6 +89,14 @@ function openDatabase(filePath) {
       detail TEXT NOT NULL,
       created_at TEXT NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS workspace_revisions (
+      tenant_id TEXT NOT NULL,
+      version INTEGER NOT NULL,
+      document TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      created_by TEXT,
+      PRIMARY KEY (tenant_id, version)
+    );
   `);
   return db;
 }
@@ -103,8 +111,11 @@ function createStore(db, options = {}) {
     const id = options.tenantId || 'tenant-default';
     const created = nowIso();
     db.prepare('INSERT INTO tenants (id, slug, name, created_at) VALUES (?, ?, ?, ?)').run(id, tenantSlug, tenantName, created);
+    const empty = JSON.stringify(emptyDocument());
     db.prepare('INSERT INTO workspaces (tenant_id, document, version, updated_at, updated_by) VALUES (?, ?, 1, ?, NULL)')
-      .run(id, JSON.stringify(emptyDocument()), created);
+      .run(id, empty, created);
+    db.prepare('INSERT INTO workspace_revisions (tenant_id, version, document, created_at, created_by) VALUES (?, 1, ?, ?, NULL)')
+      .run(id, empty, created);
     return id;
   }
 
@@ -218,7 +229,22 @@ function createStore(db, options = {}) {
     const updated = nowIso();
     db.prepare('UPDATE workspaces SET document = ?, version = ?, updated_at = ?, updated_by = ? WHERE tenant_id = ?')
       .run(JSON.stringify(document), version, updated, userId || null, tenantId);
+    db.prepare('INSERT OR REPLACE INTO workspace_revisions (tenant_id, version, document, created_at, created_by) VALUES (?, ?, ?, ?, ?)')
+      .run(tenantId, version, JSON.stringify(document), updated, userId || null);
+    const keep = db.prepare('SELECT version FROM workspace_revisions WHERE tenant_id = ? ORDER BY version DESC').all(tenantId);
+    for (const old of keep.slice(30)) {
+      db.prepare('DELETE FROM workspace_revisions WHERE tenant_id = ? AND version = ?').run(tenantId, old.version);
+    }
     return { version, updatedAt: updated };
+  }
+
+  function getWorkspaceRevision(version) {
+    const row = db.prepare('SELECT document, version, created_at FROM workspace_revisions WHERE tenant_id = ? AND version = ?').get(tenantId, Number(version));
+    return row || null;
+  }
+
+  function listWorkspaceRevisions() {
+    return db.prepare('SELECT version, created_at FROM workspace_revisions WHERE tenant_id = ? ORDER BY version DESC LIMIT 30').all(tenantId);
   }
 
   function createSession(userId, ttlMs = 12 * 60 * 60 * 1000) {
@@ -330,6 +356,8 @@ function createStore(db, options = {}) {
     deleteMembership,
     getWorkspaceRow,
     saveWorkspace,
+    getWorkspaceRevision,
+    listWorkspaceRevisions,
     createSession,
     getSession,
     deleteSession,

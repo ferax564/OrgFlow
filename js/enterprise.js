@@ -21,6 +21,7 @@
       if(!loaded.res.ok)throw new Error(loaded.body.error||'Could not load the shared organization. Reload to retry.');
       const body=loaded.body;
       let version=body.version;
+      api.applying=true;
       // Flush edits that never reached the server before its document
       // replaces the local copy. A failed retry stays recoverable.
       try{
@@ -30,13 +31,12 @@
           if(resent.res.ok){version=resent.body.version;body.workspace=pending.payload;await window.OrgFlowStore.clearPending();}
         }
       }catch{/* the pending record stays recoverable */}
-      api.applying=true;
       try{await applyEnterpriseWorkspace(body.workspace);}finally{api.applying=false;}
       // Mark the host ready only after the workspace is in memory. Callers
       // that wait on enabled+version otherwise edit a still-null workspace.
       api.enabled=true;api.session=body.session;api.version=version;api.canWrite=Boolean(body.session?.canWrite);api.canExport=Boolean(body.session?.canExport);api.isAdmin=Boolean(body.session?.isAdmin);
       baseline=structuredClone(window.enterpriseWorkspacePayload());applyChrome(body.session);status('Saved');
-    }catch(error){api.enabled=true;api.canWrite=false;api.canExport=false;const el=document.getElementById('loadError');el.classList.remove('hidden');el.textContent=error.message;}
+    }catch(error){api.applying=false;api.enabled=true;api.canWrite=false;api.canExport=false;const el=document.getElementById('loadError');el.classList.remove('hidden');el.textContent=error.message;}
   }
   function applyChrome(session){
     document.body.classList.add('enterprise-on');document.body.classList.toggle('enterprise-readonly',!session.canWrite);document.body.classList.toggle('enterprise-no-export',!session.canExport);

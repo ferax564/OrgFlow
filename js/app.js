@@ -11,7 +11,8 @@ const {
     sanitizeCardDisplay, cardMetrics, subtreePeopleCount, reorderSiblings, siblingIndex,
     applyCardSizes, layoutOrgChart, EMPTY_GROUP, EMPTY_SITE, filterLabel, chipValues,
     spanOfControl, pathToRoot, bulkPatchPositions, placeSibling, tileChartPages,
-    sanitizeViewState, buildShareDataset, touchWorkspace, workspaceStamp, compareWorkspaceStamps
+    sanitizeViewState, buildShareDataset, touchWorkspace, workspaceStamp, compareWorkspaceStamps,
+    DOCUMENT_VERSION, buildBundle, parseWorkspaceOrBundle
 } = OrgFlow;
 
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
@@ -501,7 +502,11 @@ function recordUndoFrom(previousText,note){
 }
 let workspaceIOBusy=false;
 function enterpriseBlocksWrite(){if(workspaceIOBusy)return true;
-  return Boolean(window.OrgFlowEnterprise?.enabled && (!window.OrgFlowEnterprise.canWrite || window.OrgFlowEnterprise.busy || window.OrgFlowEnterprise.saveState==='Conflict'));
+  const e=window.OrgFlowEnterprise;if(!e)return false;
+  // Writes stay blocked while the host is still applying the server document,
+  // otherwise an edit can land in memory while queueSave() is still a no-op.
+  if(e.applying)return true;
+  return Boolean(e.enabled && (!e.canWrite || e.busy || e.saveState==='Conflict'));
 }
 function afterEnterprisePersist(){
   if(window.OrgFlowEnterprise?.queueSave) window.OrgFlowEnterprise.queueSave();
@@ -1192,10 +1197,15 @@ function paintChartViewport(){
   const box={left:(wrapRect.left-svgRect.left)/zoom-m.offX-over,top:(wrapRect.top-svgRect.top)/zoom-m.offY-over,right:(wrapRect.right-svgRect.left)/zoom-m.offX+over,bottom:(wrapRect.bottom-svgRect.top)/zoom-m.offY+over};
   const focused=document.activeElement?.closest?.('.node'),focusId=focused?.dataset.id;
   const hits=search?lay.all.filter(n=>matchesSearch(n,search)):[];
-  const hit=hits[0]||null,hitIds=new Set(hits.map(n=>n.id));
-  // Search hits must stay in the DOM even when they sit outside the viewport
-  // clip — otherwise find-in-chart cannot reveal a match on a large org.
-  const visible=lay.all.length<=300?lay.all:lay.all.filter(n=>n.id===focusId||hitIds.has(n.id)||(n._x+n._w>=box.left&&n._x<=box.right&&n._y+n._h>=box.top&&n._y<=box.bottom));
+  const hit=hits[0]||null;
+  // Reveal the current match (and the focused card) even when they sit
+  // outside the viewport clip. Do not force every hit into the DOM — a
+  // broad query on a 2,500-seat chart would defeat virtualization.
+  const reveal=new Set();
+  if(hit)reveal.add(hit.id);
+  if(focusId)reveal.add(focusId);
+  if(selectedId&&hits.some(n=>n.id===selectedId))reveal.add(selectedId);
+  const visible=lay.all.length<=300?lay.all:lay.all.filter(n=>reveal.has(n.id)||(n._x+n._w>=box.left&&n._x<=box.right&&n._y+n._h>=box.top&&n._y<=box.bottom));
   const pathIds=new Set(pathToRoot(people,pathHoverId||hit?.id));
   cssValueCache={};
   const markup=visible.map(n=>positionCardSVG(n,{x:n._x,y:n._y,interactive:true,hit:!!search&&matchesSearch(n,search),children:m.childCounts.get(n.id)||0,expanded:!!n.children.length,change:m.diffs.get(n.id),peopleCount:cardDisplay.cumulative&&showsCumulativeCount(n.type)?m.counts.get(n.id)+(n.personId?1:0):null,span:cardDisplay.span?m.spans.get(n.id):null,selected:selectedIds.has(n.id),onPath:pathIds.has(n.id)})).join('');
@@ -1428,22 +1438,35 @@ function exportComparisonCSV(){
 
 function captureView(){return {roles:[...activeRoles],statuses:[...activeStatuses],hiring:[...activeHiring],groups:[...(activeGroups||[])],sites:[...(activeSites||[])],maxDepth,collapsed:[...collapsed],search:$('#search').value,asOf:$('#asOf').value,dateFilter:$('#dateFilter').checked,view:currentView,zoom,showChartChanges,compareBaselineId,compareTargetId,compareKind,compareSearch:$('#compareSearch').value,cardDisplay};}
 function workspacePayload(){
-  return {format:'orgflow.workspace',version:2,exportedAt:new Date().toISOString(),planning:workspace,branding,theme:document.documentElement.dataset.theme,palette:document.documentElement.dataset.palette,view:captureView()};
+  return {format:'orgflow.workspace',version:DOCUMENT_VERSION,exportedAt:new Date().toISOString(),planning:workspace,branding,theme:document.documentElement.dataset.theme,palette:document.documentElement.dataset.palette,view:captureView()};
 }
 function exportWorkspace(){
   downloadBlob(new Blob([JSON.stringify(workspacePayload(),null,2)],{type:'application/json'}),`orgflow-workspace-${today}.json`);toast('All scenarios, people, views and branding backed up');
+}
+async function exportOrgflowBundle(){
+  const checkpoints=await OrgFlowStore.listCheckpoints();
+  const full=[];
+  for(const c of checkpoints.slice(0,25)){
+    const row=await OrgFlowStore.readCheckpoint(c.id);
+    if(row?.planning)full.push(row);
+  }
+  const bundle=buildBundle({workspace:workspacePayload(),checkpoints:full});
+  downloadBlob(new Blob([JSON.stringify(bundle,null,2)],{type:'application/json'}),`orgflow-${today}.orgflow`);
+  toast(`OrgFlow bundle exported — workspace plus ${full.length} checkpoint(s)`);
 }
 function sanitizeView(view={},planning=workspace){
   return sanitizeViewState(view,planning,today);
 }
 async function validateWorkspace(input){
-  if(!input||input.format!=='orgflow.workspace'||![1,2].includes(input.version))throw new Error('This is not a supported OrgFlow workspace backup. Use Import CSV for spreadsheets.');
-  const planning=validatePlanning(input.version===1?migrateLegacy(input.people):input.planning),b=cleanBranding(input.branding);
+  const parsed=parseWorkspaceOrBundle(input);
+  const envelope=parsed.workspace;
+  if(![1,2,3].includes(envelope.version))throw new Error('This is not a supported OrgFlow workspace backup. Use Import CSV for spreadsheets.');
+  const planning=validatePlanning(envelope.version===1?migrateLegacy(envelope.people):envelope.planning),b=cleanBranding(envelope.branding);
   for(const key of ['logo','darkLogo']){
-    const original=input.branding?.[key];if(original&&!validStoredLogo(original))throw new Error('Workspace contains an invalid logo.');
+    const original=envelope.branding?.[key];if(original&&!validStoredLogo(original))throw new Error('Workspace contains an invalid logo.');
     if(b[key]){const encoded=b[key],raw=atob(encoded.data.split(',')[1]),bytes=Uint8Array.from(raw,c=>c.charCodeAt(0));const checked=await normalizeLogoFile(new File([bytes],encoded.name,{type:'image/png'}));checked.surface=encoded.surface;b[key]=checked;}
   }
-  return {planning,branding:b,theme:input.theme==='dark'?'dark':'light',palette:PALETTES.includes(input.palette)?input.palette:(input.palette==='audi'?'crimson':'indigo'),view:sanitizeView(input.view||{},planning)};
+  return {planning,branding:b,theme:envelope.theme==='dark'?'dark':'light',palette:PALETTES.includes(envelope.palette)?envelope.palette:(envelope.palette==='audi'?'crimson':'indigo'),view:sanitizeView(envelope.view||{},planning),checkpoints:parsed.checkpoints,kind:parsed.kind};
 }
 function restoreView(input){
   knownGroups=null;knownSites=null;
@@ -1551,7 +1574,7 @@ async function restoreWorkspacePicker(){
   if(enterpriseBlocksWrite()){toast('You can view this organization but you cannot restore over it.');return;}
   if(window.showOpenFilePicker){
     try{
-      const [handle]=await window.showOpenFilePicker({types:[{description:'OrgFlow workspace',accept:{'application/json':['.json']}}]});
+      const [handle]=await window.showOpenFilePicker({types:[{description:'OrgFlow workspace',accept:{'application/json':['.json','.orgflow']}}]});
       fileHandleNeedsReconnect=false;OrgFlowStore.putHandle(handle,handle.name||'');
       await restoreWorkspace(await handle.getFile(),handle);
     }catch(error){if(error?.name!=='AbortError')toast(error.message||'Could not open the workspace.');}
@@ -1597,7 +1620,13 @@ async function restoreWorkspace(file,candidateHandle=null){
     const entries={[BRANDING_KEY]:JSON.stringify(next.branding),'orgflow.theme':next.theme,'orgflow.palette':next.palette,'orgflow.planning.view.v2':JSON.stringify(next.view),[PLANNING_KEY]:JSON.stringify(next.planning)},previous={};
     try{for(const key of Object.keys(entries))previous[key]=localStorage.getItem(key);for(const [key,value] of Object.entries(entries))localStorage.setItem(key,value);}
     catch{for(const [key,value] of Object.entries(previous)){try{value===null?localStorage.removeItem(key):localStorage.setItem(key,value);}catch{}}throw new Error('Browser storage is unavailable or full. Restore was not applied.');}
-    workspace=next.planning;lastSavedPlanningText=JSON.stringify(workspace);branding=next.branding;modelLoadError='';$('#loadError').classList.add('hidden');undoStack=[];redoStack=[];updateUndoButtons();syncProjection();hidePositionEditor();setPalette(next.palette,false);setTheme(next.theme,false);restoreView(next.view);applyBranding();writeDurable(workspace,lastSavedPlanningText);render();centerChart();toast(`Restored ${count} scenario(s)${activeDateNote()}`);filePersistence.changed();workspaceFileHandle=candidateHandle;filePersistence.setTarget(candidateHandle,{saved:!!candidateHandle});syncAutosaveUi();afterEnterprisePersist();return true;
+    workspace=next.planning;lastSavedPlanningText=JSON.stringify(workspace);branding=next.branding;modelLoadError='';$('#loadError').classList.add('hidden');undoStack=[];redoStack=[];updateUndoButtons();syncProjection();hidePositionEditor();setPalette(next.palette,false);setTheme(next.theme,false);restoreView(next.view);applyBranding();writeDurable(workspace,lastSavedPlanningText);
+    if(next.kind==='bundle'&&next.checkpoints?.length){
+      for(const ck of next.checkpoints){
+        if(ck?.planning)await OrgFlowStore.addCheckpoint(ck.planning,ck.note||'Imported checkpoint',{branding:ck.branding||null});
+      }
+    }
+    render();centerChart();toast(next.kind==='bundle'?`Restored bundle · ${count} scenario(s) · ${next.checkpoints.length} checkpoint(s)`:`Restored ${count} scenario(s)${activeDateNote()}`);filePersistence.changed();workspaceFileHandle=candidateHandle;filePersistence.setTarget(candidateHandle,{saved:!!candidateHandle});syncAutosaveUi();afterEnterprisePersist();return true;
   }catch(error){alert(`Workspace not restored.\n\n${error.message||'The file could not be read.'}`);return false;}finally{workspaceIOBusy=false;renderSaveStatus();}
 }
 function safeGet(key){try{return localStorage.getItem(key);}catch{return null;}}
@@ -1710,6 +1739,16 @@ async function renderRecovery(){
     pendBox.classList.remove('hidden');
     pendBox.innerHTML=`<div class="pending-box"><b>Recoverable changes</b> — edits saved ${esc(String(pending.savedAt||'').replace('T',' ').slice(0,19))} never reached the shared workspace.<div class="pending-actions"><button class="btn compact-btn" data-pending-restore>Review &amp; restore</button><button class="btn compact-btn" data-pending-discard>Discard</button></div></div>`;
   }else{pendBox.classList.add('hidden');pendBox.innerHTML='';}
+  const legacyBox=$('#recoveryLegacy');
+  if(legacyBox){
+    let scan=null;try{scan=window.orgflowDesktop?.legacyProfiles?.();}catch{scan=null;}
+    const rows=scan?.recovered||[], origins=scan?.origins||[];
+    if(rows.length||origins.length){
+      legacyBox.classList.remove('hidden');
+      const originNote=origins.length?`<p class="hint">Found ${origins.length} leftover random-port browser origin(s) from an older desktop build. Recovered copies below were read from this profile's local storage.</p>`:'';
+      legacyBox.innerHTML=`<div class="form-divider">Older desktop profile</div>${originNote}<div class="planning-table-wrap"><table class="planning-table"><thead><tr><th>Workspace</th><th>Revision</th><th></th></tr></thead><tbody>${rows.length?rows.map(r=>`<tr><td class="title-cell">${esc(r.workspaceId||'—')}<span class="sub">${r.scenarios||0} scenario(s) · ${esc(String(r.lastCommittedAt||'').replace('T',' ').slice(0,19))}</span></td><td>${r.revision}</td><td><button class="btn compact-btn" data-legacy-restore="${r.index}">Restore as copy</button></td></tr>`).join(''):'<tr><td colspan="3" class="empty-row">Random-port origin folders are present, but no parseable workspace was found in Chromium local storage.</td></tr>'}</tbody></table></div>`;
+    }else{legacyBox.classList.add('hidden');legacyBox.innerHTML='';}
+  }
   const cps=await OrgFlowStore.listCheckpoints();
   $('#checkpointRows').innerHTML=cps.length?cps.map(c=>{
     const m=c.summary||{};
@@ -1821,6 +1860,7 @@ $('#exportBtn').onclick=e=>{e.stopPropagation();$('#paletteMenu').classList.remo
   else if(kind==='interactive')openShareDialog();
   else if(kind==='people')exportPeopleCSV();
   else if(kind==='workspace')exportWorkspace();
+  else if(kind==='bundle')exportOrgflowBundle();
   else if(kind==='save')saveWorkspaceToDisk(false);
   else if(kind==='saveAs')saveWorkspaceToDisk(true);
   else exportCSV();
@@ -1901,6 +1941,24 @@ $('#checkpointRows').onclick=e=>{
   const copy=e.target.closest('[data-checkpoint-copy]');if(copy){restoreCheckpoint(copy.dataset.checkpointCopy,true);return;}
   const del=e.target.closest('[data-checkpoint-del]');if(del){OrgFlowStore.deleteCheckpoint(del.dataset.checkpointDel).then(renderRecovery);}
 };
+$('#recoveryLegacy')?.addEventListener('click',e=>{
+  const b=e.target.closest('[data-legacy-restore]');if(!b)return;
+  restoreLegacyProfile(Number(b.dataset.legacyRestore));
+});
+async function restoreLegacyProfile(index){
+  const row=window.orgflowDesktop?.loadLegacyProfile?.(index);
+  if(!row?.planning){toast('That recovered copy is no longer available.');return;}
+  if(!confirm('Restore this copy from an older desktop profile as a separate workspace? The current workspace is checkpointed first.'))return;
+  try{
+    await checkpointWorkspace('Before restoring an older desktop profile');
+    const planning=structuredClone(row.planning);
+    planning.workspaceId=makeId('ws');
+    planning.recoveredFrom={workspaceId:row.planning.workspaceId||'',revision:row.planning.revision||0,source:'legacy-desktop'};
+    commitPlanning(planning,'Restored from older desktop profile');
+    if(row.branding){branding=cleanBranding(row.branding);applyBranding();}
+    closeDialog('historyModal');toast('Restored as a copy from an older desktop profile');
+  }catch(error){toast(error.message);}
+}
 $('#recoveryPending').onclick=e=>{
   if(e.target.closest('[data-pending-restore]')){restorePendingSave();return;}
   if(e.target.closest('[data-pending-discard]')&&confirm('Discard the recoverable changes? The shared workspace stays as the server has it.')){OrgFlowStore.clearPending().then(renderRecovery);}

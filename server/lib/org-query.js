@@ -128,6 +128,74 @@ function diffScenarios(doc, fromId, toId) {
   }));
 }
 
+function context(doc, extra = {}) {
+  const planning = doc.planning || {};
+  return {
+    workspaceId: planning.workspaceId || '',
+    revision: Number.isInteger(planning.revision) ? planning.revision : 0,
+    lastCommittedAt: planning.lastCommittedAt || '',
+    documentVersion: planning.version || 0,
+    schema: planning.schema || 0,
+    scenario: extra.scenario || planning.activeScenarioId || 'current',
+    asOf: extra.asOf || Management.isoToday(),
+    serverVersion: extra.serverVersion || '',
+    serverDocumentVersion: extra.serverDocumentVersion ?? null,
+    scopePositionId: extra.scopePositionId || ''
+  };
+}
+
+function withContext(doc, payload, extra) {
+  return { context: context(doc, extra), ...payload };
+}
+
+function workspaceStatus(doc, extra = {}) {
+  const stamp = OrgFlow.workspaceStamp(doc.planning);
+  return withContext(doc, {
+    storage: extra.storage || 'shared-server',
+    workspaceId: stamp.workspaceId,
+    revision: stamp.revision,
+    lastCommittedAt: stamp.lastCommittedAt,
+    documentVersion: doc.planning?.version || 0,
+    schema: doc.planning?.schema || 0,
+    scenarios: (doc.planning?.scenarios || []).map(s => ({ id: s.id, name: s.name, archived: Boolean(s.archived), state: s.workflow?.state || '' })),
+    latest: extra.latest !== false
+  }, extra);
+}
+
+function positionChangesSince(currentDoc, previousDoc, scenarioId) {
+  const id = scenarioId || currentDoc.planning.activeScenarioId;
+  const from = activeScenario(previousDoc, id);
+  const to = activeScenario(currentDoc, id);
+  return OrgFlow.scenarioChanges(from, to).filter(c => c.kind !== 'unchanged').map(c => ({
+    id: c.id,
+    kind: c.kind,
+    title: (c.after || c.before).title,
+    fields: c.fields
+  }));
+}
+
+function capacityGap(doc, { scenario, month, months, group } = {}) {
+  const s = doc.planning.scenarios.find(x => x.id === (scenario || doc.planning.activeScenarioId)) || doc.planning.scenarios[0];
+  if (!s) throw new Error('Scenario was not found.');
+  const rows = Management.forecast(s, { startMonth: month || undefined, months: months ?? 12, group: group || '' });
+  const gaps = rows.filter(r => r.demandGapFte > 0 || r.staffingGapFte > 0).map(r => ({
+    month: r.month,
+    requiredFte: r.requiredFte,
+    availableFte: r.availableFte,
+    demandGapFte: r.demandGapFte,
+    approvedFte: r.approvedFte,
+    filledFte: r.filledFte,
+    staffingGapFte: r.staffingGapFte
+  }));
+  const asOf = (month ? month + '-01' : Management.isoToday());
+  const ov = Management.overview(s, asOf, group || '');
+  return {
+    gaps,
+    commitments: ov.commitments,
+    assumptions: 'Demand gap is required commitment FTE minus available person capacity. Staffing gap is planned position FTE minus filled FTE. End dates are inclusive. Missing budgets are not treated as zero.'
+  };
+}
+
 module.exports = {
   summary,
   searchPositions,
@@ -136,5 +204,10 @@ module.exports = {
   dottedLines,
   vacancies,
   diffScenarios,
-  activeScenario
+  activeScenario,
+  context,
+  withContext,
+  workspaceStatus,
+  positionChangesSince,
+  capacityGap
 };

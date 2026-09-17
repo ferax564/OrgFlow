@@ -112,8 +112,8 @@
     for (const n of lay.all) {
       const m = n._lines;
       const hit = state.hits.includes(n.id);
-      const vacant = (n.hiringState && n.hiringState !== 'Filled') || !n.person?.name;
-      cards += `<div class="of-card${hit ? ' hit' : ''}${vacant && F.has('hiringState') ? ' vacant' : ''}" data-id="${esc(n.id)}" style="left:${n._x + 24}px;top:${n._y + 24}px;width:${n._cardW}px" role="button" tabindex="0" aria-label="${esc(n.title)} — ${esc(displayName(n))}">`
+      const vacant = !OF.shareOccupied(n);
+      cards += `<div class="of-card${hit ? ' hit' : ''}${vacant ? ' vacant' : ''}" data-id="${esc(n.id)}" style="left:${n._x + 24}px;top:${n._y + 24}px;width:${n._cardW}px" role="button" tabindex="0" aria-label="${esc(n.title)} — ${esc(displayName(n))}">`
         + (n.person?.photo?.data ? `<img class="of-photo" src="${esc(n.person.photo.data)}" width="${n.person.photo.width}" height="${n.person.photo.height}" alt="">` : '')
         + `<div class="of-name">${m.nameLines.map(esc).join('<br>')}</div>`
         + `<div class="of-role">${m.titleLines.map(esc).join('<br>')}</div>`

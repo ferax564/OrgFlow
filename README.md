@@ -27,13 +27,13 @@ Then open http://localhost:4173/ or http://localhost:4173/app.html. Opening the 
 
 ### Desktop app (no installer)
 
-CI builds a portable binary for each OS. Download **v2.1.1** below, or browse [all GitHub Releases](https://github.com/ferax564/OrgFlow/releases) (or the **Desktop binaries** workflow artifacts). You do not install into Program Files or `/Applications`.
+CI builds a portable binary for each OS. Download **v2.3.0** below, or browse [all GitHub Releases](https://github.com/ferax564/OrgFlow/releases) (or the **Desktop binaries** workflow artifacts). You do not install into Program Files or `/Applications`.
 
 | OS | File | How to run |
 | --- | --- | --- |
-| Windows | [OrgFlow-2.1.1-windows.exe](https://github.com/ferax564/OrgFlow/releases/download/v2.1.1/OrgFlow-2.1.1-windows.exe) | Double-click the `.exe`. Windows may show SmartScreen on an unsigned build — More info → Run anyway. Workspace data is stored in `OrgFlow-data` next to the exe. |
-| macOS | [OrgFlow-2.1.1-mac.zip](https://github.com/ferax564/OrgFlow/releases/download/v2.1.1/OrgFlow-2.1.1-mac.zip) | Unzip and double-click `OrgFlow.app`. You can leave it in Downloads; you do not need to drag it to Applications. If Gatekeeper blocks it, right-click → Open. |
-| Linux | [OrgFlow-2.1.1-linux.AppImage](https://github.com/ferax564/OrgFlow/releases/download/v2.1.1/OrgFlow-2.1.1-linux.AppImage) | `chmod +x OrgFlow-*-linux.AppImage && ./OrgFlow-*-linux.AppImage` |
+| Windows | [OrgFlow-2.3.0-windows.exe](https://github.com/ferax564/OrgFlow/releases/download/v2.3.0/OrgFlow-2.3.0-windows.exe) | Double-click the `.exe`. Windows may show SmartScreen on an unsigned build — More info → Run anyway. Workspace data is stored in `OrgFlow-data` next to the exe. |
+| macOS | [OrgFlow-2.3.0-mac.zip](https://github.com/ferax564/OrgFlow/releases/download/v2.3.0/OrgFlow-2.3.0-mac.zip) | Unzip and double-click `OrgFlow.app`. You can leave it in Downloads; you do not need to drag it to Applications. If Gatekeeper blocks it, right-click → Open. |
+| Linux | [OrgFlow-2.3.0-linux.AppImage](https://github.com/ferax564/OrgFlow/releases/download/v2.3.0/OrgFlow-2.3.0-linux.AppImage) | `chmod +x OrgFlow-*-linux.AppImage && ./OrgFlow-*-linux.AppImage` |
 
 ```bash
 npm ci
@@ -43,7 +43,7 @@ npm run dist:win         # portable exe (Windows host)
 npm run dist:mac         # .app zip (macOS host)
 ```
 
-Tagged versions (`v2.1.1`) publish those three files onto the GitHub Release.
+Tagged versions (`v2.3.0`) publish those three files onto the GitHub Release.
 
 The desktop app loads the planner from a fixed `orgflow://` origin, so restarts and updates always find the same browser storage. Every commit is additionally journaled by the app itself into `OrgFlow-data` next to the executable **and** the OS-standard app-data folder — moving the exe to a new folder still finds the workspace, and each directory keeps the ten most recent backups of the file.
 
@@ -82,12 +82,13 @@ Harbor & Co (17 positions) loads on first visit. A tour offers that sample, Nort
 | Positions + assignments (CSV) | Active scenario, including custom fields |
 | People directory (CSV) | People in the active scenario |
 | Workspace backup (JSON) | Every scenario, unassigned people, branding, palette, saved views and the current view |
+| OrgFlow bundle (.orgflow) | Workspace plus checkpoints — the file you hand someone for editing and recovery. Older OrgFlow 2.0/2.1 builds refuse this document instead of silently dropping fields |
 | Save workspace | Overwrites the last JSON file you picked when the browser supports it; the **Autosave** checkbox beside it writes every change through to that file. The file link survives restarts — if the browser needs permission again, **Reconnect saved file** appears instead of silently going stale |
 | Print / A3 pages (PDF) | Tiled A3 landscape pages of the visible chart |
 
 A workspace JSON that omits `dateFilter` restores with all dates visible. Full JSON restore is local-only on the planner; use Draft imports or the proposal API for a shared organization.
 
-Every workspace carries a schema version, identity, revision and commit timestamp. Older builds open newer files only when the schema is unchanged — a file written by a **newer schema** is refused with an explicit message rather than silently dropping fields it does not understand, and unknown fields on supported documents are preserved through load/save round-trips. When several stored copies disagree (browser storage, app storage, desktop journal), the newest revision wins and the others catch up on the next save.
+Every workspace carries a document version (currently 3), schema, identity, revision and commit timestamp. This build still reads version-2 files and rewrites them as version 3. Older OrgFlow 2.0/2.1 writers that only accept version 2 refuse the new file instead of silently dropping fields. A file written with a **newer schema** is refused with an explicit message. Unknown fields on supported documents are preserved through load/save round-trips. When several stored copies disagree (browser storage, app storage, desktop journal), the newest revision wins and the others catch up on the next save. The desktop Recovery center also lists leftover `http://127.0.0.1:<port>` profiles from pre-`orgflow://` builds when they can be parsed.
 
 ### Positions CSV columns
 

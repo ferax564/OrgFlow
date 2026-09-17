@@ -66,37 +66,60 @@ function decisionCommand(store, scenarioId, action, input, membership, user, exp
     store.db.exec('COMMIT');return { ...saved, workspace: next };
   } catch (error) { store.db.exec('ROLLBACK');throw error; }
 }
-module.exports = { reconcileSave, atomicSave, decisionCommand, checkVersion };
+function applyProposalChanges(stored, input, actorEmail) {
+  if (!input || typeof input !== 'object' || !Array.isArray(input.changes) || input.changes.length > 500) throw new Error('Provide at most 500 record changes.');
+  const name = M.text(input.name || 'Preview', 'Proposal name', 80, true);
+  const rationale = M.text(input.rationale || 'Preview', 'Rationale', 3000, true);
+  const id = input.previewId || ('scenario-' + require('node:crypto').randomUUID());
+  let planning = M.createProposal(stored.planning, { id, name, owner: actorEmail, rationale });
+  const scenario = planning.scenarios.at(-1);
+  for (const change of input.changes) {
+    if (!change || !M.COLLECTIONS.includes(change.entity) || !['upsert', 'remove'].includes(change.operation)) throw new Error('Unknown proposal collection or operation.');
+    const recordId = M.text(change.id, 'Record ID', 150, true), rows = scenario[change.entity], index = rows.findIndex(r => r.id === recordId);
+    if (change.operation === 'remove') { if (index < 0) throw new Error('Cannot remove a record that does not exist.'); rows.splice(index, 1); }
+    else {
+      if (!change.values || typeof change.values !== 'object' || Array.isArray(change.values)) throw new Error('Upsert values must be an object.');
+      if (Object.keys(change.values).some(k => ['__proto__', 'prototype', 'constructor'].includes(k))) throw new Error('Reserved record field.');
+      if (Object.hasOwn(change.values, 'id') && change.values.id !== recordId) throw new Error('Stable record IDs cannot be changed.');
+      const record = { ...(index < 0 ? {} : rows[index]), ...change.values, id: recordId };
+      if (index < 0) rows.push(record); else rows[index] = record;
+    }
+  }
+  planning = C.validatePlanning(planning);
+  return { planning, scenarioId: id, name, preview: M.applicationPreview(planning, id) };
+}
+
+function previewProposal(store, input, membership, user) {
+  if (!['admin', 'editor'].includes(membership.role) || membership.scope_position_id) throw denied('Creating organization-wide proposals requires an unscoped editor or administrator.');
+  const row = store.getWorkspaceRow();
+  const stored = validateDocument(JSON.parse(row.document));
+  const applied = applyProposalChanges(stored, { ...input, previewId: 'scenario-preview' }, user.email);
+  return { ok: true, name: applied.name, baseVersion: row.version, changes: applied.preview.changes, conflicts: applied.preview.conflicts || [] };
+}
+
+function validateProposal(store, input, membership, user) {
+  try { return previewProposal(store, input, membership, user); }
+  catch (error) { return { ok: false, error: error.message, status: error.status || 400 }; }
+}
+
+module.exports = { reconcileSave, atomicSave, decisionCommand, checkVersion, applyProposalChanges, previewProposal, validateProposal };
 
 /** API/agent writes only create validated Draft proposals; they never approve or apply. */
 function proposalCommand(store, input, membership, user) {
   if (!['admin', 'editor'].includes(membership.role) || membership.scope_position_id) throw denied('Creating organization-wide proposals requires an unscoped editor or administrator.');
-  if (!input || typeof input !== 'object' || !Array.isArray(input.changes) || input.changes.length > 500) throw new Error('Provide at most 500 record changes.');
-  const name=M.text(input.name,'Proposal name',80,true),rationale=M.text(input.rationale,'Rationale',3000,true);
+  const name = M.text(input.name, 'Proposal name', 80, true), rationale = M.text(input.rationale, 'Rationale', 3000, true);
   store.db.exec('BEGIN IMMEDIATE');
   try {
-    const row=store.getWorkspaceRow();checkVersion(row,input.version);
-    const stored=validateDocument(JSON.parse(row.document)),id='scenario-'+require('node:crypto').randomUUID();
-    let planning=M.createProposal(stored.planning,{id,name,owner:user.email,rationale});
-    const scenario=planning.scenarios.at(-1);
-    for (const change of input.changes) {
-      if (!change || !M.COLLECTIONS.includes(change.entity) || !['upsert','remove'].includes(change.operation)) throw new Error('Unknown proposal collection or operation.');
-      const recordId=M.text(change.id,'Record ID',150,true),rows=scenario[change.entity],index=rows.findIndex(r=>r.id===recordId);
-      if(change.operation==='remove') { if(index<0)throw new Error('Cannot remove a record that does not exist.');rows.splice(index,1); }
-      else {
-        if(!change.values || typeof change.values!=='object' || Array.isArray(change.values))throw new Error('Upsert values must be an object.');
-        if(Object.keys(change.values).some(k=>['__proto__','prototype','constructor'].includes(k)))throw new Error('Reserved record field.');
-        if(Object.hasOwn(change.values,'id')&&change.values.id!==recordId)throw new Error('Stable record IDs cannot be changed.');
-        const record={...(index<0?{}:rows[index]),...change.values,id:recordId};
-        if(index<0)rows.push(record);else rows[index]=record;
-      }
-    }
-    M.recordEvent(scenario.workflow,'created',{actor:user.email,now:new Date().toISOString()},'Created through the proposal API; approval and application require separate decisions.');
-    planning=C.validatePlanning(planning);
-    const next=validateDocument({...stored,planning}),saved=store.saveWorkspace(next,user.id,input.version);
-    store.audit({userId:user.id,action:'proposal.create',detail:{scenarioId:id,version:saved.version,changes:input.changes.length}});
+    const row = store.getWorkspaceRow(); checkVersion(row, input.version);
+    const stored = validateDocument(JSON.parse(row.document));
+    const applied = applyProposalChanges(stored, { ...input, name, rationale }, user.email);
+    const scenario = applied.planning.scenarios.find(s => s.id === applied.scenarioId);
+    M.recordEvent(scenario.workflow, 'created', { actor: user.email, now: new Date().toISOString() }, 'Created through the proposal API; approval and application require separate decisions.');
+    const planning = C.validatePlanning(applied.planning);
+    const next = validateDocument({ ...stored, planning }), saved = store.saveWorkspace(next, user.id, input.version);
+    store.audit({ userId: user.id, action: 'proposal.create', detail: { scenarioId: applied.scenarioId, version: saved.version, changes: input.changes.length } });
     store.db.exec('COMMIT');
-    return {scenarioId:id,name,version:saved.version,state:'Draft',changes:M.applicationPreview(planning,id).changes,message:'Current is unchanged. Review, approval and application remain separate.'};
-  } catch(error) {store.db.exec('ROLLBACK');throw error;}
+    return { scenarioId: applied.scenarioId, name, version: saved.version, state: 'Draft', changes: M.applicationPreview(planning, applied.scenarioId).changes, message: 'Current is unchanged. Review, approval and application remain separate.' };
+  } catch (error) { store.db.exec('ROLLBACK'); throw error; }
 }
-module.exports.proposalCommand=proposalCommand;
+module.exports.proposalCommand = proposalCommand;

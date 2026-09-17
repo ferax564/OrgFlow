@@ -60,6 +60,7 @@
         <button data-export="pdf">Board pack (PDF)</button>
         <button data-export="a3">Print / A3 pages (PDF)</button>
         <button data-export="print">Print this view…</button>
+        <button data-export="interactive">Interactive chart (HTML)…</button>
         <button data-export="html">Chart-only HTML</button>
         <div class="sep"></div>
         <div class="menu-label">Data</div>
@@ -140,10 +141,11 @@
       <button class="btn" id="saveWorkspaceBtn">Save workspace</button>
       <button class="btn ghost" id="saveWorkspaceAsBtn">Save workspace as…</button>
       <button class="btn ghost" id="restoreBtn">Restore workspace</button>
-      <button class="btn ghost" id="historyBtn">Earlier versions</button>
+      <button class="btn ghost" id="historyBtn">Recovery &amp; backups</button>
       <input id="restoreInput" type="file" accept=".json,application/json" hidden />
       <p id="saveStatus" class="save-status" role="status" aria-live="polite">Saved in this browser</p><button class="btn ghost" id="retrySave" hidden>Retry file save</button><button class="btn ghost" id="unlinkFile" hidden>Unlink saved file</button>
       <label class="check autosave-check"><input type="checkbox" id="autoSaveFile" /> Keep the saved file up to date</label>
+      <button class="btn ghost hidden" id="reconnectFile">Reconnect saved file</button>
     </div>
     <div class="hint">CSV updates the active scenario. JSON backup keeps scenarios, people, branding, saved views and chart settings. Save workspace overwrites the last file you picked, when the browser allows it.</div>
   </div>
@@ -347,15 +349,37 @@
   <div class="modal-foot"><button class="btn" id="welcomeSkip">Skip</button><div class="right"><button class="btn primary" id="welcomeHarbor">Open Harbor &amp; Co</button></div></div>
 </div></div>
 
+<div class="modal-backdrop" id="shareModal"><div class="modal scenario-modal" role="dialog" aria-modal="true" aria-labelledby="shareTitle">
+  <div class="modal-head"><div><div class="settings-kicker">Export</div><h2 id="shareTitle">Interactive chart (HTML)</h2><p>One file that opens offline — recipients can zoom, pan, expand teams and search. Only the team and fields you choose are embedded; excluded data cannot be recovered from the file.</p></div><button class="iconbtn" id="shareClose" aria-label="Close">×</button></div>
+  <div class="modal-body">
+    <div class="field"><label for="shareScope">Team to include</label><select id="shareScope"></select></div>
+    <div class="field"><label>Fields to include</label><div class="share-fields" id="shareFields"></div></div>
+    <div class="field"><label for="shareDepth">Initially show</label><select id="shareDepth"><option value="1">Top level only</option><option value="2" selected>2 levels — expand teams as needed</option><option value="3">3 levels</option><option value="99">Everything expanded</option></select></div>
+    <p class="settings-note">A read-only snapshot. The file contains no other scenarios, no workspace backup and no fields you leave unchecked — hiding is not access control, so exclusion happens before the data is embedded.</p>
+  </div>
+  <div class="modal-foot"><div class="right"><button class="btn" id="shareCancel">Cancel</button><button class="btn primary" id="shareExport">Export interactive HTML</button></div></div>
+</div></div>
+
 <div class="modal-backdrop" id="historyModal"><div class="modal scenario-modal" role="dialog" aria-modal="true" aria-labelledby="historyTitle">
-  <div class="modal-head"><div><div class="settings-kicker">This browser</div><h2 id="historyTitle">Earlier versions</h2><p>Local snapshots of Current from this device. Photos and logos are not stored in this list.</p></div><button class="iconbtn" id="historyClose" aria-label="Close history">×</button></div>
-  <div class="modal-body"><div class="planning-table-wrap"><table class="planning-table"><thead><tr><th>When</th><th>Note</th><th></th></tr></thead><tbody id="historyRows"></tbody></table></div></div>
+  <div class="modal-head"><div><div class="settings-kicker">This device</div><h2 id="historyTitle">Recovery center</h2><p>Workspace copies, checkpoints and earlier versions kept on this device. Restoring checkpoints the current workspace first — nothing is silently lost.</p></div><button class="iconbtn" id="historyClose" aria-label="Close recovery center">×</button></div>
+  <div class="modal-body">
+    <div class="recovery-meta" id="recoveryWorkspace"></div>
+    <div id="recoveryPending" class="hidden"></div>
+    <div class="form-divider">Checkpoints</div>
+    <p class="hint" style="margin-top:0">Full snapshots taken automatically before restores, imports and sample loads — including photos.</p>
+    <div class="planning-table-wrap"><table class="planning-table"><thead><tr><th>When</th><th>Checkpoint</th><th><span class="hidden">Actions</span></th></tr></thead><tbody id="checkpointRows"></tbody></table></div>
+    <div class="form-divider">Earlier versions</div>
+    <p class="hint" style="margin-top:0">Recent snapshots of each save, without photos or logos.</p>
+    <div class="planning-table-wrap"><table class="planning-table"><thead><tr><th>Saved</th><th>Change</th><th><span class="hidden">Actions</span></th></tr></thead><tbody id="historyRows"></tbody></table></div>
+  </div>
 </div></div>
 
 <div class="modal-backdrop" id="planningRecordModal"><div class="modal wide-modal" role="dialog" aria-modal="true" aria-labelledby="planningRecordTitle"><div class="modal-head"><div><h2 id="planningRecordTitle">Planning record</h2><p id="planningRecordHint"></p></div><button class="iconbtn" data-close-dialog="planningRecordModal" aria-label="Close planning editor">×</button></div><div class="modal-body"><div id="planningRecordError" class="validation" role="alert"></div><form id="planningRecordForm"></form></div><div class="modal-foot"><button class="btn" data-close-dialog="planningRecordModal">Cancel</button><button class="btn primary" id="planningRecordSave">Save record</button></div></div></div>
 <script src="js/management-core.js"></script>
 <script src="js/persistence.js"></script>
 <script src="js/orgflow-core.js"></script>
+<script src="js/storage.js"></script>
+<script src="js/share-export.js"></script>
 <script src="js/examples.js"></script>
 <script src="js/templates.js"></script>
 <script src="js/app.js"></script>

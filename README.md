@@ -27,13 +27,13 @@ Then open http://localhost:4173/ or http://localhost:4173/app.html. Opening the 
 
 ### Desktop app (no installer)
 
-CI builds a portable binary for each OS. Download **v2.0.0** below, or browse [all GitHub Releases](https://github.com/ferax564/OrgFlow/releases) (or the **Desktop binaries** workflow artifacts). You do not install into Program Files or `/Applications`.
+CI builds a portable binary for each OS. Download **v2.1.0** below, or browse [all GitHub Releases](https://github.com/ferax564/OrgFlow/releases) (or the **Desktop binaries** workflow artifacts). You do not install into Program Files or `/Applications`.
 
 | OS | File | How to run |
 | --- | --- | --- |
-| Windows | [OrgFlow-2.0.0-windows.exe](https://github.com/ferax564/OrgFlow/releases/download/v2.0.0/OrgFlow-2.0.0-windows.exe) | Double-click the `.exe`. Windows may show SmartScreen on an unsigned build — More info → Run anyway. Workspace data is stored in `OrgFlow-data` next to the exe. |
-| macOS | [OrgFlow-2.0.0-mac.zip](https://github.com/ferax564/OrgFlow/releases/download/v2.0.0/OrgFlow-2.0.0-mac.zip) | Unzip and double-click `OrgFlow.app`. You can leave it in Downloads; you do not need to drag it to Applications. If Gatekeeper blocks it, right-click → Open. |
-| Linux | [OrgFlow-2.0.0-linux.AppImage](https://github.com/ferax564/OrgFlow/releases/download/v2.0.0/OrgFlow-2.0.0-linux.AppImage) | `chmod +x OrgFlow-*-linux.AppImage && ./OrgFlow-*-linux.AppImage` |
+| Windows | [OrgFlow-2.1.0-windows.exe](https://github.com/ferax564/OrgFlow/releases/download/v2.1.0/OrgFlow-2.1.0-windows.exe) | Double-click the `.exe`. Windows may show SmartScreen on an unsigned build — More info → Run anyway. Workspace data is stored in `OrgFlow-data` next to the exe. |
+| macOS | [OrgFlow-2.1.0-mac.zip](https://github.com/ferax564/OrgFlow/releases/download/v2.1.0/OrgFlow-2.1.0-mac.zip) | Unzip and double-click `OrgFlow.app`. You can leave it in Downloads; you do not need to drag it to Applications. If Gatekeeper blocks it, right-click → Open. |
+| Linux | [OrgFlow-2.1.0-linux.AppImage](https://github.com/ferax564/OrgFlow/releases/download/v2.1.0/OrgFlow-2.1.0-linux.AppImage) | `chmod +x OrgFlow-*-linux.AppImage && ./OrgFlow-*-linux.AppImage` |
 
 ```bash
 npm ci
@@ -43,16 +43,18 @@ npm run dist:win         # portable exe (Windows host)
 npm run dist:mac         # .app zip (macOS host)
 ```
 
-Tagged versions (`v2.0.0`) publish those three files onto the GitHub Release.
+Tagged versions (`v2.1.0`) publish those three files onto the GitHub Release.
 
-On this public site there is no backend. Clearing site data removes the workspace; export a JSON backup first. An optional Node host can share one org — see [Enterprise host](#enterprise-host-optional).
+The desktop app loads the planner from a fixed `orgflow://` origin, so restarts and updates always find the same browser storage. Every commit is additionally journaled by the app itself into `OrgFlow-data` next to the executable **and** the OS-standard app-data folder — moving the exe to a new folder still finds the workspace, and each directory keeps the ten most recent backups of the file.
+
+On this public site there is no backend. The workspace is kept in two places — `localStorage` plus an IndexedDB copy with checkpoints — so losing one storage area does not lose the organization. Clearing *all* site data still removes everything; export a JSON backup first. An optional Node host can share one org — see [Enterprise host](#enterprise-host-optional).
 
 ## Using the planner
 
 Harbor & Co (17 positions) loads on first visit. A tour offers that sample, Northstar Commerce, and smaller templates. Loading a sample overwrites this browser’s scenarios, people and branding.
 
 - **Drag-and-drop** a card onto another manager to change reporting. Drop onto a **sibling** to reorder (left/top = before, right/bottom = after). If that side would leave the order unchanged, the two cards swap. Drops that would create a cycle are ignored. Set a **dotted-line** (matrix) manager in the position drawer; it draws dashed and does not change the tree layout.
-- **Undo / redo** with ⌘Z / Ctrl+Z in this session (not while typing in a field). **Earlier versions** in the sidebar keeps the last ten planning snapshots in this browser, without photos or logos.
+- **Undo / redo** with ⌘Z / Ctrl+Z in this session (not while typing in a field). **Recovery & backups** in the sidebar shows the workspace identity, revision and where it is stored; keeps the last ten planning snapshots as Earlier versions; and stores full checkpoints — with photos and branding — before every restore, import or sample load. Checkpoints can be restored in place or **as a copy** (a new workspace id) so recovery never overwrites current work. Edits that never reached a shared server are listed there as recoverable changes.
 - **Cards** show the person (or vacant/recruiting), title, group, location, type, approval, hiring state and FTE. Optional photos are resized locally to a small PNG. **Direct reports and vacancies** (`N reports · N open`) is on by default; turn it off under Chart display. Heads and Team Leaders can also show a cumulative people count.
 - **Custom fields** on a position: location / site, cost center, job family. On a person: employee number and photo.
 - **Date filter** is off by default, so future-dated roles stay visible and the date box shows "All dates". Turn on **Only show positions active on this date** to hide roles that have not started (or have already ended) relative to the as-of date; the toolbar pill then reads "As of …" instead of "All dates".
@@ -74,14 +76,18 @@ Harbor & Co (17 positions) loads on first visit. A tour offers that sample, Nort
 | Current view as PNG | Visible chart, optionally branded |
 | One PNG per group (ZIP) | One chart file per group |
 | Board pack (PDF) | Cover sheet, current chart, scenario comparison when a second scenario exists |
+| Interactive HTML | Self-contained read-only viewer — opens offline with pan, zoom, fit, expand/collapse, depth presets, search, group/site/type filters and position details. A share dialog picks the scope (whole org or one team's subtree), which fields to include, and the initial depth; excluded data is not embedded. Shows a static chart when scripts are blocked |
 | Chart-only HTML | Self-contained visible chart without workspace JSON or hidden scenarios; not a restorable backup |
+| Shareable HTML snapshot | Self-contained page with the chart inline and workspace JSON for restore |
 | Positions + assignments (CSV) | Active scenario, including custom fields |
 | People directory (CSV) | People in the active scenario |
 | Workspace backup (JSON) | Every scenario, unassigned people, branding, palette, saved views and the current view |
-| Save workspace | Overwrites the last JSON file you picked when the browser supports it; the **Autosave** checkbox beside it writes every change through to that file |
+| Save workspace | Overwrites the last JSON file you picked when the browser supports it; the **Autosave** checkbox beside it writes every change through to that file. The file link survives restarts — if the browser needs permission again, **Reconnect saved file** appears instead of silently going stale |
 | Print / A3 pages (PDF) | Tiled A3 landscape pages of the visible chart |
 
 A workspace JSON that omits `dateFilter` restores with all dates visible. Full JSON restore is local-only on the planner; use Draft imports or the proposal API for a shared organization.
+
+Every workspace carries a schema version, identity, revision and commit timestamp. Older builds open newer files only when the schema is unchanged — a file written by a **newer schema** is refused with an explicit message rather than silently dropping fields it does not understand, and unknown fields on supported documents are preserved through load/save round-trips. When several stored copies disagree (browser storage, app storage, desktop journal), the newest revision wins and the others catch up on the next save.
 
 ### Positions CSV columns
 
@@ -195,7 +201,7 @@ python3 -m playwright install chromium firefox webkit
 python3 tests/browser-regressions.py --browser chromium
 ```
 
-The suite covers CSV parsing, spreadsheet-formula escaping, scenario validation, dotted-line rules, custom-field CSV round-trips, starter templates, comparison diffs, example workspaces, filter-set migration, stacked chart layout, sibling reordering, custom position levels, group/site chips, bulk edit, named views, A3 tiling, the desktop file server, and enterprise ACL/stress cases (forged cookies, path traversal, oversized bodies, last-admin protection, concurrent saves).
+The suite covers CSV parsing, spreadsheet-formula escaping, scenario validation, dotted-line rules, custom-field CSV round-trips, starter templates, comparison diffs, example workspaces, filter-set migration, stacked chart layout, sibling reordering, custom position levels, group/site chips, bulk edit, named views, A3 tiling, schema-version guards and forward-compatible field preservation, share-dataset redaction and subtree scoping, the journaled desktop workspace store (atomic writes, rotating backups, newest-revision selection), the desktop file server, and enterprise ACL/stress cases (forged cookies, path traversal, oversized bodies, last-admin protection, concurrent saves).
 
 With Chrome and `puppeteer-core` installed locally:
 

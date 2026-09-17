@@ -29,7 +29,9 @@
           if(resent.res.ok){api.version=resent.body.version;body.workspace=pending.payload;await window.OrgFlowStore.clearPending();}
         }
       }catch{/* the pending record stays recoverable */}
-      api.applying=true;applyEnterpriseWorkspace(body.workspace);api.applying=false;baseline=structuredClone(window.enterpriseWorkspacePayload());applyChrome(body.session);status('Saved');
+      api.applying=true;
+      try{await applyEnterpriseWorkspace(body.workspace);}finally{api.applying=false;}
+      baseline=structuredClone(window.enterpriseWorkspacePayload());applyChrome(body.session);status('Saved');
     }catch(error){api.enabled=true;api.canWrite=false;api.canExport=false;const el=document.getElementById('loadError');el.classList.remove('hidden');el.textContent=error.message;}
   }
   function applyChrome(session){

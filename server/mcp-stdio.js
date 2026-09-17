@@ -37,7 +37,7 @@ async function handle(message) {
   const id = message.id ?? null;
   const method = message.method;
   if (method === 'initialize') {
-    return { jsonrpc: '2.0', id, result: { protocolVersion: '2025-11-25', capabilities: { tools: {} }, serverInfo: { name: 'orgflow', version: '2.1.0' } } };
+    return { jsonrpc: '2.0', id, result: { protocolVersion: '2025-11-25', capabilities: { tools: {} }, serverInfo: { name: 'orgflow', version: '2.1.1' } } };
   }
   if (method === 'notifications/initialized') return null;
   if (method === 'tools/list') return { jsonrpc: '2.0', id, result: { tools: mcpTools({allowProposals}) } };

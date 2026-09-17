@@ -30,7 +30,7 @@
   const SCHEMA_VERSION = 2;
   const KNOWN_POSITION_KEYS = new Set([...POSITION_FIELDS, 'fte', 'sortOrder', 'stacked', 'assignmentMode', 'reportingMode', 'externalId']);
   const KNOWN_EMPLOYEE_KEYS = new Set(['id', 'name', 'employeeNumber', 'photo', 'capacityFte', 'skills', 'externalId']);
-  const KNOWN_SCENARIO_KEYS = new Set(['id', 'name', 'description', 'createdAt', 'updatedAt', 'baseScenarioId', 'archived', 'baseSnapshot', 'positions', 'employees', 'workflow', 'applicationBaseline', 'appliedBefore', 'appliedAfter']);
+  const KNOWN_SCENARIO_KEYS = new Set(['id', 'name', 'description', 'createdAt', 'updatedAt', 'baseScenarioId', 'archived', 'baseSnapshot', 'positions', 'employees', 'workflow', 'applicationBaseline', 'appliedBefore', 'appliedAfter', ...Management.COLLECTIONS]);
   const KNOWN_WORKSPACE_KEYS = new Set(['version', 'schema', 'workspaceId', 'revision', 'lastCommittedAt', 'activeScenarioId', 'scenarios', 'positionLevels', 'namedViews', 'importProfiles']);
   const KNOWN_SNAPSHOT_KEYS = new Set(['name', 'capturedAt', 'positions', 'employees']);
   const ALIASES = {
@@ -1062,6 +1062,14 @@
     if (ar !== br) return ar - br;
     return String(a?.lastCommittedAt || '').localeCompare(String(b?.lastCommittedAt || ''));
   }
+  // Occupied seats whose name was redacted must not look vacant.
+  function shareDisplayName(n) {
+    if (n?.person?.name) return n.person.name;
+    if (n?.hiringState === 'Recruiting') return 'Recruiting';
+    if (n?.person) return 'Assigned';
+    if (n?.hiringState === 'Filled') return 'Filled';
+    return 'Vacant position';
+  }
 
   return {
     ROLE_TYPES, STATUSES, HIRING_STATES, LEGACY_ROLE_TYPES, POSITION_FIELDS, DIFF_FIELDS, POSITION_CSV_COLUMNS, ALIASES,
@@ -1075,7 +1083,7 @@
     cardMetrics, subtreePeopleCount, reorderSiblings, siblingIndex, applyCardSizes, layoutOrgChart,
     filterLabel, chipValues, spanOfControl, pathToRoot, bulkPatchPositions, placeSibling,
     tileChartPages, sanitizeViewState, sanitizeNamedViews,
-    SCHEMA_VERSION, SHARE_FIELD_OPTIONS, buildShareDataset, subtreePositionIds,
+    SCHEMA_VERSION, SHARE_FIELD_OPTIONS, buildShareDataset, subtreePositionIds, shareDisplayName,
     touchWorkspace, workspaceStamp, compareWorkspaceStamps, jsonExtras
   };
 });

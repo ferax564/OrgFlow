@@ -547,6 +547,32 @@ test('share dataset subtree strips references outside the scope', () => {
   assert.ok(!JSON.stringify(ds).includes('sales'), 'no reference to excluded positions remains');
 });
 
+test('validated management collections are not replaced by raw extras', () => {
+  const base = OrgFlow.emptyWorkspace('2026-09-16');
+  const s = base.scenarios[0];
+  s.costs = [{ id: 'c1', positionId: s.positions[0].id, annualCost: 120000, currency: 'chf', startDate: '2026-09-16', endDate: '' }];
+  s.futureNote = 'keep me';
+  const rt = OrgFlow.validatePlanning(base);
+  assert.equal(rt.scenarios[0].costs[0].currency, 'CHF', 'validator normalization must survive extras merge');
+  assert.equal(rt.scenarios[0].futureNote, 'keep me');
+});
+
+test('redacted share names do not look vacant', () => {
+  const planning = shareFixture();
+  const ds = OrgFlow.buildShareDataset(planning, { scenarioId: 'current', include: { group: true } });
+  const filled = ds.positions.find(p => p.id === 'dev');
+  const vacant = ds.positions.find(p => p.id === 'sales');
+  assert.ok(filled.person, 'occupancy is kept when the name is redacted');
+  assert.equal(filled.person.name, undefined);
+  assert.ok(!JSON.stringify(ds).includes('Dan Dev'));
+  assert.equal(OrgFlow.shareDisplayName(filled), 'Assigned');
+  assert.equal(OrgFlow.shareDisplayName(vacant), 'Vacant position');
+  const Share = require('../js/share-export.js');
+  const svg = Share.shareStaticSvg(ds);
+  assert.match(svg, /Assigned/);
+  assert.doesNotMatch(svg, /Dan Dev/);
+});
+
 test('placeSibling reorders among the same manager', () => {
   const positions = [
     { id: 'm', managerId: '', sortOrder: 0 },

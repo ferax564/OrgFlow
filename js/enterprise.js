@@ -19,18 +19,22 @@
       if(!session.res.ok)throw new Error('The shared host could not verify your session. Reload to retry.');
       const loaded=await jsonFetch('/api/workspace',{headers:{accept:'application/json'}});
       if(!loaded.res.ok)throw new Error(loaded.body.error||'Could not load the shared organization. Reload to retry.');
-      const body=loaded.body;api.enabled=true;api.session=body.session;api.version=body.version;api.canWrite=Boolean(body.session?.canWrite);api.canExport=Boolean(body.session?.canExport);api.isAdmin=Boolean(body.session?.isAdmin);
+      const body=loaded.body;
+      let version=body.version;
       // Flush edits that never reached the server before its document
       // replaces the local copy. A failed retry stays recoverable.
       try{
         const pending=await window.OrgFlowStore?.getPending?.();
         if(pending?.payload){
-          const resent=await jsonFetch('/api/workspace',{method:'PUT',headers:{'content-type':'application/json','if-match':String(pending.baseVersion??api.version)},body:JSON.stringify({workspace:pending.payload,version:pending.baseVersion??api.version})});
-          if(resent.res.ok){api.version=resent.body.version;body.workspace=pending.payload;await window.OrgFlowStore.clearPending();}
+          const resent=await jsonFetch('/api/workspace',{method:'PUT',headers:{'content-type':'application/json','if-match':String(pending.baseVersion??version)},body:JSON.stringify({workspace:pending.payload,version:pending.baseVersion??version})});
+          if(resent.res.ok){version=resent.body.version;body.workspace=pending.payload;await window.OrgFlowStore.clearPending();}
         }
       }catch{/* the pending record stays recoverable */}
       api.applying=true;
       try{await applyEnterpriseWorkspace(body.workspace);}finally{api.applying=false;}
+      // Mark the host ready only after the workspace is in memory. Callers
+      // that wait on enabled+version otherwise edit a still-null workspace.
+      api.enabled=true;api.session=body.session;api.version=version;api.canWrite=Boolean(body.session?.canWrite);api.canExport=Boolean(body.session?.canExport);api.isAdmin=Boolean(body.session?.isAdmin);
       baseline=structuredClone(window.enterpriseWorkspacePayload());applyChrome(body.session);status('Saved');
     }catch(error){api.enabled=true;api.canWrite=false;api.canExport=false;const el=document.getElementById('loadError');el.classList.remove('hidden');el.textContent=error.message;}
   }

@@ -44,9 +44,7 @@
   };
 
   function displayName(n) {
-    if (n.person?.name) return n.person.name;
-    if (n.hiringState === 'Recruiting') return 'Recruiting';
-    return 'Vacant position';
+    return OF.shareDisplayName(n);
   }
   function keep(n) {
     const f = state.filter;
@@ -144,6 +142,11 @@
     setZoom(scale);
     wrap.scrollTo({ left: Math.max(0, (stage.scrollWidth * state.zoom - wrap.clientWidth) / 2), top: 0 });
   };
+  wrap.addEventListener('wheel', e => {
+    if (!e.ctrlKey && !e.metaKey) return;
+    e.preventDefault();
+    setZoom(state.zoom * (e.deltaY > 0 ? 0.9 : 1.1));
+  }, { passive: false });
   el('of-expand').onclick = () => { state.collapsed.clear(); state.expanded.clear(); state.depth = 99; syncDepthButtons(); render(); };
   el('of-collapse-all').onclick = () => { state.depth = 1; state.collapsed = new Set(); state.expanded.clear(); syncDepthButtons(); render(); };
   function syncDepthButtons() {

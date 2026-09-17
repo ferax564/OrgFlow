@@ -1012,8 +1012,11 @@
     const positions = scenario.positions
       .filter(p => !keepIds || keepIds.has(p.id))
       .map(p => {
-        const out = { id: p.id, managerId: p.managerId || '', title: p.title, type: p.type };
-        if (p.secondaryManagerId) out.secondaryManagerId = p.secondaryManagerId;
+        // Reporting references outside the kept subtree must not leak: the
+        // root loses its external manager, dotted lines only resolve inside.
+        const managerKept = !keepIds || keepIds.has(p.managerId || '');
+        const out = { id: p.id, managerId: managerKept ? p.managerId || '' : '', title: p.title, type: p.type };
+        if (p.secondaryManagerId && (!keepIds || keepIds.has(p.secondaryManagerId))) out.secondaryManagerId = p.secondaryManagerId;
         if (p.sortOrder) out.sortOrder = p.sortOrder;
         if (p.stacked === true || p.stacked === false) out.stacked = p.stacked;
         for (const key of ['group', 'location', 'status', 'hiringState', 'fte', 'startDate', 'endDate', 'costCenter', 'jobFamily']) {

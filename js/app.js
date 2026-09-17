@@ -398,7 +398,10 @@ function newestCopy(copies){
     copy.planning=planning;
     if(!best||compareWorkspaceStamps(planning,best.planning)>0)best=copy;
   }
-  if(!best){const newer=copies.find(c=>c.schemaTooNew);if(newer)best=newer;}
+  // Any newer-schema copy blocks editing outright: this build cannot read it,
+  // and a save here would write the older schema over it in every store.
+  const tooNew=copies.find(c=>c.schemaTooNew);
+  if(tooNew)return tooNew;
   return best;
 }
 async function initPlanning(){
@@ -596,7 +599,9 @@ function afterWorkspaceMutation() {
   scheduleFileAutosave();
 }
 function unlinkWorkspaceFile() {
-  filePersistence.setTarget(null);workspaceFileHandle=null;syncAutosaveUi();
+  filePersistence.setTarget(null);workspaceFileHandle=null;fileHandleNeedsReconnect=false;
+  try{OrgFlowStore.clearHandle();}catch{}
+  syncAutosaveUi();
   toast('File unlinked. Changes remain in this browser.');
 }
 function updateScenario(mutator,message=''){

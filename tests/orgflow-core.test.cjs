@@ -536,6 +536,17 @@ test('share dataset subtree scope excludes other departments entirely', () => {
   assert.throws(() => OrgFlow.buildShareDataset(planning, { scenarioId: 'current', rootId: 'nope' }), /not found/);
 });
 
+test('share dataset subtree strips references outside the scope', () => {
+  const planning = shareFixture();
+  planning.scenarios[0].positions.find(p => p.id === 'dev').secondaryManagerId = 'sales';
+  const ds = OrgFlow.buildShareDataset(planning, { scenarioId: 'current', rootId: 'eng', include: {} });
+  const root = ds.positions.find(p => p.id === 'eng');
+  assert.equal(root.managerId, '', 'root loses its manager outside the subtree');
+  const dev = ds.positions.find(p => p.id === 'dev');
+  assert.equal(dev.secondaryManagerId, undefined, 'dotted line to an excluded position is stripped');
+  assert.ok(!JSON.stringify(ds).includes('sales'), 'no reference to excluded positions remains');
+});
+
 test('placeSibling reorders among the same manager', () => {
   const positions = [
     { id: 'm', managerId: '', sortOrder: 0 },

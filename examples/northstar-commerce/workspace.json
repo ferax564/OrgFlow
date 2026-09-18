@@ -1,0 +1,803 @@
+{
+  "format": "orgflow.workspace",
+  "version": 2,
+  "exportedAt": "2026-09-01T09:00:00.000Z",
+  "sampleId": "northstar-commerce",
+  "planning": {
+    "version": 2,
+    "activeScenarioId": "current",
+    "scenarios": [
+      {
+        "id": "current",
+        "name": "Current",
+        "description": "",
+        "createdAt": "2026-09-01T09:00:00.000Z",
+        "updatedAt": "2026-09-01T09:00:00.000Z",
+        "baseScenarioId": "",
+        "baseSnapshot": null,
+        "positions": [
+          {
+            "fte": 1,
+            "status": "Approved",
+            "endDate": "",
+            "personId": "EMP-001",
+            "hiringState": "Filled",
+            "startDate": "2022-06-01",
+            "managerId": "",
+            "group": "Leadership",
+            "id": "POS-001",
+            "title": "Chief Operating Officer",
+            "type": "Head"
+          },
+          {
+            "fte": 1,
+            "status": "Approved",
+            "endDate": "",
+            "personId": "EMP-002",
+            "hiringState": "Filled",
+            "startDate": "2023-02-01",
+            "managerId": "POS-001",
+            "group": "Stores",
+            "id": "POS-002",
+            "title": "Head of Stores",
+            "type": "Head"
+          },
+          {
+            "fte": 1,
+            "status": "Approved",
+            "endDate": "",
+            "personId": "EMP-003",
+            "hiringState": "Filled",
+            "startDate": "2023-08-15",
+            "managerId": "POS-001",
+            "group": "Merchandising",
+            "id": "POS-003",
+            "title": "Head of Merchandising",
+            "type": "Head"
+          },
+          {
+            "fte": 1,
+            "status": "Approved",
+            "endDate": "",
+            "personId": "EMP-004",
+            "hiringState": "Filled",
+            "startDate": "2024-01-08",
+            "managerId": "POS-001",
+            "group": "E-commerce",
+            "id": "POS-004",
+            "title": "Head of Digital",
+            "type": "Head"
+          },
+          {
+            "fte": 1,
+            "status": "Approved",
+            "endDate": "",
+            "personId": "EMP-005",
+            "hiringState": "Filled",
+            "startDate": "2024-04-01",
+            "managerId": "POS-002",
+            "group": "Stores",
+            "id": "POS-005",
+            "title": "Regional Manager \u2014 North",
+            "type": "Team Leader"
+          },
+          {
+            "fte": 1,
+            "status": "Approved",
+            "endDate": "",
+            "personId": "EMP-006",
+            "hiringState": "Filled",
+            "startDate": "2024-07-01",
+            "managerId": "POS-002",
+            "group": "Stores",
+            "id": "POS-006",
+            "title": "Regional Manager \u2014 South",
+            "type": "Team Leader"
+          },
+          {
+            "fte": 1,
+            "status": "Approved",
+            "endDate": "",
+            "personId": "",
+            "hiringState": "Recruiting",
+            "startDate": "2026-10-01",
+            "managerId": "POS-005",
+            "group": "Stores",
+            "id": "POS-007",
+            "title": "Store Manager \u2014 Lakeside",
+            "type": "Team Leader"
+          },
+          {
+            "fte": 1,
+            "status": "Approved",
+            "endDate": "",
+            "personId": "EMP-008",
+            "hiringState": "Filled",
+            "startDate": "2024-09-01",
+            "managerId": "POS-003",
+            "group": "Merchandising",
+            "id": "POS-008",
+            "title": "Category Manager \u2014 Grocery",
+            "type": "Specialist"
+          },
+          {
+            "fte": 1,
+            "status": "Approved",
+            "endDate": "",
+            "personId": "EMP-009",
+            "hiringState": "Filled",
+            "startDate": "2025-03-01",
+            "managerId": "POS-003",
+            "group": "Merchandising",
+            "id": "POS-009",
+            "title": "Category Manager \u2014 Home",
+            "type": "Specialist"
+          },
+          {
+            "fte": 1,
+            "status": "Approved",
+            "endDate": "2027-08-31",
+            "personId": "EMP-010",
+            "hiringState": "Filled",
+            "startDate": "2026-09-01",
+            "managerId": "POS-003",
+            "group": "Merchandising",
+            "id": "POS-010",
+            "title": "Graduate Buyer",
+            "type": "Graduate"
+          },
+          {
+            "fte": 1,
+            "status": "Approved",
+            "endDate": "",
+            "personId": "EMP-011",
+            "hiringState": "Filled",
+            "startDate": "2024-11-01",
+            "managerId": "POS-004",
+            "group": "E-commerce",
+            "id": "POS-011",
+            "title": "Team Leader \u2014 Website",
+            "type": "Team Leader"
+          },
+          {
+            "fte": 0.6,
+            "status": "Approved",
+            "endDate": "",
+            "personId": "EMP-012",
+            "hiringState": "Filled",
+            "startDate": "2025-05-01",
+            "managerId": "POS-011",
+            "group": "E-commerce",
+            "id": "POS-012",
+            "title": "Digital Experience Designer",
+            "type": "Specialist"
+          },
+          {
+            "fte": 1,
+            "status": "Approved",
+            "endDate": "2026-12-15",
+            "personId": "EMP-013",
+            "hiringState": "Filled",
+            "startDate": "2026-06-01",
+            "managerId": "POS-011",
+            "group": "E-commerce",
+            "id": "POS-013",
+            "title": "Intern \u2014 Digital",
+            "type": "Intern"
+          },
+          {
+            "fte": 1,
+            "status": "Not approved",
+            "endDate": "",
+            "personId": "",
+            "hiringState": "Vacant",
+            "startDate": "2026-08-01",
+            "managerId": "POS-001",
+            "group": "People",
+            "id": "POS-014",
+            "title": "People Partner",
+            "type": "Specialist"
+          }
+        ],
+        "employees": [
+          {
+            "id": "EMP-001",
+            "name": "Jordan Hale"
+          },
+          {
+            "id": "EMP-002",
+            "name": "Riley Brooks"
+          },
+          {
+            "id": "EMP-003",
+            "name": "Sam Okonkwo"
+          },
+          {
+            "id": "EMP-004",
+            "name": "Casey Nguyen"
+          },
+          {
+            "id": "EMP-005",
+            "name": "Avery Patel"
+          },
+          {
+            "id": "EMP-006",
+            "name": "Quinn Morales"
+          },
+          {
+            "id": "EMP-008",
+            "name": "Taylor Singh"
+          },
+          {
+            "id": "EMP-009",
+            "name": "Jamie Cole"
+          },
+          {
+            "id": "EMP-010",
+            "name": "Morgan Ellis"
+          },
+          {
+            "id": "EMP-011",
+            "name": "Drew Fontaine"
+          },
+          {
+            "id": "EMP-012",
+            "name": "Robin Shah"
+          },
+          {
+            "id": "EMP-013",
+            "name": "Sage Bennett"
+          }
+        ]
+      },
+      {
+        "id": "scenario-peak-season",
+        "name": "Peak season",
+        "description": "Staff the vacant people partner, fill Lakeside store leadership, restore digital design to full-time, and plan a second southern store.",
+        "createdAt": "2026-09-01T09:00:00.000Z",
+        "updatedAt": "2026-09-01T09:00:00.000Z",
+        "baseScenarioId": "current",
+        "baseSnapshot": {
+          "name": "Current",
+          "capturedAt": "2026-09-01T09:00:00.000Z",
+          "positions": [
+            {
+              "fte": 1,
+              "status": "Approved",
+              "endDate": "",
+              "personId": "EMP-001",
+              "hiringState": "Filled",
+              "startDate": "2022-06-01",
+              "managerId": "",
+              "group": "Leadership",
+              "id": "POS-001",
+              "title": "Chief Operating Officer",
+              "type": "Head"
+            },
+            {
+              "fte": 1,
+              "status": "Approved",
+              "endDate": "",
+              "personId": "EMP-002",
+              "hiringState": "Filled",
+              "startDate": "2023-02-01",
+              "managerId": "POS-001",
+              "group": "Stores",
+              "id": "POS-002",
+              "title": "Head of Stores",
+              "type": "Head"
+            },
+            {
+              "fte": 1,
+              "status": "Approved",
+              "endDate": "",
+              "personId": "EMP-003",
+              "hiringState": "Filled",
+              "startDate": "2023-08-15",
+              "managerId": "POS-001",
+              "group": "Merchandising",
+              "id": "POS-003",
+              "title": "Head of Merchandising",
+              "type": "Head"
+            },
+            {
+              "fte": 1,
+              "status": "Approved",
+              "endDate": "",
+              "personId": "EMP-004",
+              "hiringState": "Filled",
+              "startDate": "2024-01-08",
+              "managerId": "POS-001",
+              "group": "E-commerce",
+              "id": "POS-004",
+              "title": "Head of Digital",
+              "type": "Head"
+            },
+            {
+              "fte": 1,
+              "status": "Approved",
+              "endDate": "",
+              "personId": "EMP-005",
+              "hiringState": "Filled",
+              "startDate": "2024-04-01",
+              "managerId": "POS-002",
+              "group": "Stores",
+              "id": "POS-005",
+              "title": "Regional Manager \u2014 North",
+              "type": "Team Leader"
+            },
+            {
+              "fte": 1,
+              "status": "Approved",
+              "endDate": "",
+              "personId": "EMP-006",
+              "hiringState": "Filled",
+              "startDate": "2024-07-01",
+              "managerId": "POS-002",
+              "group": "Stores",
+              "id": "POS-006",
+              "title": "Regional Manager \u2014 South",
+              "type": "Team Leader"
+            },
+            {
+              "fte": 1,
+              "status": "Approved",
+              "endDate": "",
+              "personId": "",
+              "hiringState": "Recruiting",
+              "startDate": "2026-10-01",
+              "managerId": "POS-005",
+              "group": "Stores",
+              "id": "POS-007",
+              "title": "Store Manager \u2014 Lakeside",
+              "type": "Team Leader"
+            },
+            {
+              "fte": 1,
+              "status": "Approved",
+              "endDate": "",
+              "personId": "EMP-008",
+              "hiringState": "Filled",
+              "startDate": "2024-09-01",
+              "managerId": "POS-003",
+              "group": "Merchandising",
+              "id": "POS-008",
+              "title": "Category Manager \u2014 Grocery",
+              "type": "Specialist"
+            },
+            {
+              "fte": 1,
+              "status": "Approved",
+              "endDate": "",
+              "personId": "EMP-009",
+              "hiringState": "Filled",
+              "startDate": "2025-03-01",
+              "managerId": "POS-003",
+              "group": "Merchandising",
+              "id": "POS-009",
+              "title": "Category Manager \u2014 Home",
+              "type": "Specialist"
+            },
+            {
+              "fte": 1,
+              "status": "Approved",
+              "endDate": "2027-08-31",
+              "personId": "EMP-010",
+              "hiringState": "Filled",
+              "startDate": "2026-09-01",
+              "managerId": "POS-003",
+              "group": "Merchandising",
+              "id": "POS-010",
+              "title": "Graduate Buyer",
+              "type": "Graduate"
+            },
+            {
+              "fte": 1,
+              "status": "Approved",
+              "endDate": "",
+              "personId": "EMP-011",
+              "hiringState": "Filled",
+              "startDate": "2024-11-01",
+              "managerId": "POS-004",
+              "group": "E-commerce",
+              "id": "POS-011",
+              "title": "Team Leader \u2014 Website",
+              "type": "Team Leader"
+            },
+            {
+              "fte": 0.6,
+              "status": "Approved",
+              "endDate": "",
+              "personId": "EMP-012",
+              "hiringState": "Filled",
+              "startDate": "2025-05-01",
+              "managerId": "POS-011",
+              "group": "E-commerce",
+              "id": "POS-012",
+              "title": "Digital Experience Designer",
+              "type": "Specialist"
+            },
+            {
+              "fte": 1,
+              "status": "Approved",
+              "endDate": "2026-12-15",
+              "personId": "EMP-013",
+              "hiringState": "Filled",
+              "startDate": "2026-06-01",
+              "managerId": "POS-011",
+              "group": "E-commerce",
+              "id": "POS-013",
+              "title": "Intern \u2014 Digital",
+              "type": "Intern"
+            },
+            {
+              "fte": 1,
+              "status": "Not approved",
+              "endDate": "",
+              "personId": "",
+              "hiringState": "Vacant",
+              "startDate": "2026-08-01",
+              "managerId": "POS-001",
+              "group": "People",
+              "id": "POS-014",
+              "title": "People Partner",
+              "type": "Specialist"
+            }
+          ],
+          "employees": [
+            {
+              "id": "EMP-001",
+              "name": "Jordan Hale"
+            },
+            {
+              "id": "EMP-002",
+              "name": "Riley Brooks"
+            },
+            {
+              "id": "EMP-003",
+              "name": "Sam Okonkwo"
+            },
+            {
+              "id": "EMP-004",
+              "name": "Casey Nguyen"
+            },
+            {
+              "id": "EMP-005",
+              "name": "Avery Patel"
+            },
+            {
+              "id": "EMP-006",
+              "name": "Quinn Morales"
+            },
+            {
+              "id": "EMP-008",
+              "name": "Taylor Singh"
+            },
+            {
+              "id": "EMP-009",
+              "name": "Jamie Cole"
+            },
+            {
+              "id": "EMP-010",
+              "name": "Morgan Ellis"
+            },
+            {
+              "id": "EMP-011",
+              "name": "Drew Fontaine"
+            },
+            {
+              "id": "EMP-012",
+              "name": "Robin Shah"
+            },
+            {
+              "id": "EMP-013",
+              "name": "Sage Bennett"
+            }
+          ]
+        },
+        "positions": [
+          {
+            "fte": 1,
+            "status": "Approved",
+            "endDate": "",
+            "personId": "EMP-001",
+            "hiringState": "Filled",
+            "startDate": "2022-06-01",
+            "managerId": "",
+            "group": "Leadership",
+            "id": "POS-001",
+            "title": "Chief Operating Officer",
+            "type": "Head"
+          },
+          {
+            "fte": 1,
+            "status": "Approved",
+            "endDate": "",
+            "personId": "EMP-002",
+            "hiringState": "Filled",
+            "startDate": "2023-02-01",
+            "managerId": "POS-001",
+            "group": "Stores",
+            "id": "POS-002",
+            "title": "Head of Stores",
+            "type": "Head"
+          },
+          {
+            "fte": 1,
+            "status": "Approved",
+            "endDate": "",
+            "personId": "EMP-003",
+            "hiringState": "Filled",
+            "startDate": "2023-08-15",
+            "managerId": "POS-001",
+            "group": "Merchandising",
+            "id": "POS-003",
+            "title": "Head of Merchandising",
+            "type": "Head"
+          },
+          {
+            "fte": 1,
+            "status": "Approved",
+            "endDate": "",
+            "personId": "EMP-004",
+            "hiringState": "Filled",
+            "startDate": "2024-01-08",
+            "managerId": "POS-001",
+            "group": "E-commerce",
+            "id": "POS-004",
+            "title": "Head of Digital",
+            "type": "Head"
+          },
+          {
+            "fte": 1,
+            "status": "Approved",
+            "endDate": "",
+            "personId": "EMP-005",
+            "hiringState": "Filled",
+            "startDate": "2024-04-01",
+            "managerId": "POS-002",
+            "group": "Stores",
+            "id": "POS-005",
+            "title": "Regional Manager \u2014 North",
+            "type": "Team Leader"
+          },
+          {
+            "fte": 1,
+            "status": "Approved",
+            "endDate": "",
+            "personId": "EMP-006",
+            "hiringState": "Filled",
+            "startDate": "2024-07-01",
+            "managerId": "POS-002",
+            "group": "Stores",
+            "id": "POS-006",
+            "title": "Regional Manager \u2014 South",
+            "type": "Team Leader"
+          },
+          {
+            "fte": 1,
+            "status": "Approved",
+            "endDate": "",
+            "personId": "EMP-015",
+            "hiringState": "Filled",
+            "startDate": "2026-10-01",
+            "managerId": "POS-005",
+            "group": "Stores",
+            "id": "POS-007",
+            "title": "Store Manager \u2014 Lakeside",
+            "type": "Team Leader"
+          },
+          {
+            "fte": 1,
+            "status": "Approved",
+            "endDate": "",
+            "personId": "EMP-008",
+            "hiringState": "Filled",
+            "startDate": "2024-09-01",
+            "managerId": "POS-003",
+            "group": "Merchandising",
+            "id": "POS-008",
+            "title": "Category Manager \u2014 Grocery",
+            "type": "Specialist"
+          },
+          {
+            "fte": 1,
+            "status": "Approved",
+            "endDate": "",
+            "personId": "EMP-009",
+            "hiringState": "Filled",
+            "startDate": "2025-03-01",
+            "managerId": "POS-003",
+            "group": "Merchandising",
+            "id": "POS-009",
+            "title": "Category Manager \u2014 Home",
+            "type": "Specialist"
+          },
+          {
+            "fte": 1,
+            "status": "Approved",
+            "endDate": "2027-08-31",
+            "personId": "EMP-010",
+            "hiringState": "Filled",
+            "startDate": "2026-09-01",
+            "managerId": "POS-003",
+            "group": "Merchandising",
+            "id": "POS-010",
+            "title": "Graduate Buyer",
+            "type": "Graduate"
+          },
+          {
+            "fte": 1,
+            "status": "Approved",
+            "endDate": "",
+            "personId": "EMP-011",
+            "hiringState": "Filled",
+            "startDate": "2024-11-01",
+            "managerId": "POS-004",
+            "group": "E-commerce",
+            "id": "POS-011",
+            "title": "Team Leader \u2014 Website",
+            "type": "Team Leader"
+          },
+          {
+            "fte": 1,
+            "status": "Approved",
+            "endDate": "",
+            "personId": "EMP-012",
+            "hiringState": "Filled",
+            "startDate": "2025-05-01",
+            "managerId": "POS-011",
+            "group": "E-commerce",
+            "id": "POS-012",
+            "title": "Digital Experience Designer",
+            "type": "Specialist"
+          },
+          {
+            "fte": 1,
+            "status": "Approved",
+            "endDate": "2026-12-15",
+            "personId": "EMP-013",
+            "hiringState": "Filled",
+            "startDate": "2026-06-01",
+            "managerId": "POS-011",
+            "group": "E-commerce",
+            "id": "POS-013",
+            "title": "Intern \u2014 Digital",
+            "type": "Intern"
+          },
+          {
+            "fte": 1,
+            "status": "Approved",
+            "endDate": "",
+            "personId": "EMP-014",
+            "hiringState": "Filled",
+            "startDate": "2026-08-01",
+            "managerId": "POS-001",
+            "group": "People",
+            "id": "POS-014",
+            "title": "People Partner",
+            "type": "Specialist"
+          },
+          {
+            "fte": 1,
+            "status": "Approved",
+            "endDate": "",
+            "personId": "",
+            "hiringState": "Vacant",
+            "startDate": "2027-02-01",
+            "managerId": "POS-006",
+            "group": "Stores",
+            "id": "POS-015",
+            "title": "Store Manager \u2014 Harbourfront",
+            "type": "Team Leader"
+          }
+        ],
+        "employees": [
+          {
+            "id": "EMP-001",
+            "name": "Jordan Hale"
+          },
+          {
+            "id": "EMP-002",
+            "name": "Riley Brooks"
+          },
+          {
+            "id": "EMP-003",
+            "name": "Sam Okonkwo"
+          },
+          {
+            "id": "EMP-004",
+            "name": "Casey Nguyen"
+          },
+          {
+            "id": "EMP-005",
+            "name": "Avery Patel"
+          },
+          {
+            "id": "EMP-006",
+            "name": "Quinn Morales"
+          },
+          {
+            "id": "EMP-008",
+            "name": "Taylor Singh"
+          },
+          {
+            "id": "EMP-009",
+            "name": "Jamie Cole"
+          },
+          {
+            "id": "EMP-010",
+            "name": "Morgan Ellis"
+          },
+          {
+            "id": "EMP-011",
+            "name": "Drew Fontaine"
+          },
+          {
+            "id": "EMP-012",
+            "name": "Robin Shah"
+          },
+          {
+            "id": "EMP-013",
+            "name": "Sage Bennett"
+          },
+          {
+            "id": "EMP-014",
+            "name": "Chris Adeyemi"
+          },
+          {
+            "id": "EMP-015",
+            "name": "Nina Volkova"
+          }
+        ]
+      }
+    ]
+  },
+  "branding": {
+    "companyName": "Northstar Commerce",
+    "chartTitle": "Retail operations",
+    "logo": {
+      "data": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAKAAAAAwCAYAAACWqXFuAAABB0lEQVR42u3dQQrCMBBA0azEg3gA7+6lxDOISkGlCxdqw2SSvMLfFhqfpWmjLeW57Y6HuxRVWW8GRM0QGgg1RWgQBKAAlAAUgNLQAC+nvYFXDMAF27f5MAAEUAAKQAAFoAAEUP0C/AUfhAA2x5cN4e16fmd/HQHcgi8TQgA7BFgDXxaEACYGWBNaVpgADgpwOUAAAQwHuD7AVwACGALwE75/EUZdn279osy6PwABHBtgTXyRCIFxBnQGBHBegCYNZsFmwQC6DwiMJyEAAuhZMDBWw1gNA6D1gLIiGj4A/SZEAApAAAWgAARQAApA/w+owQBKAApACUABqMkBel+cmuLzxky1xPcAJLok6g8L6dIAAAAASUVORK5CYII=",
+      "name": "northstar-commerce.png",
+      "width": 160,
+      "height": 48,
+      "surface": "dark"
+    },
+    "darkLogo": null,
+    "includeExports": true,
+    "footer": "Internal workforce plan"
+  },
+  "theme": "light",
+  "palette": "emerald",
+  "view": {
+    "roles": [
+      "Head",
+      "Team Leader",
+      "Engineer",
+      "Specialist",
+      "Graduate",
+      "Intern"
+    ],
+    "statuses": [
+      "Approved",
+      "Not approved"
+    ],
+    "hiring": [
+      "Filled",
+      "Recruiting",
+      "Vacant"
+    ],
+    "maxDepth": 99,
+    "collapsed": [],
+    "search": "",
+    "asOf": "2026-09-13",
+    "dateFilter": false,
+    "view": "chart",
+    "zoom": 1,
+    "showChartChanges": true,
+    "compareBaselineId": "current",
+    "compareTargetId": "scenario-peak-season",
+    "compareKind": "all",
+    "compareSearch": ""
+  }
+}

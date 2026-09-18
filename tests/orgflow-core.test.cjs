@@ -453,6 +453,7 @@ test('validatePlanning mints and preserves workspace identity', () => {
   const fresh = OrgFlow.validatePlanning(OrgFlow.emptyWorkspace('2026-09-16'));
   assert.ok(fresh.workspaceId, 'workspaceId is minted');
   assert.equal(fresh.schema, 2);
+  assert.equal(fresh.version, OrgFlow.DOCUMENT_VERSION);
   assert.equal(fresh.revision, 0);
   const again = OrgFlow.validatePlanning({ ...fresh, workspaceId: 'ws-keep-me', revision: 41, lastCommittedAt: '2026-09-16T10:00:00Z' });
   assert.equal(again.workspaceId, 'ws-keep-me');
@@ -557,6 +558,26 @@ test('validated management collections are not replaced by raw extras', () => {
   assert.equal(rt.scenarios[0].futureNote, 'keep me');
 });
 
+test('version 2 files still load and are rewritten as version 3', () => {
+  const v2 = { ...OrgFlow.emptyWorkspace('2026-09-16'), version: 2 };
+  const rt = OrgFlow.validatePlanning(v2);
+  assert.equal(rt.version, 3);
+  function oldWriter(input) {
+    if (!input || input.version !== 2) throw new Error('Invalid planning workspace (maximum 30 scenarios).');
+  }
+  assert.throws(() => oldWriter(rt), /Invalid planning workspace/, 'old writers refuse version 3 instead of dropping fields');
+});
+
+test('orgflow bundle round-trips workspace plus checkpoints', () => {
+  const planning = OrgFlow.emptyWorkspace('2026-09-16');
+  const workspace = { format: 'orgflow.workspace', version: OrgFlow.DOCUMENT_VERSION, planning, branding: { companyName: 'Harbor', chartTitle: 'Chart', logo: null, darkLogo: null, includeExports: true, footer: '' } };
+  const bundle = OrgFlow.buildBundle({ workspace, checkpoints: [{ id: 'ck-1', at: '2026-09-16T10:00:00Z', note: 'Before import', planning }] });
+  const parsed = OrgFlow.parseWorkspaceOrBundle(bundle);
+  assert.equal(parsed.kind, 'bundle');
+  assert.equal(parsed.checkpoints.length, 1);
+  assert.equal(OrgFlow.parseWorkspaceOrBundle(workspace).kind, 'workspace');
+});
+
 test('redacted share names do not look vacant', () => {
   const planning = shareFixture();
   const ds = OrgFlow.buildShareDataset(planning, { scenarioId: 'current', include: { group: true } });
@@ -566,6 +587,8 @@ test('redacted share names do not look vacant', () => {
   assert.equal(filled.person.name, undefined);
   assert.ok(!JSON.stringify(ds).includes('Dan Dev'));
   assert.equal(OrgFlow.shareDisplayName(filled), 'Assigned');
+  assert.equal(OrgFlow.shareOccupied(filled), true);
+  assert.equal(OrgFlow.shareOccupied(vacant), false);
   assert.equal(OrgFlow.shareDisplayName(vacant), 'Vacant position');
   const Share = require('../js/share-export.js');
   const svg = Share.shareStaticSvg(ds);

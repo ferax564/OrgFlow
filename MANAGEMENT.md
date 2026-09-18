@@ -2,7 +2,7 @@
 
 ## Run and verify
 
-Node **22.16 or newer** is required for the shared host and its SQLite tests. The static planner remains a browser app with no runtime dependency installation. Back up an existing workspace as JSON before upgrading. Version-2 workspace files migrate in memory: missing collections become empty, old position assignments remain snapshots, and new proposals start in Draft. Current builds preserve unknown fields on round-trip and refuse a newer schema instead of dropping it. Opening a new workspace in an older OrgFlow that still treats every file as version 2 can discard fields that older code does not understand.
+Node **22.16 or newer** is required for the shared host and its SQLite tests. The static planner remains a browser app with no runtime dependency installation. Back up an existing workspace as JSON before upgrading. Version-2 workspace files migrate in memory: missing collections become empty, old position assignments remain snapshots, and new proposals start in Draft. Current builds write document version 3. They still read version 2. Older OrgFlow builds that only accept version 2 refuse the file instead of silently dropping fields. Unknown fields on a supported document survive load/save round-trips. Schema numbers above this build are refused (`SCHEMA_TOO_NEW`).
 
 ```sh
 npm run check

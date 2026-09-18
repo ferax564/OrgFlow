@@ -4,6 +4,7 @@ const path = require('path');
 const { pathToFileURL } = require('url');
 const { allowedPath, portableUserData } = require('./serve.cjs');
 const { createWorkspaceStore } = require('./store.cjs');
+const { scanLegacyProfiles } = require('./recover.cjs');
 
 // A standard custom scheme gives the planner a stable origin
 // (orgflow://app) on every launch. localStorage/IndexedDB are keyed by
@@ -26,6 +27,7 @@ if (dataDir) app.setPath('userData', dataDir);
 const appRoot = path.join(__dirname, '..');
 let mainWindow = null;
 let store = null;
+let legacyCopies = [];
 
 if (!app.requestSingleInstanceLock()) {
   app.quit();
@@ -120,6 +122,29 @@ function registerStore() {
   });
   ipcMain.on('workspace:paths', event => {
     event.returnValue = store.paths().join(' · ');
+  });
+  ipcMain.on('workspace:legacy', event => {
+    try {
+      const scan = scanLegacyProfiles(store.paths());
+      legacyCopies = scan.recovered;
+      event.returnValue = {
+        origins: scan.origins.map(o => ({ origin: o.origin, profile: o.profile })),
+        recovered: scan.recovered.map((r, i) => ({
+          index: i,
+          workspaceId: r.workspaceId,
+          revision: r.revision,
+          lastCommittedAt: r.lastCommittedAt,
+          scenarios: r.scenarios
+        }))
+      };
+    } catch (error) {
+      legacyCopies = [];
+      event.returnValue = { origins: [], recovered: [], error: String(error?.message || error) };
+    }
+  });
+  ipcMain.on('workspace:legacyLoad', (event, index) => {
+    const row = legacyCopies[Number(index)];
+    event.returnValue = row ? { planning: row.planning, branding: row.branding } : null;
   });
 }
 

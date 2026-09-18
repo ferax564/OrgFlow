@@ -1,7 +1,7 @@
 {
   "name": "orgflow",
   "private": true,
-  "version": "2.1.1",
+  "version": "2.3.0",
   "description": "Interactive organization-chart and workforce-planning app that runs entirely in the browser.",
   "author": "OrgFlow contributors",
   "license": "MIT",

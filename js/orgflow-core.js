@@ -28,6 +28,11 @@
   const EMPTY_SITE = 'No site';
   const CARD_W = 248;
   const SCHEMA_VERSION = 2;
+  // Document family 3: older writers that only accept version 2 refuse the
+  // file instead of silently dropping fields they do not understand. This
+  // build still reads version 2.
+  const DOCUMENT_VERSION = 3;
+  const SUPPORTED_DOCUMENT_VERSIONS = [2, 3];
   const KNOWN_POSITION_KEYS = new Set([...POSITION_FIELDS, 'fte', 'sortOrder', 'stacked', 'assignmentMode', 'reportingMode', 'externalId']);
   const KNOWN_EMPLOYEE_KEYS = new Set(['id', 'name', 'employeeNumber', 'photo', 'capacityFte', 'skills', 'externalId']);
   const KNOWN_SCENARIO_KEYS = new Set(['id', 'name', 'description', 'createdAt', 'updatedAt', 'baseScenarioId', 'archived', 'baseSnapshot', 'positions', 'employees', 'workflow', 'applicationBaseline', 'appliedBefore', 'appliedAfter', ...Management.COLLECTIONS]);
@@ -350,7 +355,7 @@
     return { positions, employees, ...Management.validateTemporal(data, positions, employees) };
   }
   function validatePlanning(input) {
-    if (!input || input.version !== 2 || !Array.isArray(input.scenarios) || !input.scenarios.length || input.scenarios.length > 30) throw new Error('Invalid planning workspace (maximum 30 scenarios).');
+    if (!input || !SUPPORTED_DOCUMENT_VERSIONS.includes(input.version) || !Array.isArray(input.scenarios) || !input.scenarios.length || input.scenarios.length > 30) throw new Error('Invalid planning workspace (maximum 30 scenarios).');
     const positionLevels = sanitizePositionLevels(input.positionLevels);
     const ids = new Set(), names = new Set();
     const scenarios = input.scenarios.map(s => {
@@ -373,7 +378,7 @@
     const activeScenarioId = scenarios.find(s => s.id === input.activeScenarioId).archived ? 'current' : input.activeScenarioId;
     const todayStamp = new Date().toISOString().slice(0, 10);
     const planning = {
-      version: 2, schema: SCHEMA_VERSION,
+      version: DOCUMENT_VERSION, schema: SCHEMA_VERSION,
       workspaceId: typeof input.workspaceId === 'string' && input.workspaceId.trim() ? input.workspaceId.slice(0, 150) : makeId('ws'),
       revision: Number.isInteger(input.revision) && input.revision >= 0 ? input.revision : 0,
       lastCommittedAt: String(input.lastCommittedAt || '').slice(0, 40),
@@ -394,7 +399,7 @@
   function migrateLegacy(legacy) {
     const roster = validatePeopleData(legacy), stamp = new Date().toISOString();
     return {
-      version: 2, activeScenarioId: 'current', scenarios: [{
+      version: DOCUMENT_VERSION, activeScenarioId: 'current', scenarios: [{
         id: 'current', name: 'Current', description: '', createdAt: stamp, updatedAt: stamp, baseScenarioId: '', baseSnapshot: null,
         employees: roster.map(p => ({ id: p.id, name: p.name, employeeNumber: '', photo: null })),
         positions: roster.map(p => ({ id: p.id, managerId: p.managerId, secondaryManagerId: '', title: p.title.trim() || `${p.type} position`, type: p.type, group: p.group, fte: 1, status: p.status, hiringState: 'Filled', personId: p.id, startDate: p.startDate, endDate: p.endDate, location: '', costCenter: '', jobFamily: '' }))
@@ -572,7 +577,7 @@
   }
   function emptyWorkspace(today, stamp = new Date().toISOString()) {
     return validatePlanning({
-      version: 2,
+      version: DOCUMENT_VERSION,
       activeScenarioId: 'current',
       positionLevels: [],
       namedViews: [],
@@ -1063,12 +1068,44 @@
     return String(a?.lastCommittedAt || '').localeCompare(String(b?.lastCommittedAt || ''));
   }
   // Occupied seats whose name was redacted must not look vacant.
+  function shareOccupied(n) {
+    return Boolean(n?.person) || n?.hiringState === 'Filled';
+  }
   function shareDisplayName(n) {
     if (n?.person?.name) return n.person.name;
     if (n?.hiringState === 'Recruiting') return 'Recruiting';
     if (n?.person) return 'Assigned';
     if (n?.hiringState === 'Filled') return 'Filled';
     return 'Vacant position';
+  }
+
+  const BUNDLE_FORMAT = 'orgflow.bundle';
+  const BUNDLE_VERSION = 1;
+  function buildBundle({ workspace, checkpoints = [] } = {}) {
+    if (!workspace || workspace.format !== 'orgflow.workspace') throw new Error('A workspace envelope is required to build a bundle.');
+    return {
+      format: BUNDLE_FORMAT,
+      version: BUNDLE_VERSION,
+      exportedAt: new Date().toISOString(),
+      workspace,
+      checkpoints: (Array.isArray(checkpoints) ? checkpoints : []).slice(0, 25).map(c => ({
+        id: String(c.id || makeId('ck')).slice(0, 80),
+        at: String(c.at || '').slice(0, 40),
+        note: String(c.note || 'Checkpoint').slice(0, 120),
+        summary: c.summary && typeof c.summary === 'object' ? c.summary : null,
+        planning: c.planning || null,
+        branding: c.branding || null
+      }))
+    };
+  }
+  function parseWorkspaceOrBundle(input) {
+    if (input && input.format === BUNDLE_FORMAT) {
+      if (input.version !== BUNDLE_VERSION) throw new Error('This OrgFlow bundle was written by a newer app. Update OrgFlow before opening it.');
+      if (!input.workspace || input.workspace.format !== 'orgflow.workspace') throw new Error('This bundle does not contain a workspace.');
+      return { kind: 'bundle', workspace: input.workspace, checkpoints: Array.isArray(input.checkpoints) ? input.checkpoints : [], exportedAt: input.exportedAt || '' };
+    }
+    if (input && input.format === 'orgflow.workspace') return { kind: 'workspace', workspace: input, checkpoints: [], exportedAt: input.exportedAt || '' };
+    throw new Error('This is not a supported OrgFlow workspace or bundle. Use Import CSV for spreadsheets.');
   }
 
   return {
@@ -1083,7 +1120,8 @@
     cardMetrics, subtreePeopleCount, reorderSiblings, siblingIndex, applyCardSizes, layoutOrgChart,
     filterLabel, chipValues, spanOfControl, pathToRoot, bulkPatchPositions, placeSibling,
     tileChartPages, sanitizeViewState, sanitizeNamedViews,
-    SCHEMA_VERSION, SHARE_FIELD_OPTIONS, buildShareDataset, subtreePositionIds, shareDisplayName,
+    SCHEMA_VERSION, DOCUMENT_VERSION, SUPPORTED_DOCUMENT_VERSIONS, SHARE_FIELD_OPTIONS, buildShareDataset, subtreePositionIds,
+    shareOccupied, shareDisplayName, BUNDLE_FORMAT, BUNDLE_VERSION, buildBundle, parseWorkspaceOrBundle,
     touchWorkspace, workspaceStamp, compareWorkspaceStamps, jsonExtras
   };
 });

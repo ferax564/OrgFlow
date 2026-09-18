@@ -69,6 +69,7 @@
         <div class="sep"></div>
         <div class="menu-label">Workspace</div>
         <button data-export="workspace">Workspace backup (JSON)</button>
+        <button data-export="bundle">OrgFlow bundle (.orgflow)</button>
         <button data-export="save">Save workspace</button>
         <button data-export="saveAs">Save workspace as…</button>
         <button data-export="restore">Restore workspace…</button>
@@ -142,7 +143,7 @@
       <button class="btn ghost" id="saveWorkspaceAsBtn">Save workspace as…</button>
       <button class="btn ghost" id="restoreBtn">Restore workspace</button>
       <button class="btn ghost" id="historyBtn">Recovery &amp; backups</button>
-      <input id="restoreInput" type="file" accept=".json,application/json" hidden />
+      <input id="restoreInput" type="file" accept=".json,.orgflow,application/json" hidden />
       <p id="saveStatus" class="save-status" role="status" aria-live="polite">Saved in this browser</p><button class="btn ghost" id="retrySave" hidden>Retry file save</button><button class="btn ghost" id="unlinkFile" hidden>Unlink saved file</button>
       <label class="check autosave-check"><input type="checkbox" id="autoSaveFile" /> Keep the saved file up to date</label>
       <button class="btn ghost hidden" id="reconnectFile">Reconnect saved file</button>
@@ -365,6 +366,7 @@
   <div class="modal-body">
     <div class="recovery-meta" id="recoveryWorkspace"></div>
     <div id="recoveryPending" class="hidden"></div>
+    <div id="recoveryLegacy" class="hidden"></div>
     <div class="form-divider">Checkpoints</div>
     <p class="hint" style="margin-top:0">Full snapshots taken automatically before restores, imports and sample loads — including photos.</p>
     <div class="planning-table-wrap"><table class="planning-table"><thead><tr><th>When</th><th>Checkpoint</th><th><span class="hidden">Actions</span></th></tr></thead><tbody id="checkpointRows"></tbody></table></div>

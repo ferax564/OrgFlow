@@ -34,7 +34,7 @@ function cleanBranding(input) {
 
 function validateDocument(input, rawBytes = 0) {
   if (rawBytes > MAX_BYTES) throw new Error('Workspace file is too large (12 MB maximum).');
-  if (!input || input.format !== 'orgflow.workspace' || ![1, 2].includes(input.version)) {
+  if (!input || input.format !== 'orgflow.workspace' || ![1, 2, 3].includes(input.version)) {
     throw new Error('This is not a supported OrgFlow workspace backup.');
   }
   const planning = OrgFlow.validatePlanning(input.version === 1 ? OrgFlow.migrateLegacy(input.people) : input.planning);
@@ -42,7 +42,7 @@ function validateDocument(input, rawBytes = 0) {
   const palette = PALETTES.includes(input.palette) ? input.palette : (input.palette === 'audi' ? 'crimson' : 'indigo');
   return {
     format: 'orgflow.workspace',
-    version: 2,
+    version: OrgFlow.DOCUMENT_VERSION,
     exportedAt: typeof input.exportedAt === 'string' ? input.exportedAt.slice(0, 40) : new Date().toISOString(),
     planning,
     branding,
@@ -55,7 +55,7 @@ function validateDocument(input, rawBytes = 0) {
 function emptyDocument(today = new Date().toISOString().slice(0, 10)) {
   return {
     format: 'orgflow.workspace',
-    version: 2,
+    version: OrgFlow.DOCUMENT_VERSION,
     exportedAt: new Date().toISOString(),
     planning: OrgFlow.emptyWorkspace(today),
     branding: {

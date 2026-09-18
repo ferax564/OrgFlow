@@ -9,7 +9,7 @@
  */
 'use strict';
 
-const { mcpTools } = require('./lib/app');
+const { mcpTools, APP_VERSION, MCP_PROTOCOL } = require('./lib/app');
 
 const base = (process.env.ORGFLOW_API_URL || 'http://127.0.0.1:8787').replace(/\/$/, '');
 const token = process.env.ORGFLOW_API_TOKEN || '';
@@ -30,14 +30,23 @@ const TOOL_ROUTES = {
   span_of_control: args => '/api/org/span/' + encodeURIComponent(args.positionId) + (args.scenario ? '?scenario=' + encodeURIComponent(args.scenario) : ''),
   dotted_lines: args => '/api/org/dotted-lines' + (args.scenario ? '?scenario=' + encodeURIComponent(args.scenario) : ''),
   list_vacancies: args => '/api/org/vacancies' + (args.scenario ? '?scenario=' + encodeURIComponent(args.scenario) : ''),
-  diff_scenarios: args => '/api/org/diff?from=' + encodeURIComponent(args.from || 'current') + '&to=' + encodeURIComponent(args.to || '')
+  diff_scenarios: args => '/api/org/diff?from=' + encodeURIComponent(args.from || 'current') + '&to=' + encodeURIComponent(args.to || ''),
+  get_workspace_status: () => '/api/org/status',
+  get_changes_since: args => '/api/org/changes?sinceVersion=' + encodeURIComponent(args.sinceVersion) + (args.scenario ? '&scenario=' + encodeURIComponent(args.scenario) : ''),
+  explain_capacity_gap: args => '/api/org/capacity-gap?' + new URLSearchParams(Object.entries(args).filter(([, v]) => v != null))
+};
+const POST_TOOLS = {
+  preview_proposal: '/api/org/preview-proposal',
+  validate_proposal: '/api/org/validate-proposal',
+  create_share_snapshot: '/api/org/share-snapshot',
+  propose_changes: '/api/proposals'
 };
 
 async function handle(message) {
   const id = message.id ?? null;
   const method = message.method;
   if (method === 'initialize') {
-    return { jsonrpc: '2.0', id, result: { protocolVersion: '2025-11-25', capabilities: { tools: {} }, serverInfo: { name: 'orgflow', version: '2.1.1' } } };
+    return { jsonrpc: '2.0', id, result: { protocolVersion: MCP_PROTOCOL, capabilities: { tools: {} }, serverInfo: { name: 'orgflow', version: APP_VERSION } } };
   }
   if (method === 'notifications/initialized') return null;
   if (method === 'tools/list') return { jsonrpc: '2.0', id, result: { tools: mcpTools({allowProposals}) } };
@@ -45,9 +54,10 @@ async function handle(message) {
     const name = message.params?.name;
     const args = message.params?.arguments || {};
     const route = TOOL_ROUTES[name];
-    if (!route && !(allowProposals && name==='propose_changes')) return { jsonrpc: '2.0', id, error: { code: -32601, message: 'Unknown tool' } };
+    const post = POST_TOOLS[name];
+    if (!route && !(post && (name !== 'propose_changes' || allowProposals))) return { jsonrpc: '2.0', id, error: { code: -32601, message: 'Unknown tool' } };
     try {
-      const result = name==='propose_changes'?await api('/api/proposals',args):await api(route(args));
+      const result = post ? await api(post, args) : await api(route(args));
       return { jsonrpc: '2.0', id, result: { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] } };
     } catch (err) {
       return { jsonrpc: '2.0', id, error: { code: -32000, message: err.message } };

@@ -90,7 +90,7 @@
     for (const c of lay.connectors) svg += `<path d="${c.d}" fill="none" stroke="#b9c2cf" stroke-width="1.5" ${c.kind === 'dotted' ? 'stroke-dasharray="5 4"' : ''}/>`;
     for (const n of lay.all) {
       const x = n._x + 20, y = n._y + 20, m = n._lines;
-      const vacant = !n.person?.name;
+      const vacant = !OF.shareOccupied(n);
       svg += `<g transform="translate(${x},${y})"><rect width="${n._cardW}" height="${n._cardH}" rx="12" fill="#fff" stroke="#dbe2ea" ${vacant ? 'stroke-dasharray="5 3"' : ''}/>`;
       let ty = 20;
       m.nameLines.forEach((l, i) => { svg += `<text x="12" y="${ty + i * 15}" font-size="12.5" font-weight="800" fill="#0f172a">${esc(l)}</text>`; });

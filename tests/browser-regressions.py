@@ -258,6 +258,23 @@ class BrowserTests(unittest.TestCase):
         viewer.locator('#of-collapse-all').click();viewer.locator('#of-search').fill('Engineer');self.assertTrue(viewer.locator('#of-hits').inner_text())
         self.assertEqual(errors,[]);viewer.screenshot(path=str(OUT/'interactive-offline.png'));viewer.close()
 
+    def test_24_bundle_preserves_checkpoint_view_and_blocks_failed_import(self):
+        if ARGS.dom:self.skipTest('Requires real IndexedDB')
+        result=self.ev("""async()=>{
+          await OrgFlowStore.flush();
+          const before=workspace.workspaceId;
+          const bundle=buildBundle({workspace:workspacePayload(),checkpoints:[{planning:workspace,branding,view:{...captureView(),zoom:0.75},theme:'dark',palette:'ocean',note:'Imported view'}]});
+          const accepted=await restoreWorkspace(new File([JSON.stringify(bundle)],'recovery.orgflow'));
+          await OrgFlowStore.flush();
+          const rows=await OrgFlowStore.listCheckpoints();
+          const checkpoint=await OrgFlowStore.readCheckpoint(rows.find(c=>c.note==='Imported view').id);
+          OrgFlowStore.addCheckpoint=async()=>{throw new Error('disk full');};
+          const rejected=await restoreWorkspace(new File([JSON.stringify(bundle)],'failure.orgflow'));
+          return {accepted,rejected,before,after:workspace.workspaceId,view:checkpoint.view,theme:checkpoint.theme,palette:checkpoint.palette};
+        }""")
+        self.assertTrue(result['accepted']);self.assertFalse(result['rejected']);self.assertEqual(result['before'],result['after'])
+        self.assertEqual(result['view']['zoom'],0.75);self.assertEqual(result['theme'],'dark');self.assertEqual(result['palette'],'ocean')
+
 if __name__=='__main__':
     suite=unittest.defaultTestLoader.loadTestsFromTestCase(BrowserTests)
     result=unittest.TextTestRunner(verbosity=2).run(suite)

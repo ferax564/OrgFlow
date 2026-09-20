@@ -1096,7 +1096,8 @@
         note: String(c.note || 'Checkpoint').slice(0, 120),
         summary: c.summary && typeof c.summary === 'object' ? c.summary : null,
         planning: c.planning || null,
-        branding: c.branding || null
+        branding: c.branding || null,
+        view: c.view || null, theme: c.theme || '', palette: c.palette || ''
       }))
     };
   }
@@ -1104,7 +1105,7 @@
     if (input && input.format === BUNDLE_FORMAT) {
       if (input.version !== BUNDLE_VERSION) throw new Error('This OrgFlow bundle was written by a newer app. Update OrgFlow before opening it.');
       if (!input.workspace || input.workspace.format !== 'orgflow.workspace') throw new Error('This bundle does not contain a workspace.');
-      return { kind: 'bundle', workspace: input.workspace, checkpoints: Array.isArray(input.checkpoints) ? input.checkpoints : [], exportedAt: input.exportedAt || '' };
+      return { kind: 'bundle', workspace: input.workspace, checkpoints: Array.isArray(input.checkpoints) ? input.checkpoints.slice(0, 24) : [], exportedAt: input.exportedAt || '' };
     }
     if (input && input.format === 'orgflow.workspace') return { kind: 'workspace', workspace: input, checkpoints: [], exportedAt: input.exportedAt || '' };
     throw new Error('This is not a supported OrgFlow workspace or bundle. Use Import CSV for spreadsheets.');

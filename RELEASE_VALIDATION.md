@@ -3,7 +3,7 @@
 ## Local verification
 
 - 112 Node tests passed: domain model, validation/migration, staffing/budgets/capacity, decision workflow, permissions, REST/MCP, native documents, updater state, journal recovery, consistent live backup/restore, scoped tokens and OIDC.
-- 27 real-navigation browser regressions run per engine. Chromium and Firefox passed; final WebKit passed 26 with one capability-based writable-file skip. Firefox/WebKit use downloaded backups when user-picked writable handles are unavailable.
+- 28 real-navigation browser regressions are included. Chromium passed all 28 locally; Firefox and WebKit each passed the preceding 27-test suite with one capability-based writable-file skip. The final CI matrix also runs the added bundle-checkpoint recovery test. Firefox/WebKit use downloaded backups when user-picked writable handles are unavailable.
 - Browser coverage includes editing, scenario comparison/apply, people and assignments, imports, undo/redo, recovery, canceled/invalid opens, save failures, account isolation, concurrent tabs, shared-server conflicts, mobile dialogs, keyboard focus, large-chart rendering and actual PNG/PDF/CSV/HTML exports.
 - Exported interactive HTML was opened offline with expansion/search/zoom, hostile text and excluded-field checks. Tests inspect exported bytes, not just the export button.
 - Real Electron lifecycle regression passed: native open/save bridge, recent files, external modification refusal, full restart, moved portable location, complete planning/branding recovery and development updater status. Dialog return values are automated; operating-system permission prompts are not certified by this test.

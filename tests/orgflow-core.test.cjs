@@ -571,9 +571,10 @@ test('version 2 files still load and are rewritten as version 3', () => {
 test('orgflow bundle round-trips workspace plus checkpoints', () => {
   const planning = OrgFlow.emptyWorkspace('2026-09-16');
   const workspace = { format: 'orgflow.workspace', version: OrgFlow.DOCUMENT_VERSION, planning, branding: { companyName: 'Harbor', chartTitle: 'Chart', logo: null, darkLogo: null, includeExports: true, footer: '' } };
-  const bundle = OrgFlow.buildBundle({ workspace, checkpoints: [{ id: 'ck-1', at: '2026-09-16T10:00:00Z', note: 'Before import', planning }] });
+  const bundle = OrgFlow.buildBundle({ workspace, checkpoints: [{ id: 'ck-1', at: '2026-09-16T10:00:00Z', note: 'Before import', planning, view:{zoom:0.75},theme:'dark',palette:'indigo' }] });
   const parsed = OrgFlow.parseWorkspaceOrBundle(bundle);
   assert.equal(parsed.kind, 'bundle');
+  assert.deepEqual(parsed.checkpoints[0].view,{zoom:0.75});assert.equal(parsed.checkpoints[0].theme,'dark');assert.equal(parsed.checkpoints[0].palette,'indigo');
   assert.equal(parsed.checkpoints.length, 1);
   assert.equal(OrgFlow.parseWorkspaceOrBundle(workspace).kind, 'workspace');
 });

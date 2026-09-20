@@ -10,7 +10,7 @@ const object = (properties,required=[]) => ({type:'object',properties,required,a
 function spec(version) {
   const schemas={
     Error:object({error:str,code:str,currentVersion:integer}),
-    Position:{type:'object',required:['id','title'],properties:{id:str,title:str,managerId:str,secondaryManagerId:str,personId:str,fte:{type:'number',minimum:0},hiringState:{enum:['Filled','Vacant','Recruiting','Frozen','Planned']},startDate:str,endDate:str},additionalProperties:true},
+    Position:{type:'object',required:['id','title'],properties:{id:str,title:str,managerId:str,secondaryManagerId:str,personId:str,fte:{type:'number',minimum:0},hiringState:{enum:['Filled','Vacant','Recruiting']},startDate:str,endDate:str},additionalProperties:true},
     Person:{type:'object',required:['id','name'],properties:{id:str,name:str,employeeNumber:str,capacityFte:{type:'number',minimum:0},skills:array(str)},additionalProperties:true},
     Scenario:{type:'object',required:['id','name','positions','employees'],properties:{id:str,name:str,positions:array(ref('Position')),employees:array(ref('Person')),workflow:obj},additionalProperties:true},
     Planning:{type:'object',required:['version','scenarios','activeScenarioId'],properties:{version:{enum:[2,3]},schema:integer,workspaceId:str,revision:{type:'integer',minimum:0},lastCommittedAt:{type:'string',format:'date-time'},activeScenarioId:str,scenarios:array(ref('Scenario'))},additionalProperties:true},

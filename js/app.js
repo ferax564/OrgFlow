@@ -1679,17 +1679,19 @@ async function restoreWorkspace(file,candidateHandle=null){
     const next=await validateWorkspace(raw),count=next.planning.scenarios.length;
     next.planning=touchWorkspace({...next.planning,revision:next.planning.workspaceId===workspace?.workspaceId?Math.max(next.planning.revision||0,workspace.revision||0):next.planning.revision});
     if(!confirm(`Open “${next.branding.companyName||'OrgFlow'} / ${next.branding.chartTitle}” with ${count} scenario(s)?\n\nThis replaces ALL current scenarios, people, logos, palette and view. The current workspace is checkpointed first and can be recovered from Recovery & backups. Older v1 backups become a Current scenario.`))return;
+    // Import recovery entries before replacing the active document. Keep the
+    // displaced workspace as the newest checkpoint even at the retention cap.
+    for(const ck of next.checkpoints||[]){
+      if(!ck?.planning)continue;
+      const checked=await validateWorkspace({format:'orgflow.workspace',version:3,...ck});
+      await OrgFlowStore.addCheckpoint(checked.planning,ck.note||'Imported checkpoint',checked);
+    }
     await checkpointWorkspace('Before restoring a workspace backup');
     workspaceIOBusy=true;clearTimeout(savedViewTimer);filePersistence.cancelPending();await filePersistence.idle();
     await OrgFlowStore.writeDocument({...workspacePayload(),...next,planning:next.planning});
     const entries={[BRANDING_KEY]:JSON.stringify(next.branding),'orgflow.theme':next.theme,'orgflow.palette':next.palette,'orgflow.planning.view.v2':JSON.stringify(next.view),[PLANNING_KEY]:JSON.stringify(next.planning)};
     for(const [key,value] of Object.entries(entries))safePreference(key,value);
     workspace=next.planning;lastSavedPlanningText=JSON.stringify(workspace);branding=next.branding;modelLoadError='';$('#loadError').classList.add('hidden');undoStack=[];redoStack=[];updateUndoButtons();syncProjection();hidePositionEditor();setPalette(next.palette,false);setTheme(next.theme,false);restoreView(next.view);applyBranding();writeDurable(workspace,lastSavedPlanningText);
-    if(next.kind==='bundle'&&next.checkpoints?.length){
-      for(const ck of next.checkpoints){
-        if(ck?.planning)await OrgFlowStore.addCheckpoint(ck.planning,ck.note||'Imported checkpoint',{branding:ck.branding||null});
-      }
-    }
     render();centerChart();toast(next.kind==='bundle'?`Restored bundle · ${count} scenario(s) · ${next.checkpoints.length} checkpoint(s)`:`Restored ${count} scenario(s)${activeDateNote()}`);filePersistence.changed();workspaceFileHandle=candidateHandle;fileHandleNeedsReconnect=false;await rememberFileHandle(candidateHandle);await refreshRecentFiles();filePersistence.setTarget(candidateHandle,{saved:!!candidateHandle});syncAutosaveUi();afterEnterprisePersist();return true;
   }catch(error){alert(`Workspace not restored.\n\n${error.message||'The file could not be read.'}`);return false;}finally{workspaceIOBusy=false;renderSaveStatus();}
 }
@@ -1747,8 +1749,8 @@ async function loadStarterTemplate(id,{skipConfirm=false}={}){
   if(!t){toast('Template was not found.');return;}
   if(modelLoadError){toast('Restore your workspace before loading a template.');return;}
   if(!skipConfirm&&!confirm(`Replace the current workspace with ${t.branding.companyName}?\n\nThis overwrites scenarios, people and branding in this browser. The current workspace is checkpointed first.`))return;
-  await checkpointWorkspace('Before loading a template');
   try{
+    await checkpointWorkspace('Before loading a template');
     replaceWorkspace(t.planning,{brandingNext:t.branding,palette:t.palette||'indigo',theme:'light',message:`Loaded ${t.branding.companyName}`});
     toast(`Loaded ${t.branding.companyName}${activeDateNote()}`);
   }catch(error){toast(error.message||'Could not load the template.');}
@@ -2005,7 +2007,7 @@ $('#historyRows').onclick=e=>{const b=e.target.closest('[data-history]');if(b)re
 $('#checkpointRows').onclick=e=>{
   const restore=e.target.closest('[data-checkpoint-restore]');if(restore){restoreCheckpoint(restore.dataset.checkpointRestore,false);return;}
   const copy=e.target.closest('[data-checkpoint-copy]');if(copy){restoreCheckpoint(copy.dataset.checkpointCopy,true);return;}
-  const del=e.target.closest('[data-checkpoint-del]');if(del){OrgFlowStore.deleteCheckpoint(del.dataset.checkpointDel).then(renderRecovery);}
+  const del=e.target.closest('[data-checkpoint-del]');if(del){OrgFlowStore.deleteCheckpoint(del.dataset.checkpointDel).then(renderRecovery).catch(error=>toast(error.message));}
 };
 $('#recoveryLegacy')?.addEventListener('click',e=>{
   const b=e.target.closest('[data-legacy-restore]');if(!b)return;

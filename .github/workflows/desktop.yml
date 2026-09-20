@@ -78,6 +78,7 @@ jobs:
             test -n "$WIN_SIGN"
           fi
       - name: Build app and update metadata
+        shell: bash
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'true'
           CSC_LINK: ${{ secrets.CSC_LINK }}
@@ -87,7 +88,16 @@ jobs:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        run: npm run ${{ matrix.script }}
+        run: |
+          # Missing Actions secrets expand to empty strings. electron-builder
+          # treats an empty CSC_LINK as a certificate path, not as unsigned.
+          for signing_var in CSC_LINK CSC_KEY_PASSWORD WIN_CSC_LINK WIN_CSC_KEY_PASSWORD APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID; do
+            if [ -z "${!signing_var}" ]; then unset "$signing_var"; fi
+          done
+          if [ "${{ runner.os }}" = macOS ] && [ -z "${CSC_LINK:-}" ]; then
+            export CSC_IDENTITY_AUTO_DISCOVERY=false
+          fi
+          npm run ${{ matrix.script }}
       - name: Upload binary
         uses: actions/upload-artifact@v4
         with:

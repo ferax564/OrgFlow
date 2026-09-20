@@ -1,4 +1,4 @@
-# Release validation — 2.4.0-rc.1
+# Release validation — 2.4.0-rc.2
 
 ## Local verification
 

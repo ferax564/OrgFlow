@@ -1,6 +1,6 @@
 # Changelog
 
-## 2.4.0-rc.1
+## 2.4.0-rc.2
 
 Unsigned release candidate for storage, document management and security hardening. Production distribution still requires platform signing and a real update drill.
 

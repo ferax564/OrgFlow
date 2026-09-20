@@ -103,10 +103,11 @@
     return svg + '</svg>';
   }
 
-  function buildShareHtml(dataset, { coreSrc = '', viewerSrc = '', staticSvg = '' } = {}) {
+  function buildShareHtml(dataset, { managementSrc = '', coreSrc = '', viewerSrc = '', staticSvg = '' } = {}) {
     const esc = OF.esc;
     const title = `${dataset.companyName || 'OrgFlow'} · ${dataset.scenario?.name || 'chart'}`;
     const safeJson = JSON.stringify(dataset).replace(/</g, '\\u003c');
+    const safeManagement = String(managementSrc).replace(/<\//g, '<\\/');
     const safeCore = String(coreSrc).replace(/<\//g, '<\\/');
     const safeViewer = String(viewerSrc).replace(/<\//g, '<\\/');
     return `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><title>${esc(title)} — interactive chart</title><style>${SHARE_CSS}</style></head><body>
@@ -123,6 +124,7 @@
 <div id="of-wrap"><div id="of-stage"><div id="of-static"><noscript><div class="of-noscript">JavaScript is off — this is the static chart. With scripts enabled the same file zooms, pans and expands teams.</div></noscript>${staticSvg}</div></div></div>
 <aside id="of-details" aria-label="Position details"></aside>
 <script type="application/json" id="orgflow-share">${safeJson}</script>
+<script>${safeManagement}</script>
 <script>${safeCore}</script>
 <script>${safeViewer}</script>
 </body></html>`;

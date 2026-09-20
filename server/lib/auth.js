@@ -31,7 +31,7 @@ function parseCookies(header) {
   for (const part of String(header).split(';')) {
     const i = part.indexOf('=');
     if (i === -1) continue;
-    out[part.slice(0, i).trim()] = decodeURIComponent(part.slice(i + 1).trim());
+    try { out[part.slice(0, i).trim()] = decodeURIComponent(part.slice(i + 1).trim()); } catch { /* malformed cookie is ignored */ }
   }
   return out;
 }
@@ -60,38 +60,29 @@ function pkce() {
   return { verifier, challenge, state, nonce };
 }
 
-async function discoverIssuer(issuer) {
-  const url = String(issuer).replace(/\/$/, '') + '/.well-known/openid-configuration';
-  const res = await fetch(url, { headers: { accept: 'application/json' } });
-  if (!res.ok) throw new Error('Could not load OpenID configuration from Keycloak.');
-  return res.json();
+async function discoverIssuer(issuer, clientId, clientSecret, allowHttp = false) {
+  const oidc = await import('openid-client');
+  const config = await oidc.discovery(new URL(issuer), clientId,
+    clientSecret ? { client_secret: clientSecret } : undefined,
+    clientSecret ? oidc.ClientSecretPost(clientSecret) : oidc.None(),
+    { timeout: 10, execute: [...(allowHttp ? [oidc.allowInsecureRequests] : []), oidc.enableNonRepudiationChecks] });
+  return config;
 }
-
-async function exchangeCode(cfg, { code, verifier, redirectUri, clientId, clientSecret }) {
-  const body = new URLSearchParams({
-    grant_type: 'authorization_code',
-    code,
-    redirect_uri: redirectUri,
-    client_id: clientId,
-    code_verifier: verifier
-  });
-  if (clientSecret) body.set('client_secret', clientSecret);
-  const res = await fetch(cfg.token_endpoint, {
-    method: 'POST',
-    headers: { 'content-type': 'application/x-www-form-urlencoded', accept: 'application/json' },
-    body
-  });
-  const json = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(json.error_description || json.error || 'Token exchange failed.');
-  return json;
+async function authorizationUrl(config, params) {
+  const oidc = await import('openid-client');
+  return oidc.buildAuthorizationUrl(config, params);
 }
-
-async function fetchUserInfo(cfg, accessToken) {
-  const res = await fetch(cfg.userinfo_endpoint, {
-    headers: { authorization: 'Bearer ' + accessToken, accept: 'application/json' }
+async function validateCallback(config, url, saved) {
+  const oidc = await import('openid-client');
+  const tokens = await oidc.authorizationCodeGrant(config, url, {
+    pkceCodeVerifier: saved.code_verifier, expectedState: saved.state,
+    expectedNonce: saved.nonce, idTokenExpected: true
   });
-  if (!res.ok) throw new Error('Could not read the signed-in profile from Keycloak.');
-  return res.json();
+  const claims = tokens.claims();
+  if (!claims?.sub) throw new Error('Identity token has no subject.');
+  const profile = await oidc.fetchUserInfo(config, tokens.access_token, claims.sub);
+  if (profile.email_verified !== true || !profile.email) throw new Error('A verified email address is required.');
+  return profile;
 }
 
 function publicSession(user, membership, tenant) {
@@ -116,7 +107,7 @@ module.exports = {
   clearCookieHeader,
   pkce,
   discoverIssuer,
-  exchangeCode,
-  fetchUserInfo,
+  authorizationUrl,
+  validateCallback,
   publicSession
 };

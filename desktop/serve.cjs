@@ -32,7 +32,8 @@ function posixRel(root, file) {
 }
 
 function allowedPath(root, urlPath) {
-  const decoded = decodeURIComponent((urlPath || '/').split('?')[0]);
+  let decoded;
+  try { decoded = decodeURIComponent((urlPath || '/').split('?')[0]); } catch { return null; }
   let rel = decoded.replace(/^\/+/, '');
   if (!rel || rel.endsWith('/')) rel += 'index.html';
   if (rel.includes('\0') || rel.includes('\\')) return null;

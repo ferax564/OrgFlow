@@ -24,8 +24,11 @@ test('proposal API never changes Current and rejects stale or unauthorized write
 test('server enforces review authorization, trusted actors, immutable application and rollback',async t=>{
  const e=await setup(t),editor=await e.login('editor@test.example','editor'),made=await proposal(e,editor);let version=made.version;
  async function act(cookie,action,input={}){const r=await e.request(cookie,`/api/scenarios/${made.scenarioId}/decision`,{action,input,version});if(r.status===200)version=r.version;return r;}
+ assert.equal((await act(editor,'metadata',{reviewers:['not-a-member@test.example']})).status,403);
  assert.equal((await act(editor,'metadata',{owner:'Engineering',rationale:'Capacity',reviewers:['admin@test.example']})).status,200);
  assert.equal((await act(editor,'submit')).status,200);assert.equal((await act(editor,'approve')).status,403);
+ assert.equal((await e.request(e.admin,'/api/reviews')).reviews[0].id,made.scenarioId);
+ assert.equal((await e.request(editor,'/api/reviews')).reviews.length,0);
  const approved=await act(e.admin,'approve');assert.equal(approved.status,200);assert.equal(approved.workspace.planning.scenarios.at(-1).workflow.approvedBy,'admin@test.example');
  const applied=await act(e.admin,'apply');assert.equal(applied.status,200);assert.equal(applied.workspace.planning.scenarios[0].positions[0].title,'Proposed title');
  const repeat=await act(e.admin,'apply');assert.equal(repeat.version,applied.version);

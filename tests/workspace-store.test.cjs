@@ -59,7 +59,31 @@ test('save rejects non-JSON and reports directories written', () => {
   const dir = tmpdir();
   const store = createWorkspaceStore([dir]);
   assert.throws(() => store.save('not json'), /valid JSON/);
+  assert.throws(() => store.save('{}'), /valid JSON/);
   assert.equal(store.save(doc(1)).wrote, 1);
   assert.equal(store.load().dirs.length, 1);
   fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('a newly opened workspace beats an older workspace with a higher revision', t => {
+  const a = tmpdir(), b = tmpdir();
+  t.after(() => { fs.rmSync(a, { recursive: true, force: true }); fs.rmSync(b, { recursive: true, force: true }); });
+  fs.writeFileSync(path.join(a, 'workspace.json'), doc(900, '2026-09-16T10:00:00Z'));
+  fs.writeFileSync(path.join(b, 'workspace.json'), JSON.stringify({ ...JSON.parse(doc(1, '2026-09-17T10:00:00Z')), workspaceId: 'new-chart' }));
+  assert.equal(JSON.parse(createWorkspaceStore([a, b]).load().text).workspaceId, 'new-chart');
+});
+
+test('backup rotation retains newly opened low-revision documents', t => {
+  const dir = tmpdir();
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const store = createWorkspaceStore([dir]);
+  for (let i = 0; i < 12; i++) {
+    const before = new Set(fs.existsSync(path.join(dir, 'workspace-backups')) ? fs.readdirSync(path.join(dir, 'workspace-backups')) : []);
+    store.save(doc(i < 11 ? 900 + i : 1));
+    const added = fs.readdirSync(path.join(dir, 'workspace-backups')).find(name => !before.has(name));
+    assert.ok(added, 'new backup must not be immediately rotated out');
+    fs.utimesSync(path.join(dir, 'workspace-backups', added), 1000 + i, 1000 + i);
+  }
+  fs.writeFileSync(path.join(dir, 'workspace.json'), '{broken');
+  assert.equal(JSON.parse(store.load().text).revision, 1);
 });

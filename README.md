@@ -25,29 +25,35 @@ python3 -m http.server 4173
 
 Then open http://localhost:4173/ or http://localhost:4173/app.html. Opening the files as `file://` may block image processing and some exports.
 
-### Desktop app (no installer)
+### Desktop app
 
-CI builds a portable binary for each OS. Download **v2.3.0** below, or browse [all GitHub Releases](https://github.com/ferax564/OrgFlow/releases) (or the **Desktop binaries** workflow artifacts). You do not install into Program Files or `/Applications`.
+CI builds desktop binaries for each OS. **v2.4.0-rc.1 is an unsigned release candidate, not a signed production release.** Download the candidate below, or browse [all GitHub Releases](https://github.com/ferax564/OrgFlow/releases) (or the **Desktop binaries** workflow artifacts). You do not install into Program Files or `/Applications`.
 
 | OS | File | How to run |
 | --- | --- | --- |
-| Windows | [OrgFlow-2.3.0-windows.exe](https://github.com/ferax564/OrgFlow/releases/download/v2.3.0/OrgFlow-2.3.0-windows.exe) | Double-click the `.exe`. Windows may show SmartScreen on an unsigned build — More info → Run anyway. Workspace data is stored in `OrgFlow-data` next to the exe. |
-| macOS | [OrgFlow-2.3.0-mac.zip](https://github.com/ferax564/OrgFlow/releases/download/v2.3.0/OrgFlow-2.3.0-mac.zip) | Unzip and double-click `OrgFlow.app`. You can leave it in Downloads; you do not need to drag it to Applications. If Gatekeeper blocks it, right-click → Open. |
-| Linux | [OrgFlow-2.3.0-linux.AppImage](https://github.com/ferax564/OrgFlow/releases/download/v2.3.0/OrgFlow-2.3.0-linux.AppImage) | `chmod +x OrgFlow-*-linux.AppImage && ./OrgFlow-*-linux.AppImage` |
+| Windows | [OrgFlow-2.4.0-rc.1-windows.exe](https://github.com/ferax564/OrgFlow/releases/download/v2.4.0-rc.1/OrgFlow-2.4.0-rc.1-windows.exe) | Double-click the `.exe`. Windows may show SmartScreen on an unsigned build — More info → Run anyway. Workspace data is stored in `OrgFlow-data` next to the exe. |
+| macOS | [OrgFlow-2.4.0-rc.1-mac.zip](https://github.com/ferax564/OrgFlow/releases/download/v2.4.0-rc.1/OrgFlow-2.4.0-rc.1-mac.zip) | Unzip and double-click `OrgFlow.app`. You can leave it in Downloads; you do not need to drag it to Applications. If Gatekeeper blocks it, right-click → Open. |
+| Linux | [OrgFlow-2.4.0-rc.1-linux.AppImage](https://github.com/ferax564/OrgFlow/releases/download/v2.4.0-rc.1/OrgFlow-2.4.0-rc.1-linux.AppImage) | `chmod +x OrgFlow-*-linux.AppImage && ./OrgFlow-*-linux.AppImage` |
 
 ```bash
 npm ci
 npm run desktop          # run from this repo
 npm run dist:linux       # AppImage (Linux host)
-npm run dist:win         # portable exe (Windows host)
+npm run dist:win         # NSIS installer + portable exe (Windows host)
 npm run dist:mac         # .app zip (macOS host)
 ```
 
-Tagged versions (`v2.3.0`) publish those three files onto the GitHub Release.
+Tagged builds publish the binaries plus update manifests and blockmaps. Windows also includes an NSIS installer for automatic updates; the existing portable EXE remains available.
+
+The desktop sidebar has **Check for updates**, **Download update**, and **Save and restart to update**. Native **Open org chart…**, **Save workspace**, **Save workspace as…**, and **Recent org charts** manage `.orgflow`/JSON documents. External file changes are detected before overwriting. Browser file autosave requires reconnection after restart.
+
+See [production readiness and release gates](PRODUCTION_READINESS.md) for signing setup, current limitations, review findings, and the prioritized next steps. Automatic update delivery requires a newly published compatible release; it is not enabled retroactively in older downloaded binaries.
 
 The desktop app loads the planner from a fixed `orgflow://` origin, so restarts and updates always find the same browser storage. Every commit is additionally journaled by the app itself into `OrgFlow-data` next to the executable **and** the OS-standard app-data folder — moving the exe to a new folder still finds the workspace, and each directory keeps the ten most recent backups of the file.
 
-On this public site there is no backend. The workspace is kept in two places — `localStorage` plus an IndexedDB copy with checkpoints — so losing one storage area does not lose the organization. Clearing *all* site data still removes everything; export a JSON backup first. An optional Node host can share one org — see [Enterprise host](#enterprise-host-optional).
+On this public site there is no backend. IndexedDB is the authoritative document store, with full recovery checkpoints and an atomic pending-change queue. `localStorage` is an optional cache and preference store; its quota failure does not prevent durable saves. Concurrent stale tabs are refused rather than overwriting newer commits. Clearing *all* site data still removes everything; export a JSON backup first. An optional Node host can share one org — see [Enterprise host](#enterprise-host-optional).
+
+Windows automatic updates require the [installer](https://github.com/ferax564/OrgFlow/releases/download/v2.4.0-rc.1/OrgFlow-2.4.0-rc.1-windows-setup.exe). The portable EXE uses manual replacement. See [release validation](RELEASE_VALIDATION.md), [changes](CHANGELOG.md), and [host operations](server/README.md).
 
 ## Using the planner
 
@@ -83,7 +89,7 @@ Harbor & Co (17 positions) loads on first visit. A tour offers that sample, Nort
 | People directory (CSV) | People in the active scenario |
 | Workspace backup (JSON) | Every scenario, unassigned people, branding, palette, saved views and the current view |
 | OrgFlow bundle (.orgflow) | Workspace plus checkpoints — the file you hand someone for editing and recovery. Older OrgFlow 2.0/2.1 builds refuse this document instead of silently dropping fields |
-| Save workspace | Overwrites the last JSON file you picked when the browser supports it; the **Autosave** checkbox beside it writes every change through to that file. The file link survives restarts — if the browser needs permission again, **Reconnect saved file** appears instead of silently going stale |
+| Save workspace | Overwrites the last JSON file you picked when the browser supports it; the **Autosave** checkbox beside it writes every change through to that file. The file link survives restarts but requires explicit reconnection — if the browser needs permission again, **Reconnect saved file** appears instead of silently going stale |
 | Print / A3 pages (PDF) | Tiled A3 landscape pages of the visible chart |
 
 A workspace JSON that omits `dateFilter` restores with all dates visible. Full JSON restore is local-only on the planner; use Draft imports or the proposal API for a shared organization.

@@ -18,7 +18,7 @@ const allowProposals = process.env.ORGFLOW_ALLOW_PROPOSALS === 'true';
 // MCP stdio uses one UTF-8 JSON-RPC message per line, not LSP Content-Length framing.
 function write(msg) { process.stdout.write(JSON.stringify(msg)+'\n'); }
 async function api(pathname, data) {
-  const res=await fetch(base+pathname,{method:data?'POST':'GET',headers:{authorization:'Bearer '+token,accept:'application/json',...(data?{'content-type':'application/json'}:{})},...(data?{body:JSON.stringify(data)}:{})});
+  const res=await fetch(base+pathname,{method:data?'POST':'GET',headers:{authorization:'Bearer '+token,accept:'application/json',...(data?{'content-type':'application/json',...(data.idempotencyKey?{'idempotency-key':data.idempotencyKey}:{})}:{})},...(data?{body:JSON.stringify(data)}:{})});
   const body=await res.json().catch(()=>({}));if(!res.ok)throw new Error(body.error||res.statusText||'API error');return body;
 }
 
@@ -43,6 +43,8 @@ const POST_TOOLS = {
 };
 
 async function handle(message) {
+  if(!message||typeof message!=='object'||Array.isArray(message)||message.jsonrpc!=='2.0'||typeof message.method!=='string')return {jsonrpc:'2.0',id:null,error:{code:-32600,message:'Invalid request'}};
+  if(!Object.hasOwn(message,'id'))return null;
   const id = message.id ?? null;
   const method = message.method;
   if (method === 'initialize') {

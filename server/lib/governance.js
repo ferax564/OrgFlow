@@ -55,6 +55,13 @@ function decisionCommand(store, scenarioId, action, input, membership, user, exp
   try {
     const row = store.getWorkspaceRow();checkVersion(row, expected);
     const stored = validateDocument(JSON.parse(row.document));
+    const target=stored.planning.scenarios.find(s=>s.id===scenarioId);
+    const reviewers=action==='metadata'&&input.reviewers?input.reviewers:target?.workflow.reviewers||[];
+    if(['metadata','submit','approve'].includes(action)){
+      const members=store.listMembers();
+      for(const email of reviewers)if(!members.some(m=>m.email===email&&m.role==='admin'&&!m.scope_position_id))throw denied('Reviewers must be email addresses of unscoped administrator members.');
+    }
+    if(action==='approve'&&!reviewers.includes(user.email))throw denied('Only an assigned reviewer may approve this scenario.');
     let planning;
     if (action === 'rollback') planning = C.validatePlanning(M.rollbackProposal(stored.planning, scenarioId, 'scenario-' + require('node:crypto').randomUUID(), input.name, user.email));
     else planning = M.transition(stored.planning, scenarioId, action, input, { actor: user.email, canApprove: membership.role === 'admin', now: new Date().toISOString() }, C.validatePlanning);
@@ -105,11 +112,17 @@ function validateProposal(store, input, membership, user) {
 module.exports = { reconcileSave, atomicSave, decisionCommand, checkVersion, applyProposalChanges, previewProposal, validateProposal };
 
 /** API/agent writes only create validated Draft proposals; they never approve or apply. */
-function proposalCommand(store, input, membership, user) {
+function proposalCommand(store, input, membership, user, idempotencyKey) {
   if (!['admin', 'editor'].includes(membership.role) || membership.scope_position_id) throw denied('Creating organization-wide proposals requires an unscoped editor or administrator.');
+  if(idempotencyKey && !/^[A-Za-z0-9._:-]{1,150}$/.test(idempotencyKey))throw Object.assign(new Error('Invalid Idempotency-Key.'),{status:400});
+  const requestHash=require('node:crypto').createHash('sha256').update(M.stable(input)).digest('hex');
   const name = M.text(input.name, 'Proposal name', 80, true), rationale = M.text(input.rationale, 'Rationale', 3000, true);
   store.db.exec('BEGIN IMMEDIATE');
   try {
+    if(idempotencyKey){
+      const receipt=store.db.prepare('SELECT hash,result FROM command_receipts WHERE tenant_id=? AND user_id=? AND key=?').get(store.tenantId,user.id,idempotencyKey);
+      if(receipt){if(receipt.hash!==requestHash)throw Object.assign(new Error('Idempotency-Key already used for a different request.'),{status:409});store.db.exec('COMMIT');return JSON.parse(receipt.result);}
+    }
     const row = store.getWorkspaceRow(); checkVersion(row, input.version);
     const stored = validateDocument(JSON.parse(row.document));
     const applied = applyProposalChanges(stored, { ...input, name, rationale }, user.email);
@@ -118,8 +131,9 @@ function proposalCommand(store, input, membership, user) {
     const planning = C.validatePlanning(applied.planning);
     const next = validateDocument({ ...stored, planning }), saved = store.saveWorkspace(next, user.id, input.version);
     store.audit({ userId: user.id, action: 'proposal.create', detail: { scenarioId: applied.scenarioId, version: saved.version, changes: input.changes.length } });
-    store.db.exec('COMMIT');
-    return { scenarioId: applied.scenarioId, name, version: saved.version, state: 'Draft', changes: M.applicationPreview(planning, applied.scenarioId).changes, message: 'Current is unchanged. Review, approval and application remain separate.' };
+    const result = { scenarioId: applied.scenarioId, name, version: saved.version, state: 'Draft', changes: M.applicationPreview(planning, applied.scenarioId).changes, message: 'Current is unchanged. Review, approval and application remain separate.' };
+    if(idempotencyKey)store.db.prepare('INSERT INTO command_receipts VALUES (?,?,?,?,?,?)').run(store.tenantId,user.id,idempotencyKey,requestHash,JSON.stringify(result),new Date().toISOString());
+    store.db.exec('COMMIT');return result;
   } catch (error) { store.db.exec('ROLLBACK'); throw error; }
 }
 module.exports.proposalCommand = proposalCommand;

@@ -1,0 +1,9 @@
+.git
+.codixing
+node_modules
+dist
+test-results
+data
+.env
+*.sqlite*
+*.log

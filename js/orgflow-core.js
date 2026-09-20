@@ -1063,6 +1063,8 @@
     return { workspaceId: planning?.workspaceId || '', revision: Number.isInteger(planning?.revision) ? planning.revision : 0, lastCommittedAt: String(planning?.lastCommittedAt || '') };
   }
   function compareWorkspaceStamps(a, b) {
+    // Revisions only order edits within the same workspace.
+    if (a?.workspaceId !== b?.workspaceId) return String(a?.lastCommittedAt || '').localeCompare(String(b?.lastCommittedAt || ''));
     const ar = Number.isInteger(a?.revision) ? a.revision : 0, br = Number.isInteger(b?.revision) ? b.revision : 0;
     if (ar !== br) return ar - br;
     return String(a?.lastCommittedAt || '').localeCompare(String(b?.lastCommittedAt || ''));

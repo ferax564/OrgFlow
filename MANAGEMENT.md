@@ -93,3 +93,12 @@ ORGFLOW_ALLOW_PROPOSALS=true ORGFLOW_API_URL=http://127.0.0.1:8787 ORGFLOW_API_T
 ```
 
 `propose_changes` routes through `/api/proposals` with the member's actual permissions. The opt-in does not grant extra authorization. No MCP tool approves, applies or silently edits Current. Protect the token like a password. The older HTTP MCP endpoint remains read-only.
+
+
+## 2.4 release candidate safeguards
+
+IndexedDB is authoritative and commits local work and the pending server record atomically. Shared-host caches, checkpoints and saved-file links are isolated by account and permission scope. A stale tab is refused; export its unsaved copy before reloading. Recovery checkpoints include view, branding and planning, and failed checkpoints block replacement. Browser file autosave requires explicit reconnection after restart.
+
+Shared-host scenario reviewers must be real unscoped administrator email addresses. Only an assigned reviewer can approve; the administration page lists assigned reviews. API tokens default to expiring read-only access, with explicit export/propose scopes; integrations cannot approve or apply changes. Proposal retries may use `Idempotency-Key`.
+
+See [production gates](PRODUCTION_READINESS.md), [verification and limits](RELEASE_VALIDATION.md), and [backup/OIDC operations](server/README.md). The release candidate is unsigned pending platform signing and an actual signed-update drill.

@@ -16,6 +16,7 @@ test('desktop file server allows planner assets and rejects traversal', () => {
   assert.equal(allowedPath(root, '/desktop/main.cjs'), null);
   assert.equal(allowedPath(root, '/server/index.js'), null);
   assert.equal(allowedPath(root, '/node_modules/electron/index.js'), null);
+  assert.equal(allowedPath(root, '/%malformed'), null);
 });
 
 test('portable user data sits next to a Windows portable exe', () => {

@@ -107,17 +107,15 @@ function mime(file) {
 
 function safeStatic(urlPath) {
   let decoded;
-  try { decoded = decodeURIComponent((urlPath || '').split('?')[0]); }
-  catch { return null; }
-  let rel = decoded === '/' ? 'index.html' : decoded.replace(/^\/+/, '');
-  if (!rel || rel.endsWith('/')) rel += 'index.html';
-  if (rel.includes('\0') || rel.split(/[/\\]/).some(p => p === '..')) return null;
+  try { decoded = decodeURIComponent((urlPath || '').split('?')[0]); } catch { return null; }
+  const rel = decoded === '/' ? 'index.html' : decoded.replace(/^\/+/, '');
+  if (rel.includes('\0') || rel.includes('\\') || rel.split('/').includes('..')) return null;
   const top = rel.split('/')[0];
-  if (!top || top.startsWith('.') || ['server', 'data', 'node_modules', 'tests', 'Dockerfile', 'docker-compose.yml'].includes(top)) return null;
-  const abs = path.normalize(path.join(ROOT, rel));
-  if (!abs.startsWith(ROOT + path.sep) && abs !== ROOT) return null;
-  const relToRoot = path.relative(ROOT, abs);
-  if (!relToRoot || relToRoot.startsWith('..') || path.isAbsolute(relToRoot)) return null;
+  const pages = new Set(['index.html','app.html','login.html','admin.html','404.html','manifest.webmanifest','robots.txt']);
+  if (!pages.has(rel) && !['css','js','assets','examples'].includes(top)) return null;
+  const abs = path.resolve(ROOT, rel);
+  if (!abs.startsWith(ROOT + path.sep)) return null;
+  try { if (!fs.realpathSync(abs).startsWith(ROOT + path.sep)) return null; } catch { return null; }
   return abs;
 }
 
@@ -140,15 +138,23 @@ function loadConfig(env = process.env) {
     redirectUri: env.KEYCLOAK_REDIRECT_URI || '',
     tenantName: env.TENANT_NAME || 'Organization',
     tenantSlug: env.TENANT_SLUG || 'default',
+    bootstrapAdminEmail: String(env.BOOTSTRAP_ADMIN_EMAIL || '').trim().toLowerCase(),
+    allowInsecureOidc: env.ALLOW_INSECURE_OIDC === 'true',
     dataDir: env.DATA_DIR || path.join(ROOT, 'data')
   };
 }
 
 function assertProductionConfig(cfg) {
-  if (cfg.authMode !== 'oidc') return;
+  if (cfg.authMode !== 'oidc') {
+    if (!['localhost','127.0.0.1','::1'].includes(cfg.host)) throw new Error('Development authentication must bind to loopback.');
+    return;
+  }
   if (!cfg.issuer) throw new Error('KEYCLOAK_ISSUER is required when AUTH_MODE=oidc.');
   if (!cfg.sessionSecret || cfg.sessionSecret === INSECURE_SECRET) {
     throw new Error('SESSION_SECRET must be set to a long random value when AUTH_MODE=oidc.');
+  }
+  if (!['localhost','127.0.0.1','[::1]'].includes(new URL(cfg.publicUrl).hostname)) {
+    if (!cfg.secureCookies || !cfg.publicUrl.startsWith('https:') || cfg.sessionSecret.length < 32 || !cfg.issuer.startsWith('https:')) throw new Error('Production OIDC requires HTTPS, secure cookies and a session secret of at least 32 characters.');
   }
 }
 
@@ -166,7 +172,8 @@ function identityFromReq(req, store, cfg) {
     if (!token) return { error: 401, message: 'Invalid API token.' };
     const membership = store.getMembership(token.user_id);
     if (!membership) return { error: 403, message: 'This token is not a member of the organization.' };
-    return { user: { id: token.user_id, email: token.email, name: token.name }, membership, via: 'token' };
+    const scopes=JSON.parse(token.scopes);
+    return { user: { id: token.user_id, email: token.email, name: token.name }, membership:{...membership,can_export:membership.can_export&&scopes.includes('export')?1:0}, scopes, via: 'token' };
   }
   const cookies = auth.parseCookies(req.headers.cookie);
   const sid = auth.unsignSid(cookies[auth.COOKIE], cfg.sessionSecret);
@@ -199,46 +206,40 @@ async function handleOidcLogin(req, res, store, cfg, oidc) {
     codeVerifier: verifier,
     expiresAt: new Date(Date.now() + 10 * 60 * 1000).toISOString()
   });
-  const url = new URL(oidc.authorization_endpoint);
-  url.searchParams.set('client_id', cfg.clientId);
-  url.searchParams.set('redirect_uri', cfg.redirectUri || cfg.publicUrl + '/auth/callback');
-  url.searchParams.set('response_type', 'code');
-  url.searchParams.set('scope', 'openid email profile');
-  url.searchParams.set('state', state);
-  url.searchParams.set('nonce', nonce);
-  url.searchParams.set('code_challenge', challenge);
-  url.searchParams.set('code_challenge_method', 'S256');
-  res.writeHead(302, { location: url.toString(), 'cache-control': 'no-store' });
+  const url = await auth.authorizationUrl(oidc, {
+    redirect_uri: cfg.redirectUri || cfg.publicUrl + '/auth/callback',
+    response_type: 'code', scope: 'openid email profile', state, nonce,
+    code_challenge: challenge, code_challenge_method: 'S256'
+  });
+  const binding = `orgflow_oidc=${auth.signSid(state,cfg.sessionSecret)}; HttpOnly; Path=/auth; SameSite=Lax; Max-Age=600${cfg.secureCookies?'; Secure':''}`;
+  res.writeHead(302, { location: url.toString(), 'cache-control': 'no-store', 'set-cookie': binding });
   res.end();
 }
 
 async function handleOidcCallback(req, res, store, cfg, oidc, url) {
   const state = url.searchParams.get('state') || '';
   const code = url.searchParams.get('code') || '';
+  const bound=auth.unsignSid(auth.parseCookies(req.headers.cookie).orgflow_oidc,cfg.sessionSecret);
+  if (!state || bound !== state) { sendError(res,400,'Sign-in does not belong to this browser. Start again.'); return; }
   const saved = store.takeOauthState(state);
   if (!saved || !code) {
     sendError(res, 400, 'Sign-in state is missing or expired. Start again from /auth/login.');
     return;
   }
-  const tokens = await auth.exchangeCode(oidc, {
-    code,
-    verifier: saved.code_verifier,
-    redirectUri: cfg.redirectUri || cfg.publicUrl + '/auth/callback',
-    clientId: cfg.clientId,
-    clientSecret: cfg.clientSecret
-  });
-  const profile = await auth.fetchUserInfo(oidc, tokens.access_token);
+  let profile;
+  try { profile = await auth.validateCallback(oidc,url,saved); }
+  catch { sendError(res,401,'Identity validation failed. Sign in again with a verified account.'); return; }
   const email = String(profile.email || '').trim().toLowerCase();
   if (!email) {
     sendError(res, 400, 'Keycloak did not return an email address for this user.');
     return;
   }
   const user = store.upsertUser({
-    issuerSub: String(profile.sub || email),
+    issuerSub: cfg.issuer + '#' + profile.sub,
     email,
     name: profile.name || profile.preferred_username || email
   });
-  const membership = store.ensureMembership(user);
+  const membership = store.getMembership(user.id) || (email === cfg.bootstrapAdminEmail ? store.ensureMembership(user,{role:'admin'}) : null);
   if (!membership) {
     res.writeHead(302, { location: '/login.html?error=not_member', 'cache-control': 'no-store' });
     res.end();
@@ -247,7 +248,7 @@ async function handleOidcCallback(req, res, store, cfg, oidc, url) {
   store.audit({ userId: user.id, action: 'login', detail: { via: 'oidc' } });
   res.writeHead(302, {
     location: '/app.html',
-    'set-cookie': setSessionCookie(res, store, user.id, cfg),
+    'set-cookie': [setSessionCookie(res, store, user.id, cfg), 'orgflow_oidc=; HttpOnly; Path=/auth; SameSite=Lax; Max-Age=0'+(cfg.secureCookies?'; Secure':'')],
     'cache-control': 'no-store'
   });
   res.end();
@@ -261,7 +262,7 @@ function createApp(options = {}) {
 
   async function oidcConfig() {
     if (!cfg.issuer) throw new Error('KEYCLOAK_ISSUER is not set.');
-    if (!oidcCache) oidcCache = await auth.discoverIssuer(cfg.issuer);
+    if (!oidcCache) oidcCache = await auth.discoverIssuer(cfg.issuer,cfg.clientId,cfg.clientSecret,cfg.allowInsecureOidc||['localhost','127.0.0.1','[::1]'].includes(new URL(cfg.issuer).hostname));
     return oidcCache;
   }
 
@@ -271,6 +272,11 @@ function createApp(options = {}) {
       const method = req.method || 'GET';
       const p = url.pathname;
 
+      if (p === '/healthz' || p === '/readyz') {
+        try { if(p==='/readyz')db.prepare('SELECT 1').get();send(res,200,{status:'ok',version:APP_VERSION}); }
+        catch { sendError(res,503,'Database unavailable.'); } return;
+      }
+      if (req.headers.origin && !['GET','HEAD','OPTIONS'].includes(method) && req.headers.origin !== new URL(cfg.publicUrl).origin) { sendError(res,403,'Cross-origin mutation denied.');return; }
       if (p === '/api/meta' && method === 'GET') {
         send(res, 200, {
           enterprise: true,
@@ -368,6 +374,13 @@ function createApp(options = {}) {
         const ident = requireMember(req, res, store, cfg);
         if (!ident) return;
         const { membership, user } = ident;
+        if (ident.via === 'token') {
+          const readRoute = method === 'GET' && (p === '/api/workspace' || p.startsWith('/api/org/') || p === '/api/openapi.json');
+          const exportRoute = method === 'POST' && ['/api/org/share-snapshot','/api/exports'].includes(p);
+          const proposalRoute = method === 'POST' && ['/api/proposals','/api/org/preview-proposal','/api/org/validate-proposal'].includes(p);
+          const mcpRoute = p === '/api/mcp' && method === 'POST';
+          if (!(readRoute&&ident.scopes.includes('read') || exportRoute&&ident.scopes.includes('export') || proposalRoute&&ident.scopes.includes('propose') || mcpRoute&&ident.scopes.includes('read'))) {sendError(res,403,'Token scope does not allow this operation.');return;}
+        }
         const tenant = store.getTenant();
 
         if (p === '/api/session' && method === 'GET') {
@@ -411,7 +424,7 @@ function createApp(options = {}) {
 
         if (p === '/api/proposals' && method === 'POST') {
           const body=await readJson(req,res,1024*1024);if(!body)return;
-          try { send(res,201,governance.proposalCommand(store,body,membership,user)); }
+          try { send(res,201,governance.proposalCommand(store,body,membership,user,req.headers['idempotency-key'])); }
           catch(error) { sendError(res,error.status||400,error.message,{currentVersion:error.currentVersion,code:error.code}); }
           return;
         }
@@ -508,7 +521,7 @@ function createApp(options = {}) {
           const prev=store.getWorkspaceRevision(since);
           if(!prev){ sendError(res,404,'No stored document for that server version.',{available:store.listWorkspaceRevisions()}); return; }
           try {
-            const previous=validateDocument(JSON.parse(prev.document));
+            const previous=filterDocument(validateDocument(JSON.parse(prev.document)),membership.scope_position_id||'');
             send(res,200,query.withContext(vis.doc,{sinceVersion:since,currentVersion:vis.version,changes:query.positionChangesSince(vis.doc,previous,extra.scenario)},extra));
           } catch (err) { sendError(res,400,err.message); }
           return;
@@ -551,7 +564,7 @@ function createApp(options = {}) {
             if (body.html) {
               const coreSrc = fs.readFileSync(path.join(ROOT, 'js/orgflow-core.js'), 'utf8');
               const viewerSrc = fs.readFileSync(path.join(ROOT, 'js/share-viewer.js'), 'utf8');
-              html = Share.buildShareHtml(dataset, { coreSrc, viewerSrc, staticSvg: Share.shareStaticSvg(dataset) });
+              html = Share.buildShareHtml(dataset, { managementSrc:fs.readFileSync(path.join(ROOT,'js/management-core.js'),'utf8'),coreSrc, viewerSrc, staticSvg: Share.shareStaticSvg(dataset) });
             }
             send(res, 200, query.withContext(vis.doc, { dataset, html: html || undefined }, extra));
           } catch (err) { sendError(res, 400, err.message); }
@@ -562,6 +575,10 @@ function createApp(options = {}) {
           return;
         }
 
+        if (p === '/api/reviews' && method === 'GET') {
+          const vis=visibleDocument(store,membership);
+          send(res,200,{reviews:vis.doc.planning.scenarios.filter(s=>s.workflow?.state==='In review'&&s.workflow.reviewers.includes(user.email)).map(s=>({id:s.id,name:s.name,owner:s.workflow.owner,submittedAt:s.workflow.events.filter(e=>e.action==='submitted').at(-1)?.at||''}))});return;
+        }
         if (p === '/api/members' && method === 'GET') {
           if (membership.role !== 'admin') { sendError(res, 403, 'Only admins can list members.'); return; }
           send(res, 200, { members: store.listMembers() });
@@ -609,9 +626,9 @@ function createApp(options = {}) {
         if (p === '/api/tokens' && method === 'POST') {
           const body = await readJson(req, res);
           if (!body) return;
-          const created = store.createApiToken(user.id, body.name || 'MCP');
+          let created;try{created = store.createApiToken(user.id, body.name || 'MCP', {scopes:body.scopes,expiresInDays:body.expiresInDays});}catch(error){sendError(res,400,error.message);return;}
           store.audit({ userId: user.id, action: 'token.create', detail: { id: created.id, name: body.name || 'MCP' } });
-          send(res, 201, { id: created.id, token: created.token, prefix: created.prefix, warning: 'Copy this token now. It is not shown again.' });
+          send(res, 201, { id: created.id, token: created.token, prefix: created.prefix, expiresAt:created.expiresAt, scopes:created.scopes, warning: 'Copy this token now. It is not shown again.' });
           return;
         }
         if (p.startsWith('/api/tokens/') && method === 'DELETE') {
@@ -626,7 +643,9 @@ function createApp(options = {}) {
         if (p === '/api/mcp' && method === 'POST') {
           const body = await readJson(req, res, 1024 * 1024);
           if (!body) return;
-          send(res, 200, handleMcp(body, () => visibleDocument(store, membership), membership, store));
+          if(ident.via==='token'&&['preview_proposal','validate_proposal'].includes(body.params?.name)&&!ident.scopes.includes('propose')){sendError(res,403,'Token requires propose scope.');return;}
+          const result=handleMcp(body, () => visibleDocument(store, membership), membership, store);
+          if(result===null){res.writeHead(202);res.end();}else send(res, 200, result);
           return;
         }
 
@@ -688,7 +707,7 @@ function mcpTools({ allowProposals = false } = {}) {
   ];
   tools.push({name:'workforce_forecast',description:'Read monthly headcount, capacity and position budget assumptions. Currencies remain separate.',inputSchema:{type:'object',properties:{scenario:{type:'string'},month:{type:'string'},months:{type:'integer',minimum:1,maximum:36},group:{type:'string'}}}});
   for(const tool of tools)tool.annotations={readOnlyHint:true,destructiveHint:false};
-  if(allowProposals)tools.push({name:'propose_changes',description:'Create a Draft proposal only. Does not change Current, approve or apply. Requires an unscoped editor/admin and the current workspace version.',annotations:{readOnlyHint:false,destructiveHint:false,openWorldHint:false},inputSchema:{type:'object',required:['version','name','rationale','changes'],properties:{version:{type:'integer',minimum:1},name:{type:'string',maxLength:80},rationale:{type:'string',maxLength:3000},changes:{type:'array',maxItems:500,items:{type:'object',required:['entity','id','operation'],properties:{entity:{type:'string',enum:Management.COLLECTIONS},id:{type:'string'},operation:{type:'string',enum:['upsert','remove']},values:{type:'object'}}}}}}});
+  if(allowProposals)tools.push({name:'propose_changes',description:'Create a Draft proposal only. Does not change Current, approve or apply. Requires an unscoped editor/admin and the current workspace version.',annotations:{readOnlyHint:false,destructiveHint:false,openWorldHint:false},inputSchema:{type:'object',required:['version','name','rationale','changes'],properties:{idempotencyKey:{type:'string',maxLength:150},version:{type:'integer',minimum:1},name:{type:'string',maxLength:80},rationale:{type:'string',maxLength:3000},changes:{type:'array',maxItems:500,items:{type:'object',required:['entity','id','operation'],properties:{entity:{type:'string',enum:Management.COLLECTIONS},id:{type:'string'},operation:{type:'string',enum:['upsert','remove']},values:{type:'object'}}}}}}});
   return tools;
 }
 
@@ -709,12 +728,14 @@ function callMcpTool(name, args, vis, membership, store) {
       if (!store) throw new Error('Change history is only available on the shared host.');
       const prev = store.getWorkspaceRevision(args.sinceVersion);
       if (!prev) throw new Error('No stored document for that server version.');
-      return query.withContext(doc, { sinceVersion: args.sinceVersion, currentVersion: vis.version, changes: query.positionChangesSince(doc, validateDocument(JSON.parse(prev.document)), args.scenario) }, extra);
+      const previous = filterDocument(validateDocument(JSON.parse(prev.document)), membership?.scope_position_id || '');
+      return query.withContext(doc, { sinceVersion: args.sinceVersion, currentVersion: vis.version, changes: query.positionChangesSince(doc, previous, args.scenario) }, extra);
     }
     case 'explain_capacity_gap': return query.withContext(doc, query.capacityGap(doc, args), extra);
     case 'preview_proposal': return governance.previewProposal(store, args, membership, { email: membership?.email || 'mcp' });
     case 'validate_proposal': return governance.validateProposal(store, args, membership, { email: membership?.email || 'mcp' });
     case 'create_share_snapshot': {
+      if (!membership?.can_export) throw new Error('You are not allowed to export this organization.');
       const dataset = OrgFlow.buildShareDataset(doc.planning, {
         scenarioId: args.scenario, rootId: args.rootId || '', include: args.include || {},
         initialDepth: args.initialDepth, companyName: doc.branding?.companyName, chartTitle: doc.branding?.chartTitle
@@ -722,6 +743,7 @@ function callMcpTool(name, args, vis, membership, store) {
       let html = '';
       if (args.html) {
         html = Share.buildShareHtml(dataset, {
+          managementSrc: fs.readFileSync(path.join(ROOT, 'js/management-core.js'), 'utf8'),
           coreSrc: fs.readFileSync(path.join(ROOT, 'js/orgflow-core.js'), 'utf8'),
           viewerSrc: fs.readFileSync(path.join(ROOT, 'js/share-viewer.js'), 'utf8'),
           staticSvg: Share.shareStaticSvg(dataset)
@@ -734,8 +756,10 @@ function callMcpTool(name, args, vis, membership, store) {
 }
 
 function handleMcp(message, getVis, membership, store) {
+  if(!message||typeof message!=='object'||Array.isArray(message)||message.jsonrpc!=='2.0'||typeof message.method!=='string')return {jsonrpc:'2.0',id:null,error:{code:-32600,message:'Invalid request'}};
   const id = message.id ?? null;
   const method = message.method;
+  if(!Object.hasOwn(message,'id'))return null;
   if (method === 'initialize') {
     return { jsonrpc: '2.0', id, result: { protocolVersion: MCP_PROTOCOL, capabilities: { tools: {} }, serverInfo: { name: 'orgflow', version: APP_VERSION } } };
   }
@@ -759,22 +783,6 @@ function handleMcp(message, getVis, membership, store) {
   return { jsonrpc: '2.0', id, error: { code: -32601, message: 'Method not found' } };
 }
 
-function openApiSpec() {
-  return {
-    openapi: '3.0.3',
-    info: { title: 'OrgFlow', version: APP_VERSION, description: 'Shared-host API. Every org query includes a context object with workspace id, revision, scenario and as-of date.' },
-    paths: {
-      '/api/org/status': { get: { summary: 'Workspace identity and revision', responses: { 200: { description: 'Status' } } } },
-      '/api/org/summary': { get: { summary: 'Organization summary', responses: { 200: { description: 'Summary plus context' } } } },
-      '/api/org/changes': { get: { summary: 'Changes since a server document version', parameters: [{ name: 'sinceVersion', in: 'query', required: true }], responses: { 200: { description: 'Changes' } } } },
-      '/api/org/capacity-gap': { get: { summary: 'Capacity and staffing gaps', responses: { 200: { description: 'Gaps' } } } },
-      '/api/org/preview-proposal': { post: { summary: 'Preview a Draft proposal without saving', responses: { 200: { description: 'Preview' } } } },
-      '/api/org/validate-proposal': { post: { summary: 'Validate a Draft proposal without saving', responses: { 200: { description: 'Validation' } } } },
-      '/api/org/share-snapshot': { post: { summary: 'Redacted interactive share dataset', responses: { 200: { description: 'Dataset' } } } },
-      '/api/mcp': { post: { summary: 'MCP JSON-RPC', responses: { 200: { description: 'JSON-RPC result' } } } },
-      '/api/openapi.json': { get: { summary: 'This document', responses: { 200: { description: 'OpenAPI' } } } }
-    }
-  };
-}
+function openApiSpec() { return require('./openapi').spec(APP_VERSION); }
 
 module.exports = { createApp, loadConfig, assertProductionConfig, mcpTools, callMcpTool, handleMcp, emptyDocument, safeStatic, APP_VERSION, MCP_PROTOCOL };

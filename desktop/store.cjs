@@ -9,15 +9,25 @@
  */
 const fs = require('fs');
 const path = require('path');
+const { randomUUID } = require('node:crypto');
 
 const MAX_BACKUPS = 10;
 const FILE_NAME = 'workspace.json';
 const BACKUP_DIR = 'workspace-backups';
 
 function atomicWrite(file, text) {
-  const tmp = `${file}.tmp-${process.pid}-${Date.now()}`;
-  fs.writeFileSync(tmp, text);
-  fs.renameSync(tmp, file);
+  const tmp = `${file}.tmp-${randomUUID()}`;
+  let fd;
+  try {
+    fd = fs.openSync(tmp, 'wx', 0o600);
+    fs.writeFileSync(fd, text);
+    fs.fsyncSync(fd);
+    fs.closeSync(fd); fd = undefined;
+    fs.renameSync(tmp, file);
+  } finally {
+    if (fd !== undefined) fs.closeSync(fd);
+    try { fs.unlinkSync(tmp); } catch { /* renamed or never created */ }
+  }
 }
 
 function readJson(file) {
@@ -31,11 +41,13 @@ function stampOf(text) {
   try {
     const p = JSON.parse(text);
     const planning = p?.format === 'orgflow.workspace' ? p.planning : p;
-    return { revision: Number.isInteger(planning?.revision) ? planning.revision : 0, at: String(planning?.lastCommittedAt || '') };
+    if (!planning || typeof planning !== 'object' || !Array.isArray(planning.scenarios)) return null;
+    return { workspaceId: planning?.workspaceId || '', revision: Number.isInteger(planning?.revision) ? planning.revision : 0, at: String(planning?.lastCommittedAt || '') };
   } catch { return null; }
 }
 
 function compareStamps(a, b) {
+  if (a.workspaceId !== b.workspaceId) return a.at.localeCompare(b.at);
   if (a.revision !== b.revision) return a.revision - b.revision;
   return a.at.localeCompare(b.at);
 }
@@ -50,11 +62,11 @@ function createWorkspaceStore(dirs) {
     fs.mkdirSync(backupDirFor(dir), { recursive: true });
     const file = fileFor(dir);
     atomicWrite(file, text);
-    const stamp = stampOf(text) || { revision: 0, at: '' };
-    const backup = path.join(backupDirFor(dir), `workspace-r${String(stamp.revision).padStart(5, '0')}-${Date.now()}.json`);
+    const backup = path.join(backupDirFor(dir), `workspace-${Date.now()}-${randomUUID()}.json`);
     fs.copyFileSync(file, backup);
     const backups = fs.readdirSync(backupDirFor(dir))
-      .filter(f => f.startsWith('workspace-') && f.endsWith('.json')).sort();
+      .filter(f => f.startsWith('workspace-') && f.endsWith('.json'))
+      .sort((a, b) => fs.statSync(path.join(backupDirFor(dir), a)).mtimeMs - fs.statSync(path.join(backupDirFor(dir), b)).mtimeMs);
     for (const old of backups.slice(0, Math.max(0, backups.length - MAX_BACKUPS))) {
       try { fs.unlinkSync(path.join(backupDirFor(dir), old)); } catch { /* rotation is best-effort */ }
     }
@@ -62,14 +74,15 @@ function createWorkspaceStore(dirs) {
 
   function readDir(dir) {
     const direct = readJson(fileFor(dir));
-    if (direct) return { text: JSON.stringify(direct), from: fileFor(dir) };
+    if (direct && stampOf(JSON.stringify(direct))) return { text: JSON.stringify(direct), from: fileFor(dir) };
     // The primary file may be unreadable or partial — fall back to backups.
     try {
       const backups = fs.readdirSync(backupDirFor(dir))
-        .filter(f => f.startsWith('workspace-') && f.endsWith('.json')).sort().reverse();
+        .filter(f => f.startsWith('workspace-') && f.endsWith('.json'))
+        .sort((a, b) => fs.statSync(path.join(backupDirFor(dir), b)).mtimeMs - fs.statSync(path.join(backupDirFor(dir), a)).mtimeMs);
       for (const name of backups) {
         const doc = readJson(path.join(backupDirFor(dir), name));
-        if (doc) return { text: JSON.stringify(doc), from: path.join(backupDirFor(dir), name) };
+        if (doc && stampOf(JSON.stringify(doc))) return { text: JSON.stringify(doc), from: path.join(backupDirFor(dir), name) };
       }
     } catch { /* no backups */ }
     return null;

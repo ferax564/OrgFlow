@@ -2,7 +2,7 @@
 # to http://localhost:8080 and token exchange uses the same URL.
 #
 #   docker compose up
-#   AUTH_MODE=oidc KEYCLOAK_ISSUER=http://localhost:8080/realms/orgflow \
+#   AUTH_MODE=oidc BOOTSTRAP_ADMIN_EMAIL=admin@example.com SESSION_SECRET=local-development-secret-change-me KEYCLOAK_ISSUER=http://localhost:8080/realms/orgflow \
 #     KEYCLOAK_CLIENT_ID=orgflow KEYCLOAK_CLIENT_SECRET=orgflow-dev-secret \
 #     KEYCLOAK_REDIRECT_URI=http://127.0.0.1:8787/auth/callback \
 #     PUBLIC_URL=http://127.0.0.1:8787 node server/index.js

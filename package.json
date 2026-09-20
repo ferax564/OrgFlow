@@ -1,7 +1,7 @@
 {
   "name": "orgflow",
   "private": true,
-  "version": "2.3.0",
+  "version": "2.4.0-rc.1",
   "description": "Interactive organization-chart and workforce-planning app that runs entirely in the browser.",
   "author": "OrgFlow contributors",
   "license": "MIT",
@@ -16,18 +16,26 @@
     "icon": "python3 scripts/make-icon.py",
     "desktop": "electron .",
     "dist": "electron-builder --publish never",
-    "dist:win": "electron-builder --win portable --x64 --publish never",
-    "dist:mac": "electron-builder --mac zip --publish never",
+    "dist:win": "electron-builder --win nsis portable --x64 --publish never",
+    "dist:mac": "electron-builder --mac zip --universal --publish never",
     "dist:linux": "electron-builder --linux AppImage --x64 --publish never",
     "check": "node scripts/check.cjs",
-    "lint": "npx --yes eslint@9.39.1 .",
-    "test:browser": "python3 tests/browser-regressions.py"
+    "lint": "eslint .",
+    "test:browser": "python3 tests/browser-regressions.py",
+    "test:desktop": "node scripts/desktop-regressions.cjs",
+    "backup": "node server/backup.js"
   },
   "engines": {
     "node": ">=22.16.0"
   },
   "devDependencies": {
-    "electron": "^36.9.5",
-    "electron-builder": "^26.15.3"
+    "electron": "44.4.3",
+    "electron-builder": "^26.15.3",
+    "eslint": "9.39.1",
+    "playwright": "1.57.0"
+  },
+  "dependencies": {
+    "electron-updater": "6.8.9",
+    "openid-client": "6.8.8"
   }
 }

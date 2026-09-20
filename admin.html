@@ -34,14 +34,19 @@
         <button class="btn primary" type="submit">Save member</button>
       </form>
       <table><thead><tr><th>Email</th><th>Role</th><th>Export</th><th>Scope</th><th></th></tr></thead><tbody id="members"></tbody></table>
+      <h2>Assigned reviews</h2>
+      <p id="reviewAssignments" role="status"></p>
       <h2>MCP / API tokens</h2>
       <p class="muted">Create a token for Cursor or Claude. It sees only what this member is allowed to see.</p>
       <form id="token" class="row">
         <input name="name" placeholder="Cursor on laptop" />
+        <label>Expires in days <input name="expiresInDays" type="number" min="1" max="90" value="30" required /></label>
+        <label class="check"><input name="export" type="checkbox" /> Export</label>
+        <label class="check"><input name="propose" type="checkbox" /> Draft proposals</label>
         <button class="btn" type="submit">Create token</button>
       </form>
       <pre id="newToken" hidden></pre>
-      <table><thead><tr><th>Name</th><th>Prefix</th><th>Created</th><th></th></tr></thead><tbody id="tokens"></tbody></table>
+      <table><thead><tr><th>Name</th><th>Prefix</th><th>Expires / permissions</th><th></th></tr></thead><tbody id="tokens"></tbody></table>
       <h2>Audit</h2>
       <table><thead><tr><th>When</th><th>Who</th><th>Action</th><th>Detail</th></tr></thead><tbody id="audit"></tbody></table>
     </main>
@@ -64,9 +69,11 @@
       document.getElementById('members').innerHTML = members.members.map(m =>
         `<tr><td>${esc(m.email)}<br><span class="muted">${esc(m.name || '')}</span></td><td>${esc(m.role)}</td><td>${m.can_export ? 'yes' : 'no'}</td><td>${esc(m.scope_position_id || 'whole org')}</td><td><button data-del="${esc(m.user_id)}">Remove</button></td></tr>`
       ).join('');
+      const assigned=await api('/api/reviews');
+      document.getElementById('reviewAssignments').textContent=assigned.reviews.length?assigned.reviews.map(r=>r.name+' — '+r.owner).join(' · '):'No scenarios awaiting your review.';
       const tokens = await api('/api/tokens');
       document.getElementById('tokens').innerHTML = tokens.tokens.map(t =>
-        `<tr><td>${esc(t.name)}</td><td>${esc(t.token_prefix)}</td><td>${esc((t.created_at || '').slice(0,19).replace('T',' '))}</td><td><button data-tok="${esc(t.id)}">Revoke</button></td></tr>`
+        `<tr><td>${esc(t.name)}</td><td>${esc(t.token_prefix)}</td><td>${esc((t.expires_at || '').slice(0,10))}<br>${esc(t.scopes)}</td><td><button data-tok="${esc(t.id)}">Revoke</button></td></tr>`
       ).join('');
       const audit = await api('/api/audit?limit=50');
       document.getElementById('audit').innerHTML = audit.events.map(e =>
@@ -83,7 +90,7 @@
     document.getElementById('token').onsubmit = async e => {
       e.preventDefault();
       const fd = new FormData(e.target);
-      const created = await api('/api/tokens', { method: 'POST', body: JSON.stringify({ name: fd.get('name') || 'MCP' }) });
+      const created = await api('/api/tokens', { method: 'POST', body: JSON.stringify({ name: fd.get('name') || 'MCP', expiresInDays:Number(fd.get('expiresInDays')),scopes:['read',...(fd.get('export')?['export']:[]),...(fd.get('propose')?['propose']:[])] }) });
       const pre = document.getElementById('newToken');
       pre.hidden = false;
       pre.textContent = `ORGFLOW_API_URL=${location.origin}\nORGFLOW_API_TOKEN=${created.token}\n\nCursor mcp.json:\n${JSON.stringify({ mcpServers: { orgflow: { command: 'node', args: ['server/mcp-stdio.js'], env: { ORGFLOW_API_URL: location.origin, ORGFLOW_API_TOKEN: created.token } } } }, null, 2)}`;

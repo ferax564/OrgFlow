@@ -119,9 +119,28 @@ class BrowserTests(unittest.TestCase):
         self.ev('replaceWorkspace(emptyWorkspace(today))');self.page.wait_for_timeout(100);self.assertEqual(self.ev('writes.at(-1).data.planning.scenarios[0].positions.length'),1)
     def test_08_cancelled_and_invalid_restore_keep_linked_file(self):
         self.linked();self.ev("window.handleB={...handleA,name:'B.json',createWritable:async()=>({write:async()=>{},close:async()=>writes.push({target:'B'})})};window.showOpenFilePicker=async()=>[handleB]")
-        self.reject=['Restore “'];self.ev('restoreWorkspacePicker()');self.edit();self.page.wait_for_timeout(100)
+        self.reject=['Open “'];self.ev('restoreWorkspacePicker()');self.edit();self.page.wait_for_timeout(100)
         self.assertEqual(self.ev('workspaceFileHandle.name'),'A.json');self.assertEqual(self.ev('writes.map(w=>w.target)'),['A'])
         self.ev("restoreWorkspace(new File(['bad JSON'],'bad.json'),handleB)");self.assertEqual(self.ev('workspaceFileHandle.name'),'A.json')
+    def test_08b_cancelled_open_does_not_remember_candidate(self):
+        self.linked()
+        self.ev("window.remembered=[];OrgFlowStore.putHandle=async h=>remembered.push(h.name);window.showOpenFilePicker=async()=>[{...handleA,name:'B.json'}]")
+        self.reject=['Open “'];self.ev('restoreWorkspacePicker()')
+        self.assertEqual(self.ev('remembered'),[])
+        self.assertEqual(self.ev('workspaceFileHandle.name'),'A.json')
+    def test_08c_corrupt_primary_is_preserved_when_no_valid_copy_exists(self):
+        self.ev("async()=>{await OrgFlowStore.deleteDocument();localStorage.setItem(PLANNING_KEY,'{broken');await initPlanning();}")
+        self.assertEqual(self.ev('localStorage.getItem(PLANNING_KEY)'),'{broken')
+        self.assertIn('could not be read',self.ev('modelLoadError'))
+    def test_08d_outbox_is_partitioned_by_session(self):
+        if ARGS.dom:self.skipTest('Requires real IndexedDB')
+        result=self.ev("""async()=>{OrgFlowStore.setPendingScope({user:'A',tenant:'org'});await OrgFlowStore.putPending({reason:'A edits'});OrgFlowStore.setPendingScope({user:'B',tenant:'org'});const other=await OrgFlowStore.getPending();await OrgFlowStore.clearPending();OrgFlowStore.setPendingScope({user:'A',tenant:'org'});return {other:other||null,own:(await OrgFlowStore.getPending()).reason};}""")
+        self.assertIsNone(result['other']);self.assertEqual(result['own'],'A edits')
+    def test_08e_saved_file_needs_explicit_reconnection_after_restart(self):
+        self.linked()
+        self.ev("async()=>{window.showSaveFilePicker=async()=>handleA;OrgFlowStore.getHandle=async()=>({handle:handleA,workspaceId:workspace.workspaceId});await resumeFileHandle();}")
+        self.assertTrue(self.ev('fileHandleNeedsReconnect'))
+        self.assertFalse(self.ev('filePersistence.enabled'))
     def test_09_disable_autosave_cancels_queued_write(self):
         self.linked();self.page.locator('#autoSaveFile').scroll_into_view_if_needed();self.ev('filePersistence.delay=2000');self.edit();self.page.locator('#autoSaveFile').uncheck();self.page.wait_for_timeout(2150);self.assertEqual(self.ev('writes.length'),0)
     def test_10_archived_only_compare_and_restore(self):
@@ -157,8 +176,8 @@ class BrowserTests(unittest.TestCase):
         (OUT/'scale.json').write_text(json.dumps(result,indent=2));self.page.wait_for_timeout(500);self.page.locator('#search').fill('S-2499');self.page.wait_for_timeout(250);self.assertTrue(self.page.locator('#chart .node[data-id="S-2499"]').count());self.page.locator('#search').fill('');self.click('[data-view="positions"]');self.assertLessEqual(self.page.locator('#positionsRows tr').count(),100)
     def test_16_native_filesystem_serialization(self):
         if ARGS.dom:self.skipTest('Native filesystem requires real browser navigation; DOM harness cannot verify it.')
-        result=self.ev("""async()=>{if(!navigator.storage?.getDirectory)return{supported:false};const root=await navigator.storage.getDirectory(),h=await root.getFileHandle('orgflow-ci.json',{create:true});if(!h.createWritable)return{supported:false};let payload={n:1};const controller=new OrgFlowPersistence.FilePersistence({readPayload:()=>payload,delay:10});controller.setTarget(h);const first=controller.save();payload={n:2};controller.changed();const second=controller.save();await Promise.all([first,second]);const saved=JSON.parse(await(await h.getFile()).text());await root.removeEntry('orgflow-ci.json');controller.dispose();return{supported:true,saved};}""")
-        if not result['supported']:self.skipTest('This browser does not expose writable OPFS file handles.')
+        result=self.ev("""async()=>{if(!window.showSaveFilePicker||!navigator.storage?.getDirectory||!window.FileSystemFileHandle?.prototype?.createWritable)return{supported:false};const root=await navigator.storage.getDirectory(),h=await root.getFileHandle('orgflow-ci.json',{create:true});if(!h.createWritable)return{supported:false};let payload={n:1};const controller=new OrgFlowPersistence.FilePersistence({readPayload:()=>payload,delay:10});controller.setTarget(h);const first=controller.save();payload={n:2};controller.changed();const second=controller.save();await Promise.all([first,second]);const saved=JSON.parse(await(await h.getFile()).text());await root.removeEntry('orgflow-ci.json');controller.dispose();return{supported:true,saved};}""")
+        if not result['supported']:self.skipTest('This browser uses downloaded backups; user-picked writable files are unavailable.')
         self.assertEqual(result['saved'],{'n':2})
     def test_17_real_exports(self):
         if ARGS.dom:self.skipTest('Download/navigation is not verified in the DOM harness.')
@@ -170,7 +189,7 @@ class BrowserTests(unittest.TestCase):
 
     def test_18_shared_server_preserves_edits_and_reconciles_conflicts(self):
         if ARGS.dom:self.skipTest('Shared-host navigation requires the normal browser gate.')
-        server=subprocess.Popen(['node','-e',"const {createApp}=require('./server/lib/app');const a=createApp({memory:true,env:{AUTH_MODE:'dev',SESSION_SECRET:'browser-test-secret'}});a.server.listen(0,'127.0.0.1',()=>console.log(a.server.address().port));"],cwd=ROOT,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True)
+        server=subprocess.Popen(['node','-e',"const {createApp}=require('./server/lib/app');const a=createApp({memory:true,env:{AUTH_MODE:'dev',SESSION_SECRET:'browser-test-secret'}});a.server.listen(0,'127.0.0.1',()=>{a.config.publicUrl='http://127.0.0.1:'+a.server.address().port;console.log(a.server.address().port)});"],cwd=ROOT,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True)
         try:
             port=int(server.stdout.readline().strip());base=f'http://127.0.0.1:{port}'
             login=self.context.request.post(base+'/auth/dev/login',data={'email':'browser-admin@example.test','role':'admin','canExport':True});self.assertEqual(login.status,200)
@@ -195,6 +214,49 @@ class BrowserTests(unittest.TestCase):
             server.terminate()
             try:server.wait(timeout=5)
             except subprocess.TimeoutExpired:server.kill();server.wait()
+
+    def test_19_quota_failure_does_not_block_durable_edits(self):
+        if ARGS.dom:self.skipTest('Requires real IndexedDB')
+        self.ev("async()=>{await OrgFlowStore.flush();const put=appStorage.setItem;appStorage.setItem=(key,value)=>{if(key===PLANNING_KEY)throw new DOMException('Full','QuotaExceededError');return put(key,value);};}")
+        self.edit('Durable despite cache quota');self.ev('OrgFlowStore.flush()')
+        self.assertEqual(self.ev('(async()=> (await OrgFlowStore.readDocument()).planning.scenarios[0].positions[0].title)()'),'Durable despite cache quota')
+        self.edit('Second durable edit');self.ev('OrgFlowStore.flush()')
+        self.page.reload();self.page.wait_for_function("() => typeof workspace!=='undefined'&&workspace?.scenarios?.length")
+        self.assertEqual(self.ev('activeScenario().positions[0].title'),'Second durable edit')
+    def test_20_checkpoint_failure_stops_replacement(self):
+        before=self.ev('workspace.workspaceId')
+        self.ev("()=>{OrgFlowStore.addCheckpoint=async()=>{throw new Error('disk full')};}")
+        self.ev("loadSampleWorkspace('northstar-commerce',{skipConfirm:true})")
+        self.assertEqual(self.ev('workspace.workspaceId'),before)
+        self.assertIn('Checkpoint failed',self.page.locator('#toast').inner_text())
+    def test_21_independent_tabs_cannot_overwrite_newer_durable_copy(self):
+        if ARGS.dom:self.skipTest('Requires real IndexedDB')
+        self.ev('OrgFlowStore.flush()')
+        second=self.context.new_page();second.goto(self.base+'/app.html')
+        second.wait_for_function("() => typeof workspace!=='undefined'&&workspace?.scenarios?.length")
+        second.evaluate('OrgFlowStore.flush()')
+        self.ev('OrgFlowStore.readDocument()');self.edit('First tab won');self.ev('OrgFlowStore.flush()')
+        result=second.evaluate("async()=>{try{await OrgFlowStore.writeDocument(workspacePayload());return 'overwritten';}catch(e){return e.message;}}")
+        self.assertIn('Another tab',result);second.close()
+    def test_22_account_scope_hides_checkpoints_and_file_links(self):
+        if ARGS.dom:self.skipTest('Requires real IndexedDB')
+        result=self.ev("""async()=>{await OrgFlowStore.flush();OrgFlowStore.configureScope({user:'one',tenant:'org'});const id=await OrgFlowStore.addCheckpoint(workspace,'Private');OrgFlowStore.configureScope({user:'two',tenant:'org'});const list=await OrgFlowStore.listCheckpoints();return {list,read:await OrgFlowStore.readCheckpoint(id),handle:await OrgFlowStore.getHandle()||null};}""")
+        self.assertEqual(result['list'],[]);self.assertIsNone(result['read']);self.assertIsNone(result['handle'])
+    def test_23_interactive_export_runs_offline_and_excludes_private_fields(self):
+        if ARGS.dom:self.skipTest('Requires normal asset fetch')
+        self.ev("updateScenario(s=>{s.positions[0].title='EXCLUDED SECRET';s.positions.find(p=>p.id==='POS-003').title='<img src=x onerror=window.PWNED=true>';for(const p of s.positions)p.costCenter='PRIVATE COST';})")
+        self.ev('openShareDialog()');self.page.locator('#shareScope').select_option('POS-003');self.page.locator('#shareDepth').select_option('1')
+        with self.page.expect_download() as download:self.ev('exportInteractiveChart()')
+        file=OUT/'offline-share.html';download.value.save_as(str(file));html=file.read_text()
+        self.assertNotIn('EXCLUDED SECRET',html);self.assertNotIn('PRIVATE COST',html)
+        viewer=self.context.new_page();errors=[];viewer.on('pageerror',lambda e:errors.append(str(e)))
+        viewer.route('**/*',lambda route:route.abort())
+        viewer.set_content(html);viewer.wait_for_selector('.of-card')
+        initial=viewer.locator('.of-card').count();viewer.locator('#of-expand').click();expanded=viewer.locator('.of-card').count()
+        self.assertGreater(expanded,initial);self.assertIsNone(viewer.evaluate('window.PWNED'))
+        zoom=viewer.locator('#of-zoom-label').inner_text();viewer.locator('#of-zoom-in').click();self.assertNotEqual(viewer.locator('#of-zoom-label').inner_text(),zoom)
+        viewer.locator('#of-collapse-all').click();viewer.locator('#of-search').fill('Engineer');self.assertTrue(viewer.locator('#of-hits').inner_text())
+        self.assertEqual(errors,[]);viewer.screenshot(path=str(OUT/'interactive-offline.png'));viewer.close()
 
 if __name__=='__main__':
     suite=unittest.defaultTestLoader.loadTestsFromTestCase(BrowserTests)

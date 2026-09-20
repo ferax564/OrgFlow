@@ -31,7 +31,6 @@ electronFuses:
 mac:
   category: public.app-category.business
   icon: build/icon.png
-  identity: null
   target:
     - target: zip
       arch:
@@ -39,8 +38,10 @@ mac:
   artifactName: OrgFlow-${version}-mac.zip
 win:
   icon: build/icon.png
-  signAndEditExecutable: false
   target:
+    - target: nsis
+      arch:
+        - x64
     - target: portable
       arch:
         - x64
@@ -58,3 +59,14 @@ linux:
       arch:
         - x64
   artifactName: OrgFlow-${version}-linux.AppImage
+
+nsis:
+  artifactName: OrgFlow-${version}-windows-setup.exe
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+publish:
+  provider: github
+  owner: ferax564
+  repo: OrgFlow
+  releaseType: release

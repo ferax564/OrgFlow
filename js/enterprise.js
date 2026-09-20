@@ -10,8 +10,8 @@
   async function jsonFetch(url,options={}){const res=await fetch(url,{credentials:'same-origin',...options});const body=await res.json().catch(()=>({}));return{res,body};}
   async function takeOver(){
     const ctrl=new AbortController(),timeout=setTimeout(()=>ctrl.abort(),2000);
-    try{const{res,body}=await jsonFetch('/api/meta',{headers:{accept:'application/json'},signal:ctrl.signal});if(!res.ok||!body.enterprise)throw new Error('local');}
-    catch{clearTimeout(timeout);startLocalPlanner();return;}clearTimeout(timeout);
+    try{const{res,body}=await jsonFetch('/api/meta',{headers:{accept:'application/json'},signal:ctrl.signal});if(!res.ok||!body.enterprise)throw new Error('local');localStorage.setItem('orgflow.shared-host','1');}
+    catch{clearTimeout(timeout);if(localStorage.getItem('orgflow.shared-host')){api.enabled=true;api.canWrite=false;document.getElementById('loadError').classList.remove('hidden');document.getElementById('loadError').textContent='Shared host unavailable. Reconnect and reload to verify your account before opening cached data.';}else startLocalPlanner();return;}clearTimeout(timeout);
     try{
       const session=await jsonFetch('/api/session',{headers:{accept:'application/json'}});
       if(session.res.status===401){location.href='/auth/login';return;}
@@ -20,6 +20,7 @@
       const loaded=await jsonFetch('/api/workspace',{headers:{accept:'application/json'}});
       if(!loaded.res.ok)throw new Error(loaded.body.error||'Could not load the shared organization. Reload to retry.');
       const body=loaded.body;
+      configureWorkspaceScope(body.session);await OrgFlowStore.readDocument();
       let version=body.version;
       api.applying=true;
       // Flush edits that never reached the server before its document
@@ -28,7 +29,7 @@
         const pending=await window.OrgFlowStore?.getPending?.();
         if(pending?.payload){
           const resent=await jsonFetch('/api/workspace',{method:'PUT',headers:{'content-type':'application/json','if-match':String(pending.baseVersion??version)},body:JSON.stringify({workspace:pending.payload,version:pending.baseVersion??version})});
-          if(resent.res.ok){version=resent.body.version;body.workspace=pending.payload;await window.OrgFlowStore.clearPending();}
+          if(resent.res.ok){version=resent.body.version;body.workspace=resent.body.workspace;await window.OrgFlowStore.clearPending();}
         }
       }catch{/* the pending record stays recoverable */}
       try{await applyEnterpriseWorkspace(body.workspace);}finally{api.applying=false;}
@@ -58,6 +59,8 @@
     if(baseline&&fingerprint(payload)===fingerprint(baseline)){dirty=false;status('Saved');return;}
     api.busy=true;status('Saving');
     try{
+      await OrgFlowStore.flush();
+      await persistPending(payload,'sending');
       const{res,body}=await jsonFetch('/api/workspace',{method:'PUT',headers:{'content-type':'application/json','if-match':String(api.version)},body:JSON.stringify({workspace:payload,version:api.version})});
       if(res.status===409){conflict={base:structuredClone(baseline),local:structuredClone(payload),remote:null,version:null,resolutions:{},page:0};status('Conflict');await persistPending(payload,'conflict');throw new Error('Someone else saved. Your edits remain here. Use Resolve save conflict.');}
       if(!res.ok)throw new Error(body.error||'Save failed.');
@@ -73,7 +76,7 @@
   // A save that cannot reach the server keeps its full payload + base version
   // in IndexedDB so a crash or reload cannot lose the unsynchronized work.
   async function persistPending(payload,reason){
-    try{await window.OrgFlowStore?.putPending?.({planning:payload.planning,payload,baseVersion:api.version,reason});}catch{/* pending recovery is best-effort */}
+    await window.OrgFlowStore.putPending({planning:payload.planning,payload,baseVersion:api.version,reason});
   }
   async function flush(){clearTimeout(timer);timer=null;await chain.catch(()=>{});if(api.saveState==='Conflict')throw new Error('Resolve the save conflict first.');if(dirty)await enqueueSave();}
   async function decision(id,action,input={}){

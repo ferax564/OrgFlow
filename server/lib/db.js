@@ -98,6 +98,12 @@ function openDatabase(filePath) {
       PRIMARY KEY (tenant_id, version)
     );
   `);
+  const columns = new Set(db.prepare('PRAGMA table_info(api_tokens)').all().map(x => x.name));
+  if (!columns.has('expires_at')) db.exec('ALTER TABLE api_tokens ADD COLUMN expires_at TEXT');
+  if (!columns.has('scopes')) db.exec(`ALTER TABLE api_tokens ADD COLUMN scopes TEXT NOT NULL DEFAULT '["read"]'`);
+  // Legacy credentials become read-only and expire after the migration grace period.
+  db.prepare('UPDATE api_tokens SET expires_at = ? WHERE expires_at IS NULL').run(new Date(Date.now()+30*86400000).toISOString());
+  db.exec(`CREATE TABLE IF NOT EXISTS command_receipts (tenant_id TEXT NOT NULL,user_id TEXT NOT NULL,key TEXT NOT NULL,hash TEXT NOT NULL,result TEXT NOT NULL,created_at TEXT NOT NULL,PRIMARY KEY(tenant_id,user_id,key));`);
   return db;
 }
 
@@ -133,7 +139,8 @@ function createStore(db, options = {}) {
       return db.prepare('SELECT * FROM users WHERE id = ?').get(existingSub.id);
     }
     const existingEmail = db.prepare('SELECT * FROM users WHERE email = ?').get(normalizedEmail);
-    if (existingEmail) {
+    if (existingEmail && (existingEmail.issuer_sub.startsWith('local:') || issuerSub.startsWith('local:'))) {
+      if (existingEmail.issuer_sub.startsWith('local:') && !issuerSub.startsWith('local:')) db.prepare('UPDATE users SET issuer_sub = ? WHERE id = ?').run(issuerSub,existingEmail.id);
       db.prepare('UPDATE users SET name = ? WHERE id = ?').run(name || existingEmail.name, existingEmail.id);
       return db.prepare('SELECT * FROM users WHERE id = ?').get(existingEmail.id);
     }
@@ -261,8 +268,8 @@ function createStore(db, options = {}) {
     const row = db.prepare(`
       SELECT s.*, u.email, u.name, u.id AS user_id
       FROM sessions s JOIN users u ON u.id = s.user_id
-      WHERE s.id = ?
-    `).get(id);
+      WHERE s.id = ? AND s.tenant_id = ?
+    `).get(id,tenantId);
     if (!row) return null;
     if (row.expires_at <= nowIso()) {
       db.prepare('DELETE FROM sessions WHERE id = ?').run(id);
@@ -287,27 +294,30 @@ function createStore(db, options = {}) {
     return row;
   }
 
-  function createApiToken(userId, name) {
+  function createApiToken(userId, name, { scopes = ['read'], expiresInDays = 30 } = {}) {
+    if (!Array.isArray(scopes) || !scopes.length || scopes.some(x => !['read','export','propose'].includes(x))) throw new Error('Token scopes must be read, export or propose.');
+    if (!Number.isInteger(expiresInDays) || expiresInDays < 1 || expiresInDays > 90) throw new Error('Token lifetime must be 1–90 days.');
+    const expiresAt = new Date(Date.now()+expiresInDays*86400000).toISOString();
     const raw = 'ofk_' + crypto.randomBytes(32).toString('hex');
     const tokenHash = crypto.createHash('sha256').update(raw).digest('hex');
     const id = newId('tok');
     db.prepare(`
-      INSERT INTO api_tokens (id, token_hash, token_prefix, user_id, tenant_id, name, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-    `).run(id, tokenHash, raw.slice(0, 12), userId, tenantId, String(name || 'MCP').slice(0, 80), nowIso());
-    return { id, token: raw, prefix: raw.slice(0, 12) };
+      INSERT INTO api_tokens (id, token_hash, token_prefix, user_id, tenant_id, name, created_at, expires_at, scopes)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(id, tokenHash, raw.slice(0, 12), userId, tenantId, String(name || 'MCP').slice(0, 80), nowIso(), expiresAt, JSON.stringify([...new Set(scopes)]));
+    return { id, token: raw, prefix: raw.slice(0, 12), expiresAt, scopes };
   }
 
   function listTokens(userId, isAdmin) {
     if (isAdmin) {
       return db.prepare(`
-        SELECT t.id, t.token_prefix, t.name, t.created_at, t.last_used_at, u.email
+        SELECT t.id, t.token_prefix, t.name, t.created_at, t.last_used_at, t.expires_at, t.scopes, u.email
         FROM api_tokens t JOIN users u ON u.id = t.user_id
         WHERE t.tenant_id = ? ORDER BY t.created_at DESC
       `).all(tenantId);
     }
     return db.prepare(`
-      SELECT id, token_prefix, name, created_at, last_used_at
+      SELECT id, token_prefix, name, created_at, last_used_at, expires_at, scopes
       FROM api_tokens WHERE tenant_id = ? AND user_id = ? ORDER BY created_at DESC
     `).all(tenantId, userId);
   }
@@ -322,13 +332,20 @@ function createStore(db, options = {}) {
     const row = db.prepare(`
       SELECT t.*, u.email, u.name
       FROM api_tokens t JOIN users u ON u.id = t.user_id
-      WHERE t.token_hash = ?
-    `).get(tokenHash);
-    if (!row) return null;
+      WHERE t.token_hash = ? AND t.tenant_id = ?
+    `).get(tokenHash,tenantId);
+    if (!row || row.expires_at <= nowIso()) return null;
     db.prepare('UPDATE api_tokens SET last_used_at = ? WHERE id = ?').run(nowIso(), row.id);
     return row;
   }
 
+  function prune() {
+    const now = nowIso(), cutoff = new Date(Date.now()-90*86400000).toISOString();
+    db.prepare('DELETE FROM sessions WHERE expires_at <= ?').run(now);
+    db.prepare('DELETE FROM oauth_states WHERE expires_at <= ?').run(now);
+    db.prepare('DELETE FROM command_receipts WHERE created_at < ?').run(cutoff);
+    db.prepare('DELETE FROM audit_log WHERE created_at < ?').run(new Date(Date.now()-365*86400000).toISOString());
+  }
   function audit({ userId, action, detail }) {
     db.prepare('INSERT INTO audit_log (id, tenant_id, user_id, action, detail, created_at) VALUES (?, ?, ?, ?, ?, ?)')
       .run(newId('aud'), tenantId, userId, action, JSON.stringify(detail || {}), nowIso());
@@ -346,6 +363,7 @@ function createStore(db, options = {}) {
 
   return {
     db,
+    prune,
     tenantId,
     getTenant,
     upsertUser,

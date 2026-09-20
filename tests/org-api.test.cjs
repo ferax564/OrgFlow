@@ -97,4 +97,13 @@ test('org API reports workspace context and new query tools', async t => {
   const spec = await api(base, admin.cookie, '/api/openapi.json');
   assert.equal(spec.res.status, 200);
   assert.equal(spec.json.openapi, '3.0.3');
+
+  const scoped = await login(base, { email: 'branch@example.com', role: 'viewer', canExport: false, scopePositionId: 'POS-003' });
+  const scopedChanges = await api(base, scoped.cookie, '/api/org/changes?sinceVersion=' + saved.json.version);
+  assert.equal(scopedChanges.res.status, 200);
+  assert.deepEqual(scopedChanges.json.changes, [], 'same revision must not disclose other branches as removed positions');
+  const mcpChanges = await api(base, scoped.cookie, '/api/mcp', { method: 'POST', body: JSON.stringify({ jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: 'get_changes_since', arguments: { sinceVersion: saved.json.version } } }) });
+  assert.deepEqual(JSON.parse(mcpChanges.json.result.content[0].text).changes, []);
+  const deniedShare = await api(base, scoped.cookie, '/api/mcp', { method: 'POST', body: JSON.stringify({ jsonrpc: '2.0', id: 4, method: 'tools/call', params: { name: 'create_share_snapshot', arguments: { html: true } } }) });
+  assert.match(deniedShare.json.error.message, /not allowed to export/);
 });

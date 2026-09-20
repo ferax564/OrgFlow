@@ -1,10 +1,12 @@
 'use strict';
-const { app, BrowserWindow, Menu, shell, protocol, net, ipcMain } = require('electron');
+const { app, BrowserWindow, Menu, shell, protocol, net, ipcMain, dialog } = require('electron');
 const path = require('path');
 const { pathToFileURL } = require('url');
 const { allowedPath, portableUserData } = require('./serve.cjs');
 const { createWorkspaceStore } = require('./store.cjs');
 const { scanLegacyProfiles } = require('./recover.cjs');
+const { createDocuments } = require('./documents.cjs');
+const { createUpdates } = require('./updates.cjs');
 
 // A standard custom scheme gives the planner a stable origin
 // (orgflow://app) on every launch. localStorage/IndexedDB are keyed by
@@ -91,7 +93,7 @@ async function createWindow() {
     return { action: 'deny' };
   });
   mainWindow.webContents.on('will-navigate', (event, url) => {
-    if (!url.startsWith('orgflow://')) {
+    if (url !== 'orgflow://app/app.html') {
       event.preventDefault();
       if (isExternal(url)) shell.openExternal(url);
     }
@@ -109,21 +111,29 @@ function registerProtocol() {
   });
 }
 
+function trustedRenderer(event) {
+  return event.sender === mainWindow?.webContents && event.senderFrame === event.sender.mainFrame && event.senderFrame.url === 'orgflow://app/app.html';
+}
+
 function registerStore() {
   store = createWorkspaceStore([app.getPath('userData'), defaultUserData]);
-  ipcMain.handle('workspace:load', () => {
+  ipcMain.handle('workspace:load', event => {
+    if (!trustedRenderer(event)) throw new Error('Untrusted document.');
     const found = store.load();
     return found ? found.text : null;
   });
   // Save is synchronous so a quit immediately after commit still hits disk.
   ipcMain.on('workspace:save', (event, text) => {
+    if (!trustedRenderer(event)) { event.returnValue = { error: 'Untrusted document.' }; return; }
     try { event.returnValue = store.save(text); }
     catch (error) { event.returnValue = { error: String(error?.message || error) }; }
   });
   ipcMain.on('workspace:paths', event => {
+    if (!trustedRenderer(event)) { event.returnValue = null; return; }
     event.returnValue = store.paths().join(' · ');
   });
   ipcMain.on('workspace:legacy', event => {
+    if (!trustedRenderer(event)) { event.returnValue = null; return; }
     try {
       const scan = scanLegacyProfiles(store.paths());
       legacyCopies = scan.recovered;
@@ -143,14 +153,47 @@ function registerStore() {
     }
   });
   ipcMain.on('workspace:legacyLoad', (event, index) => {
+    if (!trustedRenderer(event)) { event.returnValue = null; return; }
     const row = legacyCopies[Number(index)];
     event.returnValue = row ? { planning: row.planning, branding: row.branding } : null;
   });
 }
 
+function registerDocumentsAndUpdates() {
+  const documents = createDocuments(defaultUserData);
+  const updates = createUpdates({
+    updater: require('electron-updater').autoUpdater,
+    version: app.getVersion(),
+    supported: app.isPackaged && !process.env.PORTABLE_EXECUTABLE_DIR && (process.platform !== 'linux' || Boolean(process.env.APPIMAGE))
+  });
+  const handle = (channel, fn) => ipcMain.handle(channel, (event, ...args) => {
+    if (!trustedRenderer(event)) throw new Error('Untrusted document.');
+    return fn(...args);
+  });
+  const filters = [{ name: 'OrgFlow workspace', extensions: ['json', 'orgflow'] }];
+  handle('document:open', async () => {
+    const picked = await dialog.showOpenDialog(mainWindow, { title: 'Open org chart', filters, properties: ['openFile'] });
+    return picked.canceled ? null : documents.grant(picked.filePaths[0]);
+  });
+  handle('document:saveAs', async () => {
+    const picked = await dialog.showSaveDialog(mainWindow, { title: 'Save org chart as', defaultPath: 'OrgFlow-workspace.orgflow', filters });
+    return picked.canceled ? null : documents.grant(picked.filePath, false);
+  });
+  handle('document:save', (token, text) => documents.save(token, text));
+  handle('document:read', token => documents.read(token));
+  handle('document:remember', token => documents.remember(token));
+  handle('document:recent', () => documents.list());
+  handle('document:openRecent', index => documents.openRecent(index));
+  handle('update:state', () => updates.state());
+  handle('update:run', () => updates.run());
+  handle('update:install', () => updates.install());
+  handle('update:releases', () => shell.openExternal('https://github.com/ferax564/OrgFlow/releases/latest'));
+}
+
 app.whenReady().then(async () => {
   registerProtocol();
   registerStore();
+  registerDocumentsAndUpdates();
   createMenu();
   await createWindow();
   app.on('activate', async () => {

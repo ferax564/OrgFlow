@@ -141,7 +141,8 @@
       <button class="btn" id="backupBtn">Back up workspace</button>
       <button class="btn" id="saveWorkspaceBtn">Save workspace</button>
       <button class="btn ghost" id="saveWorkspaceAsBtn">Save workspace as…</button>
-      <button class="btn ghost" id="restoreBtn">Restore workspace</button>
+      <button class="btn ghost" id="restoreBtn">Open org chart…</button>
+      <div id="recentFilesRow" hidden><label for="recentFiles">Recent org charts</label><select id="recentFiles"><option value="">Choose a file…</option></select></div>
       <button class="btn ghost" id="historyBtn">Recovery &amp; backups</button>
       <input id="restoreInput" type="file" accept=".json,.orgflow,application/json" hidden />
       <p id="saveStatus" class="save-status" role="status" aria-live="polite">Saved in this browser</p><button class="btn ghost" id="retrySave" hidden>Retry file save</button><button class="btn ghost" id="unlinkFile" hidden>Unlink saved file</button>
@@ -149,6 +150,12 @@
       <button class="btn ghost hidden" id="reconnectFile">Reconnect saved file</button>
     </div>
     <div class="hint">CSV updates the active scenario. JSON backup keeps scenarios, people, branding, saved views and chart settings. Save workspace overwrites the last file you picked, when the browser allows it.</div>
+  </div>
+  <div class="section always-available" id="updatesSection" hidden>
+    <h3>Application updates</h3>
+    <p class="hint" id="updateStatus" role="status" aria-live="polite"></p>
+    <button class="btn" id="updateAppBtn">Check for updates</button>
+    <button class="btn ghost" id="releaseNotesBtn">Release downloads &amp; notes</button>
   </div>
   <div class="section always-available">
     <h3>Example companies</h3>

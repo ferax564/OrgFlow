@@ -41,3 +41,10 @@ Updates use Check → Download → Save and restart. Installation is blocked unt
 4. Choose operational capacity/SLOs and exercise representative organization sizes on the intended host. Existing large-chart tests validate bounded rendering, not an unlimited scale guarantee.
 
 See [release validation](RELEASE_VALIDATION.md), [host operations](server/README.md), and [changes](CHANGELOG.md). No test suite can establish that every possible input or deployment is defect-free.
+
+
+## Follow-up release controls
+
+Stable builds now verify the **shipped artifacts**, not only credential presence: Developer ID/team, nested signatures, stapled notarization and Gatekeeper for the macOS ZIP; timestamped trusted Authenticode and expected publisher for both Windows executables. See [credential setup and the actual update/deployment drill](RELEASE_OPERATIONS.md).
+
+The public static deployment's HTTPS planner and all ten script assets were verified against source. Enterprise deployment validation is separate and needs the intended host/test account. Signing credentials remain absent; no signed update or successful notarization is claimed.

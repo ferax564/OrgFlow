@@ -23,7 +23,9 @@
     "lint": "eslint .",
     "test:browser": "python3 tests/browser-regressions.py",
     "test:desktop": "node scripts/desktop-regressions.cjs",
-    "backup": "node server/backup.js"
+    "backup": "node server/backup.js",
+    "verify:release": "node scripts/verify-release.cjs",
+    "check:deployment": "node scripts/deployment-check.cjs"
   },
   "engines": {
     "node": ">=22.16.0"

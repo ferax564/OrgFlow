@@ -47,6 +47,8 @@ Tagged builds publish the binaries plus update manifests and blockmaps. Windows 
 
 The desktop sidebar has **Check for updates**, **Download update**, and **Save and restart to update**. Native **Open org chart…**, **Save workspace**, **Save workspace as…**, and **Recent org charts** manage `.orgflow`/JSON documents. External file changes are detected before overwriting. Browser file autosave requires reconnection after restart.
 
+See [signed release operations](RELEASE_OPERATIONS.md) for credential setup and deployment checks.
+
 See [production readiness and release gates](PRODUCTION_READINESS.md) for signing setup, current limitations, review findings, and the prioritized next steps. Automatic update delivery requires a newly published compatible release; it is not enabled retroactively in older downloaded binaries.
 
 The desktop app loads the planner from a fixed `orgflow://` origin, so restarts and updates always find the same browser storage. Every commit is additionally journaled by the app itself into `OrgFlow-data` next to the executable **and** the OS-standard app-data folder — moving the exe to a new folder still finds the workspace, and each directory keeps the ten most recent backups of the file.

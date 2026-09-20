@@ -7,6 +7,7 @@ Unsigned release candidate for storage, document management and security hardeni
 - Add desktop Check for updates, Download, and Save and restart, with save failures blocking installation; publish installer/update metadata.
 - Add native Open/Save As, persistent recent org charts, external file-change protection and explicit browser file reconnection.
 - Make IndexedDB authoritative with atomic outbox commits, stale-tab protection, isolated account caches and complete recovery checkpoints.
+- Open recovered charts directly without a first-run sample chooser; preserve checkpoint views in bundles.
 - Fix offline interactive HTML, scoped history/export authorization, journal backup ordering and corrupt-copy handling.
 - Validate OIDC through openid-client, bind login to the initiating browser, require verified invited identities, and restrict production configuration.
 - Add expiring read/export/propose API tokens, proposal idempotency, assigned-reviewer approval and review queues.

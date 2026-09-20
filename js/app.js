@@ -442,7 +442,7 @@ async function initPlanning(){
       else workspace=validatePlanning(ORGFLOW_EXAMPLES['harbor-and-co'].planning);
       workspace=touchWorkspace(workspace);
       lastSavedPlanningText=JSON.stringify(workspace);safePreference(PLANNING_KEY,lastSavedPlanningText);
-      if(old===null) applySampleChrome('harbor-and-co', true);
+      if(old===null){welcomeFirstRun=true;applySampleChrome('harbor-and-co', true);}
       writeDurable(workspace,lastSavedPlanningText);
     }
   }catch(error){
@@ -1772,8 +1772,10 @@ function openWelcome(force=false){
   if(force)markWelcomeSeen();
 }
 function maybeShowWelcome(){
-  try{if(appStorage.getItem(WELCOME_KEY))return;}catch{return;}
-  welcomeFirstRun=true;
+  // A recovered or migrated chart is never a first-run sample, even when
+  // the application moved and its old welcome preference did not move.
+  if(!welcomeFirstRun||modelLoadError)return;
+  try{if(appStorage.getItem(WELCOME_KEY)){welcomeFirstRun=false;return;}}catch{return;}
   openWelcome();
 }
 function renderHistory(){

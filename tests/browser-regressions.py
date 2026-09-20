@@ -233,9 +233,11 @@ class BrowserTests(unittest.TestCase):
         if ARGS.dom:self.skipTest('Requires real IndexedDB')
         self.ev('OrgFlowStore.flush()')
         second=self.context.new_page();second.goto(self.base+'/app.html')
-        second.wait_for_function("() => typeof workspace!=='undefined'&&workspace?.scenarios?.length")
-        second.evaluate('OrgFlowStore.flush()')
-        self.ev('OrgFlowStore.readDocument()');self.edit('First tab won');self.ev('OrgFlowStore.flush()')
+        second.wait_for_function("() => typeof workspace!=='undefined'&&workspace?.scenarios?.length&&document.querySelectorAll('#chart .node').length>0")
+        # Drain startup view persistence before deliberately ordering the two
+        # competing writes; startup rendering otherwise introduces a third writer.
+        second.evaluate('async()=>{clearTimeout(savedViewTimer);await OrgFlowStore.flush();}')
+        self.ev("async()=>{clearTimeout(savedViewTimer);await OrgFlowStore.flush();await OrgFlowStore.readDocument();updateScenario(s=>{s.positions[0].title='First tab won';});await OrgFlowStore.flush();}")
         result=second.evaluate("async()=>{try{await OrgFlowStore.writeDocument(workspacePayload());return 'overwritten';}catch(e){return e.message;}}")
         self.assertIn('Another tab',result);second.close()
     def test_22_account_scope_hides_checkpoints_and_file_links(self):

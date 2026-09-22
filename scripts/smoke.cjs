@@ -90,6 +90,7 @@ async function serve(root, port) {
     await page.click('#themeBtn');
     const theme = await page.$eval('html', el => el.dataset.theme);
     assert.equal(theme, 'dark');
+    await page.evaluate(() => openWelcome(true)); // Templates live on the Start page.
     await page.click('#exampleNorthstarBtn');
     await page.waitForFunction(() => document.querySelector('#brandName')?.textContent === 'Northstar Commerce');
     const nCount = await page.$eval('#countVisible', el => el.textContent);
@@ -101,12 +102,14 @@ async function serve(root, port) {
       if (head && head.classList.contains('active')) head.click();
     });
     await page.waitForFunction(() => document.querySelector('#countVisible')?.textContent !== '14');
+    await page.evaluate(() => openWelcome(true)); // Templates live on the Start page.
     await page.click('#exampleEmptyBtn');
     await page.waitForFunction(() => document.querySelector('#countVisible')?.textContent === '1');
     const emptyBrand = await page.$eval('#brandName', el => el.textContent);
     assert.equal(emptyBrand, 'OrgFlow');
     const headActive = await page.evaluate(() => [...document.querySelectorAll('#roleChips .chip')].find(b => b.dataset.value === 'Head')?.classList.contains('active'));
     assert.equal(headActive, true);
+    await page.evaluate(() => openWelcome(true)); // Templates live on the Start page.
     await page.click('#exampleFirstLightBtn');
     await page.waitForFunction(() => document.querySelector('#brandName')?.textContent === 'First Light');
     assert.equal(await page.$eval('#countVisible', el => el.textContent), '8');

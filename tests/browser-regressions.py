@@ -142,7 +142,7 @@ class BrowserTests(unittest.TestCase):
         self.assertTrue(self.ev('fileHandleNeedsReconnect'))
         self.assertFalse(self.ev('filePersistence.enabled'))
     def test_09_disable_autosave_cancels_queued_write(self):
-        self.linked();self.page.locator('#autoSaveFile').scroll_into_view_if_needed();self.ev('filePersistence.delay=2000');self.edit();self.page.locator('#autoSaveFile').uncheck();self.page.wait_for_timeout(2150);self.assertEqual(self.ev('writes.length'),0)
+        self.linked();self.click('#fileBtn');self.assertTrue(self.page.locator('#autoSaveFile').is_visible());self.ev('filePersistence.delay=2000');self.edit();self.page.locator('#autoSaveFile').uncheck();self.page.wait_for_timeout(2150);self.assertEqual(self.ev('writes.length'),0)
     def test_10_archived_only_compare_and_restore(self):
         self.ev("()=>{for(const s of [...workspace.scenarios])if(s.id!=='current')toggleScenarioArchive(s.id,true);setView('compare')}")
         self.assertTrue(self.page.locator('#compareWelcome').is_visible());self.assertFalse(self.page.locator('#compareContent').is_visible())
@@ -276,6 +276,58 @@ class BrowserTests(unittest.TestCase):
         }""")
         self.assertTrue(result['accepted']);self.assertFalse(result['rejected']);self.assertEqual(result['before'],result['after'])
         self.assertEqual(result['view']['zoom'],0.75);self.assertEqual(result['theme'],'dark');self.assertEqual(result['palette'],'ocean')
+
+    def test_25_file_menu_reports_where_work_is_saved(self):
+        self.assertIn('Not saved to a file',self.page.locator('#docName').inner_text())
+        self.click('#docStatusBtn');self.assertTrue(self.page.locator('#fileMenu.open').count())
+        self.assertEqual(self.page.locator('#fileBtn').get_attribute('aria-expanded'),'true')
+        self.page.keyboard.press('ArrowDown');self.assertTrue(self.ev("document.activeElement.closest('#fileMenu')!==null"))
+        self.page.keyboard.press('Escape');self.assertFalse(self.page.locator('#fileMenu.open').count())
+        self.linked();self.ev('renderSaveStatus()')
+        self.assertEqual(self.page.locator('#docName').inner_text(),'A.json')
+        self.assertIn('A — OrgFlow',self.ev('document.title'))
+        self.click('#fileBtn');self.assertTrue(self.page.locator('#unlinkFile').is_visible());self.assertTrue(self.page.locator('#autoSaveFile').is_checked())
+        # The export menu is for sharing; workspace file actions live only in File.
+        self.assertEqual(self.page.locator('#exportMenu [data-export="save"],#exportMenu [data-export="workspace"]').count(),0)
+    def test_26_sidebar_sections_badges_and_panel_persist(self):
+        if ARGS.dom:self.skipTest('Reload persistence requires real navigation')
+        groups=self.ev('allGroups().length')
+        section=self.page.locator('.side-section[data-section="group"]')
+        section.locator('summary').click();self.assertTrue(self.ev("document.querySelector('[data-section=group]').open"))
+        self.click('[data-chip-none="group"]');self.assertEqual(self.page.locator('#badgeGroup').inner_text(),f'0 of {groups}')
+        self.assertEqual(self.page.locator('#countVisible').inner_text(),'0');self.assertTrue(self.page.locator('#filterStrip').is_visible())
+        self.page.locator('#groupChips .chip').first.click();self.assertEqual(self.page.locator('#badgeGroup').inner_text(),f'1 of {groups}')
+        self.click('[data-chip-all="group"]');self.assertEqual(self.page.locator('#badgeGroup').inner_text(),'All')
+        self.click('#filterToggle');self.assertTrue(self.ev("document.querySelector('.layout').classList.contains('sidebar-collapsed')"))
+        self.page.reload();self.page.wait_for_function("() => typeof workspace!=='undefined' && workspace && document.querySelectorAll('#chart .node').length>0")
+        self.assertTrue(self.ev("document.querySelector('.layout').classList.contains('sidebar-collapsed')"))
+        self.assertTrue(self.ev("document.querySelector('[data-section=group]').open"))
+        self.page.keyboard.press('[');self.assertFalse(self.ev("document.querySelector('.layout').classList.contains('sidebar-collapsed')"))
+    def test_27_start_page_and_single_key_shortcuts(self):
+        self.page.keyboard.press('?');self.assertTrue(self.page.locator('#shortcutsModal.open').count())
+        self.page.keyboard.press('Escape');self.assertFalse(self.page.locator('#shortcutsModal.open').count())
+        self.page.keyboard.press('2');self.assertTrue(self.page.locator('#positionsPanel').is_visible())
+        self.page.keyboard.press('1');self.assertTrue(self.page.locator('#canvasWrap').is_visible())
+        zoom=self.ev('zoom');self.page.keyboard.press('-');self.assertLess(self.ev('zoom'),zoom)
+        self.page.locator('#search').focus();self.page.keyboard.press('n');self.assertFalse(self.page.locator('#drawer.open').count())
+        self.page.locator('#search').blur();self.page.keyboard.press('n');self.assertTrue(self.page.locator('#drawer.open').count())
+        self.page.keyboard.press('Escape')
+        self.click('#fileBtn');self.click('#fileNewBtn');self.assertTrue(self.page.locator('#welcomeModal.open').count())
+        self.assertIn('position',self.page.locator('#continueMeta').inner_text())
+        self.click('#exampleEmptyBtn');self.page.wait_for_function('() => activeScenario().positions.length===1')
+        self.assertFalse(self.page.locator('#welcomeModal.open').count())
+    def test_28_dropping_a_workspace_file_opens_it(self):
+        if ARGS.dom:self.skipTest('Requires real drag events and IndexedDB')
+        fixture=(ROOT/'examples/northstar-commerce/workspace.json').read_text()
+        if not self.ev("()=>{try{const dt=new DataTransfer();dt.items.add(new File(['x'],'x.json'));return new DragEvent('drop',{dataTransfer:dt}).dataTransfer?.files.length===1}catch{return false}}"):
+            self.skipTest('This engine cannot synthesize file drag events.')
+        self.ev("""text=>{const dt=new DataTransfer();dt.items.add(new File([text],'northstar.json',{type:'application/json'}));
+          window.dispatchEvent(new DragEvent('dragenter',{dataTransfer:dt}));
+          window.__overlay=!document.querySelector('.drop-overlay').hidden;
+          window.dispatchEvent(new DragEvent('drop',{dataTransfer:dt,cancelable:true}));}""",fixture)
+        self.assertTrue(self.ev('window.__overlay'))
+        self.page.wait_for_function("() => branding.companyName==='Northstar Commerce'")
+        self.assertTrue(self.ev("document.querySelector('.drop-overlay').hidden"))
 
 if __name__=='__main__':
     suite=unittest.defaultTestLoader.loadTestsFromTestCase(BrowserTests)

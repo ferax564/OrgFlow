@@ -299,6 +299,9 @@ class BrowserTests(unittest.TestCase):
         self.page.locator('#groupChips .chip').first.click();self.assertEqual(self.page.locator('#badgeGroup').inner_text(),f'1 of {groups}')
         self.click('[data-chip-all="group"]');self.assertEqual(self.page.locator('#badgeGroup').inner_text(),'All')
         self.click('#filterToggle');self.assertTrue(self.ev("document.querySelector('.layout').classList.contains('sidebar-collapsed')"))
+        # Drain the deferred re-render and durable writes before reloading, as the
+        # other reload tests do; WebKit otherwise reloads mid-IndexedDB commit.
+        self.page.wait_for_timeout(400);self.ev("async()=>{clearTimeout(savedViewTimer);await OrgFlowStore.flush();}")
         self.page.reload();self.page.wait_for_function("() => typeof workspace!=='undefined' && workspace && document.querySelectorAll('#chart .node').length>0")
         self.assertTrue(self.ev("document.querySelector('.layout').classList.contains('sidebar-collapsed')"))
         self.assertTrue(self.ev("document.querySelector('[data-section=group]').open"))

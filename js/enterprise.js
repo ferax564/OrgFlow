@@ -44,8 +44,8 @@
     const bar=document.getElementById('enterpriseBar');bar.hidden=false;bar.classList.remove('hidden');
     bar.innerHTML=`<span>${esc(session.user?.email||'')} · ${esc(session.role)}${session.scopePositionId?' · subtree '+esc(session.scopePositionId):''}</span>${session.isAdmin?' <a href="admin.html">Admin</a>':''} <button class="small-link" id="serverSaveRetry" hidden>Retry server save</button> <a href="/auth/logout">Sign out</a>`;
     document.getElementById('serverSaveRetry').onclick=()=>{if(api.saveState==='Conflict')openConflict().catch(e=>toast(e.message));else flush().catch(e=>toast(e.message));};
-    if(!session.canWrite)for(const id of ['addBtn','importBtn','sideImportBtn','brandingBtn','directoryAdd'])document.getElementById(id).hidden=true;
-    if(!session.canExport)document.getElementById('exportBtn').hidden=true;
+    if(!session.canWrite)for(const id of ['addBtn','importBtn','brandingBtn','directoryAdd','exampleEmptyBtn','welcomeOpenBtn','restoreBtn'])document.getElementById(id).hidden=true;
+    if(!session.canExport)for(const id of ['exportBtn','saveWorkspaceBtn','saveWorkspaceAsBtn','backupBtn','bundleBtn'])document.getElementById(id).hidden=true;
     if(!session.isAdmin)for(const id of ['exampleHarborBtn','exampleNorthstarBtn','exampleEmptyBtn','exampleFirstLightBtn','exampleLumenBtn','exampleCedarBtn'])document.getElementById(id).hidden=true;
   }
   function queueSave(){

@@ -1,12 +1,12 @@
-# Release validation — 2.4.0-rc.2
+# Release validation — 2.5.0-rc.1
 
 ## Local verification
 
 - 112 Node tests passed: domain model, validation/migration, staffing/budgets/capacity, decision workflow, permissions, REST/MCP, native documents, updater state, journal recovery, consistent live backup/restore, scoped tokens and OIDC.
-- 28 real-navigation browser regressions are included. Chromium passed all 28 locally; WebKit passed 27 with one capability-based writable-file skip. Firefox passed the preceding 27-test suite with the same skip, and the final CI matrix runs all 28 tests on every engine. Firefox/WebKit use downloaded backups when user-picked writable handles are unavailable.
+- 32 real-navigation browser regressions (28 carried over plus File menu/status chip, sidebar badges and persistence, Start page and shortcuts, file drop). Chromium passed all 32 locally for 2.5.0-rc.1. Firefox and WebKit could not be downloaded in the validation environment (network policy), so for this candidate their results come only from the CI matrix on the release commit; the drop test skips on engines that cannot synthesize file drags.
 - Browser coverage includes editing, scenario comparison/apply, people and assignments, imports, undo/redo, recovery, canceled/invalid opens, save failures, account isolation, concurrent tabs, shared-server conflicts, mobile dialogs, keyboard focus, large-chart rendering and actual PNG/PDF/CSV/HTML exports.
 - Exported interactive HTML was opened offline with expansion/search/zoom, hostile text and excluded-field checks. Tests inspect exported bytes, not just the export button.
-- Real Electron lifecycle regression passed: native open/save bridge, recent files, external modification refusal, full restart, moved portable location, complete planning/branding recovery and development updater status. Dialog return values are automated; operating-system permission prompts are not certified by this test.
+- The Electron lifecycle regression (native open/save bridge, recent files, external modification refusal, restart, moved portable location, planning/branding recovery, updater status) was not re-run locally for 2.5.0-rc.1 because the Electron binary download is blocked there; it runs on Windows, macOS and Linux in the desktop workflow before artifacts are built. This candidate changes no desktop main-process code.
 - Syntax/wiring checks and ESLint passed. Dependency audit after upgrading Electron reported zero vulnerabilities.
 - The v2.1.0 fixture comes from `git show v2.1.0:examples/harbor-and-co/workspace.json`; migration is tested against that released data, not only generated fixtures.
 

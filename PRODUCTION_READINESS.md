@@ -1,4 +1,4 @@
-# Production readiness — 2.4.0-rc.2
+# Production readiness — 2.5.0-rc.1
 
 This is a release candidate. The code and automated release gates have been hardened, but **signed distribution and a real signed N → N+1 update remain external release gates**. Do not describe an unsigned candidate as a certified production desktop release.
 

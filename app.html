@@ -29,10 +29,58 @@
     <div class="logo" id="companyLogo"><svg viewBox="0 0 24 24" fill="none"><path d="M12 4v4M5 20v-5h14v5M5 15v-3h14v3M8 8h8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></div>
     <div class="brand-title"><span id="brandName">OrgFlow</span><small id="brandSubline">Interactive organization map</small></div>
   </div>
+  <button class="doc-status" id="docStatusBtn" type="button" aria-haspopup="menu" aria-controls="fileMenu" title="Where this org chart is saved"><span class="doc-dot" id="docDot" data-state="saved" aria-hidden="true"></span><span class="doc-text"><b id="docName">Org chart</b><small id="saveStatusCompact">Saved in this browser</small></span></button>
   <div class="head-actions">
-    <button class="btn" id="brandingBtn" title="Company branding" aria-label="Company branding"><svg viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="18" height="18" rx="4" stroke="currentColor" stroke-width="1.8"/><path d="m4 16 5-5 4 4 3-3 5 5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><circle cx="15.5" cy="7.5" r="1.5" fill="currentColor"/></svg><span class="label">Branding</span></button>
+    <span id="enterpriseBar" class="enterprise-bar hidden" hidden></span>
+    <div class="history-btns"><button class="iconbtn" id="undoBtn" title="Undo (⌘Z)" aria-label="Undo last change" disabled><svg viewBox="0 0 24 24" fill="none"><path d="M9 14 4 9l5-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button><button class="iconbtn" id="redoBtn" title="Redo (⇧⌘Z)" aria-label="Redo" disabled><svg viewBox="0 0 24 24" fill="none"><path d="m15 14 5-5-5-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button></div>
     <div class="menu-wrap">
-      <button class="iconbtn" id="paletteBtn" title="Choose colour palette" aria-label="Choose colour palette"><span class="palette-icon" aria-hidden="true"><i></i><i></i><i></i></span></button>
+      <button class="btn" id="fileBtn" aria-haspopup="menu" aria-expanded="false" aria-controls="fileMenu" title="Open, save and back up org charts"><svg viewBox="0 0 24 24" fill="none"><path d="M4 7a2 2 0 0 1 2-2h4l2 2h6a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg><span class="label">File</span><span class="caret" aria-hidden="true">⌄</span></button>
+      <div class="menu file-menu" id="fileMenu" role="menu" aria-label="File">
+        <div class="menu-status"><span class="doc-dot" id="fileMenuDot" data-state="saved" aria-hidden="true"></span><div><p id="saveStatus" class="save-status" role="status" aria-live="polite">Saved in this browser</p><p class="menu-status-hint" id="saveStatusHint">Browser storage is not a backup. Save a file to keep a portable copy.</p></div></div>
+        <div class="menu-inline-actions"><button class="small-link" id="retrySave" hidden>Retry file save</button><button class="small-link" id="reconnectFile" hidden>Reconnect saved file</button><button class="small-link" id="unlinkFile" hidden>Unlink saved file</button></div>
+        <label class="check autosave-check"><input type="checkbox" id="autoSaveFile" /> Auto-save changes to the linked file</label>
+        <div class="sep"></div>
+        <button id="fileNewBtn" role="menuitem"><span class="mi">＋</span>New or open from template…</button>
+        <button id="restoreBtn" role="menuitem"><span class="mi">↗</span>Open file…<kbd>⌘O</kbd></button>
+        <div id="recentFilesRow" class="recent-files" hidden><div class="menu-label">Recent org charts</div><div id="recentFiles"></div></div>
+        <div class="sep"></div>
+        <button id="saveWorkspaceBtn" role="menuitem"><span class="mi">⤓</span>Save<kbd>⌘S</kbd></button>
+        <button id="saveWorkspaceAsBtn" role="menuitem"><span class="mi">⧉</span>Save as…<kbd>⇧⌘S</kbd></button>
+        <div class="sep"></div>
+        <div class="menu-label">Import &amp; backup</div>
+        <button id="importBtn" role="menuitem"><span class="mi">⇪</span>Import positions from CSV…</button>
+        <button id="templateBtn" role="menuitem"><span class="mi">▦</span>Download CSV template</button>
+        <button id="backupBtn" role="menuitem"><span class="mi">⎘</span>Download backup (JSON)</button>
+        <button id="bundleBtn" role="menuitem"><span class="mi">⎗</span>Download bundle with recovery (.orgflow)</button>
+        <button id="historyBtn" role="menuitem"><span class="mi">⟲</span>Recovery &amp; earlier versions…</button>
+      </div>
+    </div>
+    <input id="fileInput" type="file" accept=".csv,text/csv" hidden />
+    <input id="restoreInput" type="file" accept=".json,.orgflow,application/json" hidden />
+    <button class="btn" id="directoryBtn" title="People directory" aria-label="People directory"><svg viewBox="0 0 24 24" fill="none"><circle cx="9" cy="8" r="3.5" stroke="currentColor" stroke-width="1.8"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0M16 4.5a3.5 3.5 0 0 1 0 7M18 14.5a6.5 6.5 0 0 1 3.5 5.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg><span class="label">People</span></button>
+    <button class="btn" id="addBtn" aria-label="Add position" title="Add position (N)"><svg viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg><span class="label">Add position</span></button>
+    <div class="menu-wrap">
+      <button class="btn primary" id="exportBtn" aria-haspopup="menu" aria-expanded="false" aria-label="Export or share the chart" title="Export or share the chart"><svg viewBox="0 0 24 24" fill="none"><path d="M12 15V4m0 0 4 4m-4-4-4 4M5 14v4a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="label">Share</span><span class="caret" aria-hidden="true">⌄</span></button>
+      <div class="menu" id="exportMenu" role="menu" aria-label="Export and share">
+        <div class="menu-label">Share with others</div>
+        <button data-export="interactive"><span class="mi">◎</span>Interactive chart (HTML)…</button>
+        <button data-export="pdf"><span class="mi">▤</span>Board pack (PDF)</button>
+        <button data-export="png"><span class="mi">▣</span>Current view as PNG</button>
+        <div class="sep"></div>
+        <div class="menu-label">Print &amp; more formats</div>
+        <button data-export="a3"><span class="mi">▭</span>A3 pages (PDF)</button>
+        <button data-export="print"><span class="mi">⎙</span>Print this view…</button>
+        <button data-export="groups"><span class="mi">▦</span>One PNG per group (ZIP)</button>
+        <button data-export="html"><span class="mi">‹›</span>Chart-only HTML</button>
+        <div class="sep"></div>
+        <div class="menu-label">Data</div>
+        <button data-export="csv"><span class="mi">≡</span>Positions + assignments (CSV)</button>
+        <button data-export="people"><span class="mi">☺</span>People directory (CSV)</button>
+      </div>
+    </div>
+    <div class="head-sep" aria-hidden="true"></div>
+    <div class="menu-wrap">
+      <button class="iconbtn" id="paletteBtn" title="Choose colour palette" aria-label="Choose colour palette" aria-haspopup="menu" aria-expanded="false"><span class="palette-icon" aria-hidden="true"><i></i><i></i><i></i></span></button>
       <div class="menu palette-menu" id="paletteMenu">
         <div class="palette-menu-head"><strong>Colour palette</strong><span>Independent from light / dark mode</span></div>
         <button class="palette-option" data-palette="indigo"><span class="palette-name"><span class="palette-swatches"><i style="background:#4f46e5"></i><i style="background:#7c3aed"></i><i style="background:#eef2ff"></i></span><span><b>OrgFlow Indigo</b><small>Original palette</small></span></span></button>
@@ -43,144 +91,126 @@
       </div>
     </div>
     <button class="iconbtn" id="themeBtn" title="Toggle dark mode" aria-label="Toggle dark mode"></button>
-    <button class="iconbtn" id="undoBtn" title="Undo" aria-label="Undo last change" disabled>↺</button>
-    <button class="iconbtn" id="redoBtn" title="Redo" aria-label="Redo" disabled>↻</button>
-    <button class="iconbtn" id="helpBtn" title="Tour" aria-label="Show tour">?</button>
-    <a class="btn ghost site-home" href="index.html">Home</a>
-    <span id="enterpriseBar" class="enterprise-bar hidden" hidden></span>
-    <button class="btn" id="importBtn" aria-label="Import CSV" title="Import CSV"><svg viewBox="0 0 24 24" fill="none"><path d="M12 3v12m0 0 4-4m-4 4-4-4M5 20h14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="label">Import CSV</span></button>
-    <input id="fileInput" type="file" accept=".csv,text/csv" hidden />
-    <button class="btn" id="addBtn" aria-label="Add position" title="Add position"><svg viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg><span class="label">Add position</span></button>
     <div class="menu-wrap">
-      <button class="btn primary" id="exportBtn" aria-label="Export chart or workspace" title="Export chart or workspace"><svg viewBox="0 0 24 24" fill="none"><path d="M12 4v11m0 0 4-4m-4 4-4-4M5 20h14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="label">Export</span><span>⌄</span></button>
-      <div class="menu" id="exportMenu">
-        <div class="menu-label">Chart</div>
-        <button data-export="png">Current view as PNG</button>
-        <button data-export="groups">One PNG per group (ZIP)</button>
-        <button data-export="pdf">Board pack (PDF)</button>
-        <button data-export="a3">Print / A3 pages (PDF)</button>
-        <button data-export="print">Print this view…</button>
-        <button data-export="interactive">Interactive chart (HTML)…</button>
-        <button data-export="html">Chart-only HTML</button>
-        <div class="sep"></div>
-        <div class="menu-label">Data</div>
-        <button data-export="csv">Positions + assignments (CSV)</button>
-        <button data-export="people">People directory (CSV)</button>
-        <div class="sep"></div>
+      <button class="iconbtn" id="moreBtn" title="Settings and help" aria-label="Settings and help" aria-haspopup="menu" aria-expanded="false"><svg viewBox="0 0 24 24" fill="none"><circle cx="5" cy="12" r="1.7" fill="currentColor"/><circle cx="12" cy="12" r="1.7" fill="currentColor"/><circle cx="19" cy="12" r="1.7" fill="currentColor"/></svg></button>
+      <div class="menu" id="moreMenu" role="menu" aria-label="Settings and help">
         <div class="menu-label">Workspace</div>
-        <button data-export="workspace">Workspace backup (JSON)</button>
-        <button data-export="bundle">OrgFlow bundle (.orgflow)</button>
-        <button data-export="save">Save workspace</button>
-        <button data-export="saveAs">Save workspace as…</button>
-        <button data-export="restore">Restore workspace…</button>
+        <button id="brandingBtn" role="menuitem"><span class="mi">◧</span>Company branding…</button>
+        <div class="sep"></div>
+        <div class="mobile-only"><button id="morePeopleBtn" role="menuitem"><span class="mi">☺</span>People directory…</button><div class="menu-label">Colour palette</div><div class="menu-palettes"><button data-palette="indigo" aria-label="OrgFlow Indigo palette" style="--sw:#4f46e5"></button><button data-palette="crimson" aria-label="Crimson palette" style="--sw:#f50537"></button><button data-palette="graphite" aria-label="Graphite palette" style="--sw:#20252b"></button><button data-palette="ocean" aria-label="Ocean palette" style="--sw:#0284c7"></button><button data-palette="emerald" aria-label="Emerald palette" style="--sw:#059669"></button></div></div>
+        <div class="sep"></div>
+        <div class="menu-label">Help</div>
+        <button id="shortcutsBtn" role="menuitem"><span class="mi">⌨</span>Keyboard shortcuts<kbd>?</kbd></button>
+        <button id="helpBtn" role="menuitem"><span class="mi">★</span>Start page &amp; templates</button>
+        <div class="menu-updates" id="updatesSection" hidden>
+    <div class="menu-label">Application updates</div>
+    <p class="hint" id="updateStatus" role="status" aria-live="polite"></p>
+    <div class="update-actions"><button class="btn" id="updateAppBtn">Check for updates</button><button class="btn ghost" id="releaseNotesBtn">Release notes</button></div>
+  </div>
+        <a class="menu-link" href="index.html" role="menuitem"><span class="mi">⌂</span>OrgFlow home page</a>
       </div>
     </div>
   </div>
 </header>
 <div class="layout">
-<aside><button class="btn filter-mobile-close" id="closeFilters" style="display:none;margin-bottom:12px">Close filters</button><div class="scenario-note" id="scenarioNote"></div><div class="comparison-help">Compare uses the complete scenarios, including all dates and levels. Chart filters do not apply.</div>
-  <div class="section">
-    <div class="search"><svg viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="6" stroke="currentColor" stroke-width="2"/><path d="m16 16 4 4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg><input id="search" placeholder="Find a person or position…" aria-label="Find a person or position" autocomplete="off"/><span class="kbd">⌘ K</span></div>
-    <div class="hint">Highlights the chart and the path to the top. Filters the register. Opens matching reporting paths.</div>
+<aside id="sidebar" aria-label="Filters and chart display">
+  <div class="side-top">
+    <div class="side-top-row"><h2 class="side-heading">View</h2><button class="small-link" id="resetFilters" type="button">Reset view</button><button class="iconbtn side-close" id="closeFilters" type="button" aria-label="Close panel" title="Close panel">×</button></div>
+    <div class="scenario-note" id="scenarioNote"></div><div class="comparison-help">Compare uses the complete scenarios, including all dates and levels. Chart filters do not apply.</div>
+    <div class="search"><svg viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="6" stroke="currentColor" stroke-width="2"/><path d="m16 16 4 4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg><input id="search" placeholder="Find a person or position…" aria-label="Find a person or position" autocomplete="off"/><span class="kbd">⌘K</span></div>
+    <div class="section always-available side-summary" aria-label="Matching position capacity"><div class="stats"><div class="stat"><b id="countVisible">0</b><span>Positions</span></div><div class="stat"><b id="countTotal">0</b><span>Filled</span></div><div class="stat"><b id="countApproved">0</b><span>Open</span></div><div class="stat"><b id="countOpen">0</b><span>Recruiting</span></div><div class="stat"><b id="countFte">0</b><span>FTE</span></div><div class="stat"><b id="countApprovedFte">0</b><span>Appr. FTE</span></div></div><p class="hint" id="visibleCardsHint"></p></div>
   </div>
-  <div class="section">
-    <h3>View depth</h3>
-    <div class="seg" id="depthSeg"><button data-depth="1">Heads</button><button data-depth="2">Leads</button><button data-depth="3">Team</button><button data-depth="99" class="active">All</button></div>
-  </div>
-  <div class="section">
-    <h3>Chart display</h3>
-    <label class="check"><input type="checkbox" id="showGroup" checked /> Group / team</label>
-    <label class="check"><input type="checkbox" id="showSite" checked /> Site</label>
-    <label class="check"><input type="checkbox" id="showType" checked /> Position type</label>
-    <label class="check"><input type="checkbox" id="showApproval" checked /> Approval label</label>
-    <label class="check"><input type="checkbox" id="showHiring" checked /> Hiring state</label>
-    <label class="check"><input type="checkbox" id="showFte" checked /> FTE</label>
-    <label class="check"><input type="checkbox" id="showCumulative" /> Cumulative people on Head and Team Leader cards</label>
-    <label class="check"><input type="checkbox" id="showSpan" checked /> Direct reports and vacancies</label>
-    <div class="field gap-field"><label for="groupGap">Horizontal space between groups</label><input id="groupGap" type="range" min="16" max="96" step="4" value="32" /><div class="hint" id="groupGapValue">32 px</div></div>
-    <label class="check"><input type="checkbox" id="chartDots" checked /> Dotted chart background</label>
-  </div>
-  <div class="section"><h3>Position type / tag</h3>
-    <div class="chips" id="roleChips"></div>
-    <p class="hint">Create a tag like Engineer, Graduate or Intern. Custom tags appear on cards, in this list, and in the position editor.</p>
-    <div class="level-add"><input id="newLevelName" maxlength="40" placeholder="e.g. Engineer, Graduate, Intern" aria-label="New position tag" /><button class="btn" id="addLevelBtn" type="button">Add tag</button></div>
-    <ul class="level-list" id="customLevels"></ul>
-  </div>
-  <div class="section"><h3>Group / team</h3>
-    <div class="chips" id="groupChips"></div>
-    <p class="hint">Hide a group to take it off the chart and the register.</p>
-  </div>
-  <div class="section"><h3>Location / site</h3>
-    <div class="chips" id="siteChips"></div>
-    <p class="hint">Same idea as groups. Positions with no site sit under No site.</p>
-  </div>
-  <div class="section"><h3>Hiring state</h3><div class="chips" id="hiringChips"></div></div>
-<div class="section"><h3>Approval</h3><div class="chips" id="statusChips"></div></div>
-  <div class="section">
-    <h3>Saved views</h3>
-    <p class="hint">Store filter, zoom and card-display presets in this workspace. They travel with the JSON backup.</p>
-    <div class="field"><label for="namedViewSelect">Apply a view</label><select id="namedViewSelect" aria-label="Saved views"><option value="">— Current view —</option></select></div>
-    <div class="level-add"><input id="namedViewName" maxlength="40" placeholder="e.g. Board pack" aria-label="Name for this view" /><button class="btn" id="saveViewBtn" type="button">Save view</button></div>
-    <button class="btn ghost" id="deleteViewBtn" type="button">Delete selected view</button>
-  </div>
-  <div class="section">
-    <h3>Active on date</h3>
-    <div class="field"><input id="asOf" type="date" /></div>
-    <label class="check"><input type="checkbox" id="dateFilter" /> Only show positions active on this date</label>
-    <p class="hint" id="asOfHint">All dates — positions show regardless of start or end.</p>
-  </div>
-  <div class="section"><h3>Matching position capacity</h3><div class="stats"><div class="stat"><b id="countVisible">0</b><span>Positions</span></div><div class="stat"><b id="countTotal">0</b><span>Filled</span></div><div class="stat"><b id="countApproved">0</b><span>Open</span></div><div class="stat"><b id="countOpen">0</b><span>Recruiting</span></div><div class="stat"><b id="countFte">0</b><span>Total FTE</span></div><div class="stat"><b id="countApprovedFte">0</b><span>Approved FTE</span></div></div><p class="hint" id="visibleCardsHint"></p><button class="btn ghost sidebar-reset" id="resetFilters">Reset filters · all dates</button></div>
-  <div class="section always-available">
-    <h3>Data</h3>
-    <div class="data-actions">
-      <button class="btn" id="sideImportBtn">Import CSV</button>
-      <button class="btn" id="csvBtn">Export CSV</button>
-      <button class="btn" id="directoryBtn">People directory</button>
-      <button class="btn ghost" id="templateBtn">Download CSV template</button>
-      <div class="data-divider"></div>
-      <button class="btn" id="backupBtn">Back up workspace</button>
-      <button class="btn" id="saveWorkspaceBtn">Save workspace</button>
-      <button class="btn ghost" id="saveWorkspaceAsBtn">Save workspace as…</button>
-      <button class="btn ghost" id="restoreBtn">Open org chart…</button>
-      <div id="recentFilesRow" hidden><label for="recentFiles">Recent org charts</label><select id="recentFiles"><option value="">Choose a file…</option></select></div>
-      <button class="btn ghost" id="historyBtn">Recovery &amp; backups</button>
-      <input id="restoreInput" type="file" accept=".json,.orgflow,application/json" hidden />
-      <p id="saveStatus" class="save-status" role="status" aria-live="polite">Saved in this browser</p><button class="btn ghost" id="retrySave" hidden>Retry file save</button><button class="btn ghost" id="unlinkFile" hidden>Unlink saved file</button>
-      <label class="check autosave-check"><input type="checkbox" id="autoSaveFile" /> Keep the saved file up to date</label>
-      <button class="btn ghost hidden" id="reconnectFile">Reconnect saved file</button>
+  <div class="side-group-label">Filter</div>
+  <details class="side-section" data-section="type">
+    <summary><span class="side-title">Position type</span><span class="side-badge" id="badgeType">All</span></summary>
+    <div class="side-body">
+      <div class="chip-tools"><button class="small-link" type="button" data-chip-all="type">Show all</button><button class="small-link" type="button" data-chip-none="type">Hide all</button></div>
+      <div class="chips" id="roleChips"></div>
+      <details class="manage-tags"><summary>Manage custom tags</summary>
+        <p class="hint">Tags like Engineer, Graduate or Intern appear on cards, in this list, and in the position editor.</p>
+        <div class="level-add"><input id="newLevelName" maxlength="40" placeholder="e.g. Engineer, Intern" aria-label="New position tag" /><button class="btn" id="addLevelBtn" type="button">Add tag</button></div>
+        <ul class="level-list" id="customLevels"></ul>
+      </details>
     </div>
-    <div class="hint">CSV updates the active scenario. JSON backup keeps scenarios, people, branding, saved views and chart settings. Save workspace overwrites the last file you picked, when the browser allows it.</div>
-  </div>
-  <div class="section always-available" id="updatesSection" hidden>
-    <h3>Application updates</h3>
-    <p class="hint" id="updateStatus" role="status" aria-live="polite"></p>
-    <button class="btn" id="updateAppBtn">Check for updates</button>
-    <button class="btn ghost" id="releaseNotesBtn">Release downloads &amp; notes</button>
-  </div>
-  <div class="section always-available">
-    <h3>Example companies</h3>
-    <div class="example-actions">
-      <button class="btn" id="exampleHarborBtn" type="button">Load Harbor &amp; Co</button>
-      <button class="btn" id="exampleNorthstarBtn" type="button">Load Northstar Commerce</button>
-      <button class="btn ghost" id="exampleEmptyBtn" type="button">Start blank organization</button>
-      <button class="btn ghost" id="exampleFirstLightBtn" type="button">Load First Light (startup)</button>
-      <button class="btn ghost" id="exampleLumenBtn" type="button">Load Lumen Studio (agency)</button>
-      <button class="btn ghost" id="exampleCedarBtn" type="button">Load Cedar &amp; Kind (nonprofit)</button>
+  </details>
+  <details class="side-section" data-section="group">
+    <summary><span class="side-title">Group / team</span><span class="side-badge" id="badgeGroup">All</span></summary>
+    <div class="side-body">
+      <div class="chip-tools"><button class="small-link" type="button" data-chip-all="group">Show all</button><button class="small-link" type="button" data-chip-none="group">Hide all</button></div>
+      <div class="chips" id="groupChips"></div>
     </div>
-    <p class="privacy-note">Samples are generic companies. Drag a card onto another to change reporting. Data stays in this browser.</p>
-  </div>
+  </details>
+  <details class="side-section" data-section="site">
+    <summary><span class="side-title">Location / site</span><span class="side-badge" id="badgeSite">All</span></summary>
+    <div class="side-body">
+      <div class="chip-tools"><button class="small-link" type="button" data-chip-all="site">Show all</button><button class="small-link" type="button" data-chip-none="site">Hide all</button></div>
+      <div class="chips" id="siteChips"></div>
+    </div>
+  </details>
+  <details class="side-section" data-section="hiring">
+    <summary><span class="side-title">Hiring state</span><span class="side-badge" id="badgeHiring">All</span></summary>
+    <div class="side-body">
+      <div class="chip-tools"><button class="small-link" type="button" data-chip-all="hiring">Show all</button><button class="small-link" type="button" data-chip-none="hiring">Hide all</button></div>
+      <div class="chips" id="hiringChips"></div>
+    </div>
+  </details>
+  <details class="side-section" data-section="approval">
+    <summary><span class="side-title">Approval</span><span class="side-badge" id="badgeApproval">All</span></summary>
+    <div class="side-body">
+      <div class="chip-tools"><button class="small-link" type="button" data-chip-all="approval">Show all</button><button class="small-link" type="button" data-chip-none="approval">Hide all</button></div>
+      <div class="chips" id="statusChips"></div>
+    </div>
+  </details>
+  <details class="side-section" data-section="date">
+    <summary><span class="side-title">Active on date</span><span class="side-badge" id="badgeDate">All</span></summary>
+    <div class="side-body">
+      <label class="check"><input type="checkbox" id="dateFilter" /> Only show positions active on</label>
+      <div class="field"><input id="asOf" type="date" aria-label="Active on date" /></div>
+      <p class="hint" id="asOfHint">All dates — positions show regardless of start or end.</p>
+    </div>
+  </details>
+  <div class="side-group-label">Display</div>
+  <details class="side-section" data-section="depth" open>
+    <summary><span class="side-title">Levels shown</span><span class="side-badge" id="badgeDepth">All</span></summary>
+    <div class="side-body">
+      <div class="seg" id="depthSeg"><button data-depth="1">Heads</button><button data-depth="2">Leads</button><button data-depth="3">Team</button><button data-depth="99" class="active">All</button></div>
+    </div>
+  </details>
+  <details class="side-section" data-section="cards">
+    <summary><span class="side-title">Card details</span><span class="side-badge" id="badgeCards">All</span></summary>
+    <div class="side-body">
+      <label class="check"><input type="checkbox" id="showGroup" checked /> Group / team</label>
+      <label class="check"><input type="checkbox" id="showSite" checked /> Site</label>
+      <label class="check"><input type="checkbox" id="showType" checked /> Position type</label>
+      <label class="check"><input type="checkbox" id="showApproval" checked /> Approval label</label>
+      <label class="check"><input type="checkbox" id="showHiring" checked /> Hiring state</label>
+      <label class="check"><input type="checkbox" id="showFte" checked /> FTE</label>
+      <label class="check"><input type="checkbox" id="showSpan" checked /> Direct reports and vacancies</label>
+      <label class="check"><input type="checkbox" id="showCumulative" /> Total people under Heads and Team Leaders</label>
+      <div class="field gap-field"><label for="groupGap">Space between groups</label><input id="groupGap" type="range" min="16" max="96" step="4" value="32" /><div class="hint" id="groupGapValue">32 px</div></div>
+      <label class="check"><input type="checkbox" id="chartDots" checked /> Dotted canvas background</label>
+    </div>
+  </details>
+  <details class="side-section" data-section="views">
+    <summary><span class="side-title">Saved views</span><span class="side-badge" id="badgeViews">All</span></summary>
+    <div class="side-body">
+      <p class="hint side-lead">Store filters, zoom and card settings under a name. Views travel with saved files.</p>
+      <div class="field"><label for="namedViewSelect">Apply a view</label><select id="namedViewSelect" aria-label="Saved views"><option value="">— Current view —</option></select></div>
+      <div class="level-add"><input id="namedViewName" maxlength="40" placeholder="e.g. Board pack" aria-label="Name for this view" /><button class="btn" id="saveViewBtn" type="button">Save view</button></div>
+      <button class="small-link" id="deleteViewBtn" type="button">Delete selected view</button>
+    </div>
+  </details>
 </aside>
 <main>
 <div class="planning-bar">
   <div class="scenario-switch">
+    <button class="iconbtn" id="filterToggle" aria-label="Hide filters panel" title="Filters panel ( [ )" aria-expanded="true" aria-controls="sidebar"><svg viewBox="0 0 24 24" fill="none"><rect x="3.5" y="4.5" width="17" height="15" rx="2.5" stroke="currentColor" stroke-width="1.8"/><path d="M9 5v14" stroke="currentColor" stroke-width="1.8"/></svg></button>
     <div class="scenario-select-wrap"><label for="scenarioSelect">Organization / scenario</label><select id="scenarioSelect" aria-label="Active scenario"></select></div>
     <button class="btn" id="newScenarioBtn" title="Create a scenario" aria-label="Create a scenario">＋ <span class="scenario-button-label">Scenario</span></button>
     <button class="iconbtn" id="scenarioSettingsBtn" title="Scenario details" aria-label="Scenario details">⋯</button>
-    <button class="iconbtn" id="filterToggle" aria-label="Open filters" title="Filters" aria-expanded="false">☷</button>
   </div>
   <nav class="plan-tabs" aria-label="Workspace views"><button data-view="chart" class="active" aria-pressed="true">Org chart</button><button data-view="positions" aria-pressed="false">Positions</button><button data-view="compare" aria-pressed="false">Compare</button><button data-view="management" aria-pressed="false">Planning</button></nav>
-  <span id="saveStatusCompact" class="save-status-compact" role="status"></span>
-</div>
+  </div>
 <section class="plan-panel hidden management-panel" id="managementPanel" aria-label="Workforce planning">
   <header class="management-header"><div><div class="eyebrow">Workforce planning</div><h2 id="managementTitle">Plan with evidence</h2><p id="managementScope"></p></div><nav class="management-tabs" aria-label="Planning tools"><button class="btn" data-management-tab="overview">Overview</button><button class="btn" data-management-tab="forecast">Forecast</button><button class="btn" data-management-tab="timeline">Timeline</button><button class="btn" data-management-tab="decisions">Decisions</button><button class="btn" data-management-tab="imports">Imports</button></nav></header>
   <div id="managementContent"></div>
@@ -212,10 +242,10 @@
   </div>
   <div class="toolbar">
     <div class="crumb"><strong id="chartTitle">Organization</strong><span>/ Positions</span><span class="date-pill" id="datePill"></span></div>
-    <div class="toolbar-actions"><button class="iconbtn" id="zoomOut" aria-label="Zoom out" title="Zoom out">−</button><span class="zoom-label" id="zoomLabel">100%</span><button class="iconbtn" id="zoomIn" aria-label="Zoom in" title="Zoom in">＋</button>
-      <button class="iconbtn" id="centerBtn" title="Fit chart" aria-label="Fit chart"><svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="8" stroke="currentColor" stroke-width="2"/></svg></button>
-      <button class="iconbtn" id="expandBtn" title="Expand all" aria-label="Expand all"><svg viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>
-      <button class="iconbtn" id="collapseBtn" title="Collapse to team leaders" aria-label="Collapse to team leaders"><svg viewBox="0 0 24 24" fill="none"><path d="M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>
+    <div class="toolbar-actions"><button class="iconbtn" id="zoomOut" aria-label="Zoom out" title="Zoom out ( − )">−</button><span class="zoom-label" id="zoomLabel">100%</span><button class="iconbtn" id="zoomIn" aria-label="Zoom in" title="Zoom in ( + )">＋</button>
+      <button class="iconbtn" id="centerBtn" title="Fit chart to screen ( 0 )" aria-label="Fit chart"><svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="8" stroke="currentColor" stroke-width="2"/></svg></button>
+      <button class="iconbtn" id="expandBtn" title="Expand all teams" aria-label="Expand all"><svg viewBox="0 0 24 24" fill="none"><path d="m7 9 5-5 5 5M7 15l5 5 5-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+      <button class="iconbtn" id="collapseBtn" title="Collapse to team leaders" aria-label="Collapse to team leaders"><svg viewBox="0 0 24 24" fill="none"><path d="m7 4 5 5 5-5M7 20l5-5 5 5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
       <button class="iconbtn" id="printBtn" title="Print / A3 pages" aria-label="Print or export A3 pages"><svg viewBox="0 0 24 24" fill="none"><path d="M7 8V4h10v4M7 16H5a2 2 0 0 1-2-2v-4h18v4a2 2 0 0 1-2 2h-2M7 13h10v7H7v-7Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg></button>
     </div>
   </div>
@@ -346,15 +376,39 @@
   <div class="modal-foot"><div class="right"><button class="btn" id="personCancel">Cancel</button><button class="btn primary" id="personSave">Save person</button></div></div>
 </div></div>
 
-<div class="modal-backdrop" id="welcomeModal"><div class="modal branding-modal" role="dialog" aria-modal="true" aria-labelledby="welcomeTitle">
-  <div class="modal-head"><div><div class="settings-kicker">Welcome</div><h2 id="welcomeTitle">Plan an organization without uploading it.</h2><p>Positions stay separate from people. Everything stays in this browser until you export a file.</p></div><button class="iconbtn" id="welcomeClose" aria-label="Close tour">×</button></div>
-  <div class="modal-body">
-    <p class="settings-subtitle">Drag a card onto a new manager to re-parent. Undo with ⌘Z. Export a board-pack PDF or a shareable HTML snapshot that opens without OrgFlow.</p>
-    <h3 class="settings-heading">Start from a shape</h3>
-    <div class="template-grid" id="templateGrid"></div>
-    <p class="settings-note">Harbor &amp; Co and Northstar Commerce are the full product and retail samples. First Light, Lumen Studio and Cedar &amp; Kind are smaller starter orgs.</p>
+<div class="modal-backdrop" id="welcomeModal"><div class="modal start-modal" role="dialog" aria-modal="true" aria-labelledby="welcomeTitle">
+  <div class="modal-head"><div><div class="settings-kicker">Start</div><h2 id="welcomeTitle">Open or create an org chart</h2><p>Everything stays on this device until you save or export a file. Positions stay separate from people.</p></div><button class="iconbtn" id="welcomeClose" aria-label="Close start page">×</button></div>
+  <div class="modal-body start-body">
+    <section class="start-col start-open" aria-labelledby="startOpenTitle">
+      <h3 class="settings-heading" id="startOpenTitle">Continue</h3>
+      <div class="continue-card" id="continueCard"><div><b id="continueName">Current org chart</b><small id="continueMeta"></small></div><button class="btn primary" id="welcomeSkip" type="button">Continue</button></div>
+      <button type="button" class="btn open-file-btn" id="welcomeOpenBtn"><svg viewBox="0 0 24 24" fill="none"><path d="M4 7a2 2 0 0 1 2-2h4l2 2h6a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>Open a saved file…<kbd>⌘O</kbd></button>
+      <p class="hint">Opens <b>.json</b> workspace files and <b>.orgflow</b> bundles. Your current chart is checkpointed first.</p>
+      <div id="welcomeRecent" class="welcome-recent" hidden><div class="menu-label">Recent files</div><div id="welcomeRecentList"></div></div>
+      <div class="start-tips"><div class="menu-label">Good to know</div><ul><li>Drag a card onto another card to change who it reports to.</li><li><kbd>⌘S</kbd> saves to a file you choose, and keeps it up to date.</li><li>Create a <b>scenario</b> to plan changes without touching Current.</li><li>Press <kbd>?</kbd> for every keyboard shortcut.</li></ul></div>
+    </section>
+    <section class="start-col" aria-labelledby="startNewTitle">
+      <h3 class="settings-heading" id="startNewTitle">Create new</h3>
+      <div class="template-grid" id="templateGrid">
+        <button type="button" class="template-card blank" id="exampleEmptyBtn"><span class="tc-icon" aria-hidden="true">＋</span><span class="tc-text"><b>Blank organization</b><small>Start from scratch</small><span>One top position, ready for your structure.</span></span></button>
+        <button type="button" class="template-card " id="exampleHarborBtn"><span class="tc-icon" aria-hidden="true">⚓</span><span class="tc-text"><b>Harbor &amp; Co</b><small>Product company · 17 positions</small><span>Full sample with scenarios, people and planning.</span></span></button>
+        <button type="button" class="template-card " id="exampleNorthstarBtn"><span class="tc-icon" aria-hidden="true">✦</span><span class="tc-text"><b>Northstar Commerce</b><small>Retail operations · 14 positions</small><span>Stores, sites and a restructuring scenario.</span></span></button>
+        <button type="button" class="template-card " id="exampleFirstLightBtn"><span class="tc-icon" aria-hidden="true">☀</span><span class="tc-text"><b>First Light</b><small>Startup · 8 people</small><span>Seed-stage product company with an open role.</span></span></button>
+        <button type="button" class="template-card " id="exampleLumenBtn"><span class="tc-icon" aria-hidden="true">◐</span><span class="tc-text"><b>Lumen Studio</b><small>Agency · 9 people</small><span>Boutique studio with a dotted-line report.</span></span></button>
+        <button type="button" class="template-card " id="exampleCedarBtn"><span class="tc-icon" aria-hidden="true">❦</span><span class="tc-text"><b>Cedar &amp; Kind</b><small>Nonprofit · 7 people</small><span>Small charity with programmes and fundraising.</span></span></button>
+      </div>
+      <p class="settings-note">Creating a new chart replaces the one in this browser. It is checkpointed first, so you can always get it back from <b>File → Recovery</b>. Save a file first to keep both side by side.</p>
+    </section>
   </div>
-  <div class="modal-foot"><button class="btn" id="welcomeSkip">Skip</button><div class="right"><button class="btn primary" id="welcomeHarbor">Open Harbor &amp; Co</button></div></div>
+</div></div>
+
+<div class="modal-backdrop" id="shortcutsModal"><div class="modal scenario-modal" role="dialog" aria-modal="true" aria-labelledby="shortcutsTitle">
+  <div class="modal-head"><div><div class="settings-kicker">Help</div><h2 id="shortcutsTitle">Keyboard shortcuts</h2><p>On Windows and Linux use Ctrl instead of ⌘. Single keys work when you are not typing in a field.</p></div><button class="iconbtn" id="shortcutsClose" aria-label="Close keyboard shortcuts">×</button></div>
+  <div class="modal-body"><div class="shortcut-grid">
+    <div class="shortcut-group"><div class="menu-label">File</div><dl><dt><kbd>⌘</kbd><kbd>S</kbd></dt><dd>Save</dd><dt><kbd>⇧</kbd><kbd>⌘</kbd><kbd>S</kbd></dt><dd>Save as…</dd><dt><kbd>⌘</kbd><kbd>O</kbd></dt><dd>Open file…</dd><dt><kbd>⌘</kbd><kbd>Z</kbd></dt><dd>Undo</dd><dt><kbd>⇧</kbd><kbd>⌘</kbd><kbd>Z</kbd></dt><dd>Redo</dd></dl></div>
+    <div class="shortcut-group"><div class="menu-label">Chart</div><dl><dt><kbd>⌘</kbd><kbd>K</kbd> or <kbd>/</kbd></dt><dd>Find a person or position</dd><dt><kbd>N</kbd></dt><dd>Add a position</dd><dt><kbd>+</kbd> <kbd>−</kbd></dt><dd>Zoom in / out</dd><dt><kbd>0</kbd></dt><dd>Fit chart to screen</dd><dt><kbd>[</kbd></dt><dd>Show / hide the filters panel</dd><dt><kbd>1</kbd>–<kbd>4</kbd></dt><dd>Org chart · Positions · Compare · Planning</dd><dt><kbd>⌘</kbd>/<kbd>⇧</kbd> + click</dt><dd>Select cards for bulk editing</dd></dl></div>
+    <div class="shortcut-group"><div class="menu-label">Editing</div><dl><dt><kbd>⌘</kbd><kbd>Enter</kbd></dt><dd>Save the open position</dd><dt><kbd>Esc</kbd></dt><dd>Close dialog, editor or selection</dd><dt><kbd>Enter</kbd></dt><dd>Open the focused card</dd></dl></div>
+  </div></div>
 </div></div>
 
 <div class="modal-backdrop" id="shareModal"><div class="modal scenario-modal" role="dialog" aria-modal="true" aria-labelledby="shareTitle">

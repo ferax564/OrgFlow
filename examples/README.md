@@ -2,7 +2,7 @@
 
 These workspaces are fictional. They are the screenshots and sample data shipped with OrgFlow — not motorsport teams.
 
-Load a sample from **Example companies** in the planner sidebar, from the first-run tour, or by restoring `workspace.json` from the Export menu. Loading a sample overwrites this browser’s scenarios, people and branding. It also resets chart filters (including the date filter) so the full tree is visible.
+Load a sample from the planner’s **Start page** (File → New or open from template…), or open `workspace.json` with **File → Open file…** (or drag it onto the window). Loading a sample overwrites this browser’s scenarios, people and branding. It also resets chart filters (including the date filter) so the full tree is visible.
 
 ## Full samples (`examples/`)
 
@@ -25,7 +25,7 @@ A retail operator with Stores, Merchandising, E-commerce and People (14 position
 
 ## Starter templates (`js/templates.js`)
 
-Smaller Current-only orgs used by the welcome tour and the sidebar. They demonstrate location, cost center, job family, employee number and a dotted-line manager.
+Smaller Current-only orgs listed on the Start page. They demonstrate location, cost center, job family, employee number and a dotted-line manager.
 
 | Id | Company | Palette | Notes |
 | --- | --- | --- | --- |

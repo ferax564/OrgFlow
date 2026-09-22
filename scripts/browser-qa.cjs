@@ -207,6 +207,7 @@ function ok(title) { findings.push({ type: 'ok', title }); console.log('OK:', ti
   }
 
   // Branding
+  await page.click('#moreBtn');
   await page.click('#brandingBtn');
   await page.waitForSelector('#brandingModal.open');
   await page.$eval('#brandChartTitle', el => { el.value = ''; el.dispatchEvent(new Event('input', { bubbles: true })); });
@@ -279,6 +280,7 @@ function ok(title) { findings.push({ type: 'ok', title }); console.log('OK:', ti
   const parsed = JSON.parse(exported);
   delete parsed.view.dateFilter;
   fs.writeFileSync('/tmp/ws-nodate.json', JSON.stringify(parsed));
+  await page.evaluate(() => openWelcome(true)); // Templates live on the Start page.
   await page.click('#exampleEmptyBtn');
   await page.waitForFunction(() => document.querySelector('#countVisible').textContent === '1');
   const restoreInput = await page.$('#restoreInput');
@@ -331,6 +333,7 @@ function ok(title) { findings.push({ type: 'ok', title }); console.log('OK:', ti
   if (focused !== 'search') bug('Ctrl+K did not focus search', focused);
   else ok('Ctrl+K focuses search');
 
+  await page.evaluate(() => openWelcome(true)); // Templates live on the Start page.
   await page.click('#exampleNorthstarBtn');
   await page.waitForFunction(() => document.querySelector('#brandName').textContent === 'Northstar Commerce');
   const n = await page.$eval('#countVisible', el => el.textContent);

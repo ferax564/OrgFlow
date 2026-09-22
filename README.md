@@ -27,13 +27,13 @@ Then open http://localhost:4173/ or http://localhost:4173/app.html. Opening the 
 
 ### Desktop app
 
-CI builds desktop binaries for each OS. **v2.4.0-rc.2 is an unsigned release candidate, not a signed production release.** Download the candidate below, or browse [all GitHub Releases](https://github.com/ferax564/OrgFlow/releases) (or the **Desktop binaries** workflow artifacts). You do not install into Program Files or `/Applications`.
+CI builds desktop binaries for each OS. **v2.5.0-rc.1 is an unsigned release candidate, not a signed production release.** Download the candidate below, or browse [all GitHub Releases](https://github.com/ferax564/OrgFlow/releases) (or the **Desktop binaries** workflow artifacts). You do not install into Program Files or `/Applications`.
 
 | OS | File | How to run |
 | --- | --- | --- |
-| Windows | [OrgFlow-2.4.0-rc.2-windows.exe](https://github.com/ferax564/OrgFlow/releases/download/v2.4.0-rc.2/OrgFlow-2.4.0-rc.2-windows.exe) | Double-click the `.exe`. Windows may show SmartScreen on an unsigned build — More info → Run anyway. Workspace data is stored in `OrgFlow-data` next to the exe. |
-| macOS | [OrgFlow-2.4.0-rc.2-mac.zip](https://github.com/ferax564/OrgFlow/releases/download/v2.4.0-rc.2/OrgFlow-2.4.0-rc.2-mac.zip) | Unzip and double-click `OrgFlow.app`. You can leave it in Downloads; you do not need to drag it to Applications. If Gatekeeper blocks it, right-click → Open. |
-| Linux | [OrgFlow-2.4.0-rc.2-linux.AppImage](https://github.com/ferax564/OrgFlow/releases/download/v2.4.0-rc.2/OrgFlow-2.4.0-rc.2-linux.AppImage) | `chmod +x OrgFlow-*-linux.AppImage && ./OrgFlow-*-linux.AppImage` |
+| Windows | [OrgFlow-2.5.0-rc.1-windows.exe](https://github.com/ferax564/OrgFlow/releases/download/v2.5.0-rc.1/OrgFlow-2.5.0-rc.1-windows.exe) | Double-click the `.exe`. Windows may show SmartScreen on an unsigned build — More info → Run anyway. Workspace data is stored in `OrgFlow-data` next to the exe. |
+| macOS | [OrgFlow-2.5.0-rc.1-mac.zip](https://github.com/ferax564/OrgFlow/releases/download/v2.5.0-rc.1/OrgFlow-2.5.0-rc.1-mac.zip) | Unzip and double-click `OrgFlow.app`. You can leave it in Downloads; you do not need to drag it to Applications. If Gatekeeper blocks it, right-click → Open. |
+| Linux | [OrgFlow-2.5.0-rc.1-linux.AppImage](https://github.com/ferax564/OrgFlow/releases/download/v2.5.0-rc.1/OrgFlow-2.5.0-rc.1-linux.AppImage) | `chmod +x OrgFlow-*-linux.AppImage && ./OrgFlow-*-linux.AppImage` |
 
 ```bash
 npm ci
@@ -45,7 +45,7 @@ npm run dist:mac         # .app zip (macOS host)
 
 Tagged builds publish the binaries plus update manifests and blockmaps. Windows also includes an NSIS installer for automatic updates; the existing portable EXE remains available.
 
-The desktop sidebar has **Check for updates**, **Download update**, and **Save and restart to update**. Native **Open org chart…**, **Save workspace**, **Save workspace as…**, and **Recent org charts** manage `.orgflow`/JSON documents. External file changes are detected before overwriting. Browser file autosave requires reconnection after restart.
+The desktop **⋯** menu has **Check for updates**, **Download update**, and **Save and restart to update**. Native **File → Open file…**, **Save**, **Save as…** and **Recent org charts** manage `.orgflow`/JSON documents. External file changes are detected before overwriting. Browser file autosave requires reconnection after restart.
 
 See [signed release operations](RELEASE_OPERATIONS.md) for credential setup and deployment checks.
 
@@ -55,27 +55,50 @@ The desktop app loads the planner from a fixed `orgflow://` origin, so restarts 
 
 On this public site there is no backend. IndexedDB is the authoritative document store, with full recovery checkpoints and an atomic pending-change queue. `localStorage` is an optional cache and preference store; its quota failure does not prevent durable saves. Concurrent stale tabs are refused rather than overwriting newer commits. Clearing *all* site data still removes everything; export a JSON backup first. An optional Node host can share one org — see [Enterprise host](#enterprise-host-optional).
 
-Windows automatic updates require the [installer](https://github.com/ferax564/OrgFlow/releases/download/v2.4.0-rc.2/OrgFlow-2.4.0-rc.2-windows-setup.exe). The portable EXE uses manual replacement. See [release validation](RELEASE_VALIDATION.md), [changes](CHANGELOG.md), and [host operations](server/README.md).
+Windows automatic updates require the [installer](https://github.com/ferax564/OrgFlow/releases/download/v2.5.0-rc.1/OrgFlow-2.5.0-rc.1-windows-setup.exe). The portable EXE uses manual replacement. See [release validation](RELEASE_VALIDATION.md), [changes](CHANGELOG.md), and [host operations](server/README.md).
 
 ## Using the planner
 
-Harbor & Co (17 positions) loads on first visit. A tour offers that sample, Northstar Commerce, and smaller templates. Loading a sample overwrites this browser’s scenarios, people and branding.
+Harbor & Co (17 positions) loads on first visit. The **Start page** (File → New or open from template…) offers a blank organization, that sample, Northstar Commerce and smaller templates, plus **Open a saved file…** and recent files. Creating from a template replaces this browser’s scenarios, people and branding after checkpointing them.
+
+### Files: open, save and back up
+
+Everything about files lives in one place — the **File** menu, also opened by clicking the save-status chip next to the company name. The chip always answers “is my work safe, and where?”: an amber dot means the chart is only kept in this browser, green means it is saved to a file, a pulsing dot means a save is in progress, red means a save failed.
+
+| Action | Shortcut | What it does |
+| --- | --- | --- |
+| New or open from template… | | Opens the Start page |
+| Open file… | ⌘/Ctrl+O | Opens a `.json` workspace or `.orgflow` bundle; the current chart is checkpointed first |
+| Save | ⌘/Ctrl+S | Writes to the linked file, or asks where to save the first time |
+| Save as… | ⇧⌘/Ctrl+Shift+S | Always asks for a new file and links to it |
+| Auto-save changes to the linked file | | Writes every change through to the linked file |
+| Import positions from CSV… | | Reviews a CSV before it changes the active scenario |
+| Download backup / bundle | | Portable JSON, or a `.orgflow` bundle with recovery checkpoints |
+| Recovery & earlier versions… | | Checkpoints and earlier versions kept on this device |
+
+You can also **drag a file onto the window**: `.json`/`.orgflow` opens it, `.csv` starts an import review. Browsers without the File System Access API (Firefox, Safari) download a copy on Save instead of keeping a file linked.
+
+### Keyboard shortcuts
+
+Press `?` for the full list. Besides the file shortcuts: `⌘/Ctrl+K` or `/` search, `N` add a position, `+`/`−` zoom, `0` fit the chart, `[` show or hide the filters panel, `1`–`4` switch between Org chart, Positions, Compare and Planning, `⌘/Ctrl+Z` undo. Single keys never fire while you type in a field.
+
+### Working with the chart
 
 - **Drag-and-drop** a card onto another manager to change reporting. Drop onto a **sibling** to reorder (left/top = before, right/bottom = after). If that side would leave the order unchanged, the two cards swap. Drops that would create a cycle are ignored. Set a **dotted-line** (matrix) manager in the position drawer; it draws dashed and does not change the tree layout.
-- **Undo / redo** with ⌘Z / Ctrl+Z in this session (not while typing in a field). **Recovery & backups** in the sidebar shows the workspace identity, revision and where it is stored; keeps the last ten planning snapshots as Earlier versions; and stores full checkpoints — with photos and branding — before every restore, import or sample load. Checkpoints can be restored in place or **as a copy** (a new workspace id) so recovery never overwrites current work. Edits that never reached a shared server are listed there as recoverable changes.
-- **Cards** show the person (or vacant/recruiting), title, group, location, type, approval, hiring state and FTE. Optional photos are resized locally to a small PNG. **Direct reports and vacancies** (`N reports · N open`) is on by default; turn it off under Chart display. Heads and Team Leaders can also show a cumulative people count.
+- **Undo / redo** with ⌘Z / Ctrl+Z in this session (not while typing in a field). **File → Recovery & earlier versions** shows the workspace identity, revision and where it is stored; keeps the last ten planning snapshots as Earlier versions; and stores full checkpoints — with photos and branding — before every restore, import or sample load. Checkpoints can be restored in place or **as a copy** (a new workspace id) so recovery never overwrites current work. Edits that never reached a shared server are listed there as recoverable changes.
+- **Cards** show the person (or vacant/recruiting), title, group, location, type, approval, hiring state and FTE. Optional photos are resized locally to a small PNG. **Direct reports and vacancies** (`N reports · N open`) is on by default; turn it off under **Card details** in the filters panel. Heads and Team Leaders can also show a cumulative people count.
 - **Custom fields** on a position: location / site, cost center, job family. On a person: employee number and photo.
 - **Date filter** is off by default, so future-dated roles stay visible and the date box shows "All dates". Turn on **Only show positions active on this date** to hide roles that have not started (or have already ended) relative to the as-of date; the toolbar pill then reads "As of …" instead of "All dates".
-- **Chart filters** (type, hiring, approval, group, site, depth, search) apply to the org chart and the Positions register. Click a selected **Group / team** or **Location / site** chip to hide that set. Positions with a blank group or site sit under No group / No site. Whenever filters or a search limit the view, a pinned bar above the workspace shows what is active and offers **Clear all filters & search**. Compare uses full snapshots and ignores those filters. Loading an example or a blank organization resets filters.
+- **Filters panel** (left) keeps search and the capacity totals on top, then collapsible **Filter** sections (position type, group, site, hiring, approval, active date) and **Display** sections (levels shown, card details, saved views). Each section header shows a badge such as `All` or `2 of 5`, and the panel remembers which sections you opened. **Show all / Hide all** under a filter makes it quick to isolate one group: hide all, then click the one you want. Hide the whole panel with its toggle in the planning bar or `[`. Filters apply to the org chart and the Positions register. Click a selected **Group / team** or **Location / site** chip to hide that set. Positions with a blank group or site sit under No group / No site. Whenever filters or a search limit the view, a pinned bar above the workspace shows what is active and offers **Clear all filters & search**. Compare uses full snapshots and ignores those filters. Loading an example or a blank organization resets filters.
 - **Search** highlights matching cards and the **path to the top**. Hovering a card does the same.
 - **Multi-select** with ⌘/Ctrl-click or Shift-click (or the checkboxes on Positions). Open the bulk-edit sheet, choose Keep / Set / Clear per field, review the changes, then apply atomically. Keep is the default; Vacant/Recruiting explicitly unassigns a snapshot seat.
 - **Position editor** opens from a card or the register's Edit. `Escape` or **Close** leaves it, `⌘/Ctrl+Enter` saves, and Tab cycles inside the drawer. Unsaved edits ask before they are discarded when you switch cards, views or scenarios.
-- **People directory** in the sidebar lists everyone in the active scenario with their seat, and adds, edits or removes person records (name, employee number, photo). Seat assignment stays in the position editor.
+- **People** in the header opens the directory, which lists everyone in the active scenario with their seat, and adds, edits or removes person records (name, employee number, photo). Seat assignment stays in the position editor.
 - **Scenarios** can be renamed and deleted from **Scenario details**; archiving one drops it from the switcher and compare lists while keeping its data and frozen snapshot, and it restores from the same dialog.
-- **Named views** in the sidebar store filter, zoom and card-display presets on the workspace (up to 20). They travel with the JSON backup.
-- **Chart display** in the sidebar hides or shows FTE, site, group, position type, approval, hiring, span and cumulative people on every card. Long names wrap and that card grows. Last-level managers stack their reports in a column under the manager; uncheck **Stack direct reports** in the drawer to spread them. **Move up / Move down** changes sibling order immediately. Add a tag like Engineer, Graduate or Intern under **Position type**. These settings persist and apply to PNG, PDF and HTML exports.
-- **Narrow screens** hide the sidebar. Open it with the ☷ **Filters** control in the planning bar — a badge counts active filters — and close it with `Escape`. The chart pans with touch or by dragging empty space with the mouse.
-- **Branding** stores company name, chart title and logos in this browser. Logos are sanitized and rasterized locally.
+- **Saved views** in the filters panel store filter, zoom and card-display presets on the workspace (up to 20). They travel with the JSON backup.
+- **Card details** in the filters panel hides or shows FTE, site, group, position type, approval, hiring, span and cumulative people on every card. Long names wrap and that card grows. Last-level managers stack their reports in a column under the manager; uncheck **Stack direct reports** in the drawer to spread them. **Move up / Move down** changes sibling order immediately. Add a tag like Engineer, Graduate or Intern under **Position type → Manage custom tags**. These settings persist and apply to PNG, PDF and HTML exports.
+- **Narrow screens** hide the filters panel. Open it with the panel toggle in the planning bar and close it with × or `Escape`; People and the colour palette move into the **⋯** menu. The chart pans with touch or by dragging empty space with the mouse.
+- **Branding** (⋯ menu) stores company name, chart title and logos in this browser. Logos are sanitized and rasterized locally.
 
 ### Export
 
@@ -91,7 +114,7 @@ Harbor & Co (17 positions) loads on first visit. A tour offers that sample, Nort
 | People directory (CSV) | People in the active scenario |
 | Workspace backup (JSON) | Every scenario, unassigned people, branding, palette, saved views and the current view |
 | OrgFlow bundle (.orgflow) | Workspace plus checkpoints — the file you hand someone for editing and recovery. Older OrgFlow 2.0/2.1 builds refuse this document instead of silently dropping fields |
-| Save workspace | Overwrites the last JSON file you picked when the browser supports it; the **Autosave** checkbox beside it writes every change through to that file. The file link survives restarts but requires explicit reconnection — if the browser needs permission again, **Reconnect saved file** appears instead of silently going stale |
+| File → Save | Overwrites the last JSON file you picked when the browser supports it; **Auto-save changes to the linked file** writes every change through to that file. The file link survives restarts but requires explicit reconnection — if the browser needs permission again, **Reconnect saved file** appears instead of silently going stale |
 | Print / A3 pages (PDF) | Tiled A3 landscape pages of the visible chart |
 
 A workspace JSON that omits `dateFilter` restores with all dates visible. Full JSON restore is local-only on the planner; use Draft imports or the proposal API for a shared organization.
@@ -115,7 +138,7 @@ Import can replace, append, or update by position ID, and defaults to a new Draf
 - Multi-select bulk edit for type, group, site and approval
 - Direct-report and vacancy counts on cards
 - Named views stored in the workspace backup
-- Print / A3 tiled PDF export; Save workspace overwrites the last JSON file when the browser allows it
+- Print / A3 tiled PDF export; File → Save overwrites the last JSON file when the browser allows it
 - Custom position tags (same kind as Engineer, Graduate, Intern) in addition to the built-in types
 - Optional local photos and richer cards (location on the card)
 - Dotted-line / matrix managers
@@ -125,12 +148,12 @@ Import can replace, append, or update by position ID, and defaults to a new Draf
 - Positions kept separate from people; FTE is position capacity, not salary
 - Scenario planning and before/after comparison
 - Company branding, light/dark modes, palettes (Indigo, Crimson, Graphite, Ocean, Emerald)
-- First-run tour and starter templates (startup, agency, nonprofit)
+- Start page with starter templates (startup, agency, nonprofit), recent files and open-from-file
 - Portable desktop app (Windows exe, macOS .app, Linux AppImage) with no installer
 
 ## Example companies and templates
 
-Fictional product and retail samples — not motorsport teams. Load them from **Example companies** in the sidebar, from the welcome tour, or by restoring JSON from `examples/`.
+Fictional product and retail samples — not motorsport teams. Load them from the **Start page** (File → New or open from template…), or open `workspace.json` from `examples/` with File → Open file….
 
 ### Harbor & Co
 
@@ -150,7 +173,7 @@ Retail operations across Stores, Merchandising, E-commerce and People. Includes 
 
 ### Starter templates
 
-Smaller orgs shipped in `js/templates.js`, also listed in the sidebar and the first-run tour:
+Smaller orgs shipped in `js/templates.js`, also listed on the Start page:
 
 | Template | Shape |
 | --- | --- |

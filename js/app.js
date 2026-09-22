@@ -227,7 +227,20 @@ async function exportGroups(){
 }
 
 function centerChart(){wrap.scrollTo({left:Math.max(0,(svg.clientWidth-wrap.clientWidth)/2),top:0,behavior:'smooth'})}
-function closeMenus(){ $('#exportMenu').classList.remove('open');$('#paletteMenu').classList.remove('open') }
+const MENU_TRIGGERS={exportMenu:'#exportBtn',paletteMenu:'#paletteBtn',fileMenu:'#fileBtn',moreMenu:'#moreBtn'};
+function closeMenus(except=''){
+  for(const [id,trigger] of Object.entries(MENU_TRIGGERS)){
+    if(id===except)continue;
+    $('#'+id)?.classList.remove('open');$(trigger)?.setAttribute('aria-expanded','false');
+  }
+  $('#docStatusBtn')?.setAttribute('aria-expanded',String(except==='fileMenu'));
+}
+function toggleMenu(id){
+  const menu=$('#'+id);if(!menu)return;
+  const open=!menu.classList.contains('open');closeMenus(open?id:'');
+  menu.classList.toggle('open',open);$(MENU_TRIGGERS[id])?.setAttribute('aria-expanded',String(open));
+  if(id==='fileMenu')$('#docStatusBtn')?.setAttribute('aria-expanded',String(open));
+}
 function triggerImport(){$('#fileInput').value='';$('#fileInput').click()}
 
 /* Company identity. Uploaded artwork never enters the document as live SVG. */
@@ -436,7 +449,7 @@ async function initPlanning(){
       }
     }
     else {
-      if(copies.length)throw new Error('Saved workspace copies could not be read. Open a valid backup or use Recovery & backups; existing data was preserved.');
+      if(copies.length)throw new Error('Saved workspace copies could not be read. Open a valid backup or use File → Recovery; existing data was preserved.');
       const old=appStorage.getItem('orgflow.people');
       if(old!==null) workspace=validatePlanning(migrateLegacy(JSON.parse(old)));
       else workspace=validatePlanning(ORGFLOW_EXAMPLES['harbor-and-co'].planning);
@@ -580,6 +593,11 @@ const filePersistence = new OrgFlowPersistence.FilePersistence({
 let lastViewText = '';
 let desktopSaveError = '';
 let documentOperationBusy = false;
+function documentDisplayName(){
+  const file=filePersistence.state().target||workspaceFileHandle?.name||'';
+  if(file)return file.replace(/\.(json|orgflow)$/i,'');
+  return branding?.companyName||'Untitled org chart';
+}
 function renderSaveStatus() {
   const el=$('#saveStatus'); if(!el)return;
   const state=filePersistence.state(),enterprise=window.OrgFlowEnterprise;
@@ -587,9 +605,22 @@ function renderSaveStatus() {
   const serverText=durableError?`Device save failed: ${durableError}`:durableWrites?'Saving on this device…':server ? `Shared server · ${enterprise.saveState || 'Saved'}` : window.orgflowDesktop?(desktopSaveError?'Desktop recovery save failed':'Saved on this device'):'Saved in this browser';
   const fileText=state.linked ? `${state.target || 'Linked file'} · ${state.error?'Save failed':state.writing?'Saving…':state.dirty?'Unsaved file changes':'Saved'}` : '';
   el.textContent=[serverText,fileText].filter(Boolean).join(' | ');
-  const compact=$('#saveStatusCompact');if(compact){compact.textContent=el.textContent;compact.title=el.textContent;}
-  el.dataset.state=durableError||desktopSaveError||state.error||enterprise?.saveState==='Conflict'?'error':state.dirty?'dirty':'saved';
+  const serverState=server?(enterprise.saveState||'Saved'):'Saved';
+  const serverFailed=['Conflict','Save failed'].includes(serverState),serverPending=serverState!=='Saved'&&!serverFailed;
+  const kind=durableError||desktopSaveError||state.error||serverFailed?'error':state.dirty||durableWrites||state.writing||serverPending?'dirty':'saved';
+  el.dataset.state=kind;
   el.title=durableError || desktopSaveError || state.error || (server?'Shared workspace. File backup is separate.':'Browser storage is not a backup. Save a workspace file for recovery.');
+  // Header chip: one short answer to "is my work safe, and where?".
+  const short=kind==='error'?(state.error?'File save failed':durableError?'Device save failed':serverState==='Conflict'?'Server conflict':serverFailed?'Server save failed':'Save failed')
+    :state.linked?(fileHandleNeedsReconnect?'File disconnected · saved in browser':state.writing?'Saving to file…':state.dirty?(filePersistence.enabled?'Saving to file…':'Unsaved file changes'):'Saved to file')
+    :server?`Shared · ${enterprise.saveState||'Saved'}`:durableWrites?'Saving…':window.orgflowDesktop?'Kept on this device · ⌘S saves a file':'Kept in this browser · ⌘S saves a file';
+  const name=documentDisplayName(),file=state.target||workspaceFileHandle?.name||'';
+  const compact=$('#saveStatusCompact');if(compact){compact.textContent=short;}
+  const docName=$('#docName');if(docName){docName.textContent=file||(server?'Shared workspace':'Not saved to a file');}
+  for(const dot of [$('#docDot'),$('#fileMenuDot')])if(dot)dot.dataset.state=kind==='saved'&&!state.linked&&!server?'local':kind;
+  const chip=$('#docStatusBtn');if(chip)chip.title=`${name} — ${el.textContent}. Click for file options.`;
+  const hint=$('#saveStatusHint');if(hint)hint.textContent=server?'Changes save to the shared server. Download a backup for an offline copy.':state.linked?(filePersistence.enabled?'Every change is written to the linked file automatically.':'Turn on auto-save or press ⌘S to update the file.'):'Browser storage is not a backup. Use Save to keep a file you can open anywhere.';
+  document.title=`${state.linked&&state.dirty?'• ':''}${name} — OrgFlow`;
   const retry=$('#retrySave');if(retry)retry.hidden=!state.linked||!state.error;
   const unlink=$('#unlinkFile');if(unlink)unlink.hidden=!state.linked;
 }
@@ -601,7 +632,8 @@ function syncAutosaveUi() {
   let pref=false;try{pref=appStorage.getItem(AUTOSAVE_KEY)==='1';}catch{}
   cb.disabled=!can;cb.checked=can&&pref&&!fileHandleNeedsReconnect;
   if(filePersistence.enabled!==cb.checked)filePersistence.setEnabled(cb.checked);
-  const rb=$('#reconnectFile');if(rb)rb.classList.toggle('hidden',!(workspaceFileHandle&&fileHandleNeedsReconnect));
+  const rb=$('#reconnectFile');if(rb)rb.hidden=!(workspaceFileHandle&&fileHandleNeedsReconnect);
+  cb.closest('label')?.classList.toggle('disabled',!can);
   renderSaveStatus();
 }
 // The file handle survives restarts in IndexedDB; the permission does not.
@@ -626,8 +658,8 @@ async function reconnectSavedFile(){
     if(perm==='granted'){
       const disk=JSON.parse(await (await handle.getFile()).text());
       const planning=disk.planning||disk;
-      if(planning.workspaceId!==workspace.workspaceId)throw new Error('This file belongs to another workspace. Use Open org chart or Save as.');
-      if(JSON.stringify(planning)!==JSON.stringify(workspace)&&!confirm('The saved file differs from this workspace. Replace its contents with the current workspace? Choose Cancel and Open org chart to load the file instead.'))return;
+      if(planning.workspaceId!==workspace.workspaceId)throw new Error('This file belongs to another workspace. Use File → Open file… or Save as….');
+      if(JSON.stringify(planning)!==JSON.stringify(workspace)&&!confirm('The saved file differs from this workspace. Replace its contents with the current workspace? Choose Cancel and File → Open file… to load the file instead.'))return;
       workspaceFileHandle=handle;fileHandleNeedsReconnect=false;syncAutosaveUi();
       toast('Saved file reconnected — auto-save can update it again.');scheduleFileAutosave();
     }else toast('Permission was not granted — the file stays disconnected.');
@@ -786,7 +818,7 @@ function renderPlanningHeader(){
   $('#positionsPanel').classList.toggle('hidden',currentView!=='positions');$('#comparePanel').classList.toggle('hidden',currentView!=='compare');$('#managementPanel').classList.toggle('hidden',currentView!=='management');$('.layout').classList.toggle('comparison-mode',currentView==='compare');
   const note=$('#scenarioNote');note.innerHTML=s.id==='current'?'<b>Current organization.</b> Edits here change Current only. Create a scenario to explore a proposed structure.':`<b>Planning: ${esc(s.name)} · ${esc(s.workflow?.state||'Draft')}.</b> Current is unchanged.<label class="check"><input id="highlightChanges" type="checkbox" ${showChartChanges?'checked':''}> Highlight changes vs original baseline</label>`;
   $('#highlightChanges')?.addEventListener('change',e=>{showChartChanges=e.target.checked;render();});
-  if(modelLoadError){$('#loadError').classList.remove('hidden');$('#loadError').textContent=`Workspace could not be loaded: ${modelLoadError} Saved data has not been overwritten. Restore a backup from the Export menu.`;}
+  if(modelLoadError){$('#loadError').classList.remove('hidden');$('#loadError').textContent=`Workspace could not be loaded: ${modelLoadError} Saved data has not been overwritten. Open a backup from File → Open file… or File → Recovery.`;}
 }
 function matchesSearch(p,q){return `${p.id} ${p.name||''} ${p.personName||''} ${p.title} ${p.group} ${p.hiringState} ${p.location||''} ${p.costCenter||''} ${p.jobFamily||''} ${p.employeeNumber||''}`.toLowerCase().includes(q);}
 function statusPill(text,kind){return `<span class="state-label ${kind||text.toLowerCase()}">${esc(text)}</span>`;}
@@ -935,12 +967,64 @@ function saveScenarioDialog(){
   try{const name=$('#scenarioName').value.trim(),description=$('#scenarioDescription').value.trim();if(scenarioDialogMode==='create')createScenario(name,$('#scenarioSource').value,description);else updateScenario(s=>{s.name=name;s.description=description;},'Scenario details saved');closeDialog('scenarioModal');}
   catch(error){$('#scenarioValidation').textContent=error.message;$('#scenarioValidation').classList.add('show');}
 }
+const SIDEBAR_KEY='orgflow.sidebar.v1';
+function compactLayout(){return window.matchMedia?.('(max-width: 760px)').matches;}
+function sidebarPrefs(){try{return JSON.parse(appStorage.getItem(SIDEBAR_KEY)||'{}')||{};}catch{return {};}}
+function saveSidebarPrefs(patch){safePreference(SIDEBAR_KEY,JSON.stringify({...sidebarPrefs(),...patch}));}
+function syncFilterToggle(){
+  const btn=$('#filterToggle');if(!btn)return;
+  const layout=$('.layout'),open=compactLayout()?layout?.classList.contains('filters-open'):!layout?.classList.contains('sidebar-collapsed');
+  btn.setAttribute('aria-expanded',String(!!open));
+  btn.title=(open?'Hide':'Show')+' filters panel ( [ )';
+  btn.setAttribute('aria-label',open?'Close filters':'Open filters');
+}
 function setFiltersOpen(open){
   $('.layout')?.classList.toggle('filters-open',!!open);
-  const btn=$('#filterToggle');if(!btn)return;
-  btn.setAttribute('aria-expanded',String(!!open));
-  btn.title=open?'Close filters':'Filters';
-  btn.setAttribute('aria-label',open?'Close filters':'Open filters');
+  syncFilterToggle();
+}
+function setSidebarCollapsed(collapsed,persist=true){
+  $('.layout')?.classList.toggle('sidebar-collapsed',!!collapsed);
+  if(persist)saveSidebarPrefs({collapsed:!!collapsed});
+  syncFilterToggle();
+  if(currentView==='chart')setTimeout(()=>{render();centerChart();},220);
+}
+function toggleFiltersPanel(){
+  const layout=$('.layout');
+  if(compactLayout())setFiltersOpen(!layout.classList.contains('filters-open'));
+  else setSidebarCollapsed(!layout.classList.contains('sidebar-collapsed'));
+}
+let sidebarReady=false;
+function setupSidebarSections(){
+  if(sidebarReady){syncFilterToggle();return;}sidebarReady=true;
+  const prefs=sidebarPrefs(),open=prefs.open||{};
+  for(const d of $$('.side-section')){
+    const key=d.dataset.section;
+    if(Object.hasOwn(open,key))d.open=!!open[key];
+    d.addEventListener('toggle',()=>{const next={...(sidebarPrefs().open||{})};next[key]=d.open;saveSidebarPrefs({open:next});});
+  }
+  if(prefs.collapsed&&!compactLayout())$('.layout')?.classList.add('sidebar-collapsed');
+  syncFilterToggle();
+}
+function chipFilterSet(key){
+  return {type:[activeRoles,allPositionTypes()],group:[activeGroups,allGroups()],site:[activeSites,allSites()],hiring:[activeHiring,HIRING_STATES],approval:[activeStatuses,STATUSES]}[key];
+}
+function setAllChips(key,on){
+  const entry=chipFilterSet(key);if(!entry)return;
+  const [set,values]=entry;set.clear();if(on)for(const v of values)set.add(v);
+  setupChips();render();
+}
+function renderSideBadges(){
+  const badge=(id,active,total)=>{const el=$('#'+id);if(!el)return;const filtered=active<total;el.textContent=!total?'—':filtered?`${active} of ${total}`:'All';el.classList.toggle('on',filtered);};
+  const types=allPositionTypes(),groups=allGroups(),sites=allSites();
+  badge('badgeType',types.filter(t=>activeRoles.has(t)).length,types.length);
+  badge('badgeGroup',activeGroups?groups.filter(g=>activeGroups.has(g)).length:groups.length,groups.length);
+  badge('badgeSite',activeSites?sites.filter(g=>activeSites.has(g)).length:sites.length,sites.length);
+  badge('badgeHiring',HIRING_STATES.filter(h=>activeHiring.has(h)).length,HIRING_STATES.length);
+  badge('badgeApproval',STATUSES.filter(h=>activeStatuses.has(h)).length,STATUSES.length);
+  const date=$('#badgeDate');if(date){const on=$('#dateFilter').checked&&$('#asOf').value;date.textContent=on?fmtDate($('#asOf').value):'Any';date.classList.toggle('on',!!on);}
+  const depth=$('#badgeDepth');if(depth){depth.textContent={1:'Heads',2:'Leads',3:'Team'}[maxDepth]||'All';depth.classList.toggle('on',maxDepth!==99);}
+  const cards=$('#badgeCards');if(cards){const keys=['group','site','type','approval','hiring','fte','span'];const n=keys.filter(k=>cardDisplay[k]).length;cards.textContent=`${n} of ${keys.length}`;}
+  const views=$('#badgeViews');if(views){const n=(workspace?.namedViews||[]).length;views.textContent=n?String(n):'None';}
 }
 function applyDefaultFilters(){
   knownGroups=null;knownSites=null;
@@ -1089,7 +1173,8 @@ function setupPlanningEvents(){
   $('#resetFilters').onclick=resetFilters;
   $('#clearFiltersBtn').onclick=clearAllFilters;
   $('#emptyClearFilters').onclick=clearAllFilters;
-  $('#filterToggle').onclick=()=>setFiltersOpen(!$('.layout').classList.contains('filters-open'));
+  $('#filterToggle').onclick=toggleFiltersPanel;
+  $('#sidebar').addEventListener('click',e=>{const all=e.target.closest('[data-chip-all]');if(all){setAllChips(all.dataset.chipAll,true);return;}const none=e.target.closest('[data-chip-none]');if(none)setAllChips(none.dataset.chipNone,false);});
   $('#closeFilters').onclick=()=>setFiltersOpen(false);
   $('#directoryClose').onclick=()=>closeDialog('directoryModal');
   $('#directoryBtn').onclick=openDirectory;$('#directoryAdd').onclick=()=>openPersonModal('');
@@ -1118,7 +1203,7 @@ function setupPlanningEvents(){
     const el=$('#'+id);if(el)el.onchange=readCardDisplayFromUi;
   }
   if($('#groupGap'))$('#groupGap').oninput=readCardDisplayFromUi;
-  for(const id of ['scenarioModal','directoryModal','personModal','welcomeModal','historyModal','shareModal']){
+  for(const id of ['scenarioModal','directoryModal','personModal','welcomeModal','historyModal','shareModal','shortcutsModal']){
     if(!$('#'+id))continue;
     $('#'+id).addEventListener('click',e=>{if(e.target===$('#'+id))closeDialog(id);});
     $('#'+id).addEventListener('keydown',e=>trapDialogFocus(e,id));
@@ -1258,7 +1343,7 @@ function render(){
   syncProjection();renderPlanningHeader();syncChartDisplayUi();
   const t=totals({positions:people},p=>baseVisible(p));
   $('#countVisible').textContent=t.positions;$('#countTotal').textContent=t.filled;$('#countApproved').textContent=t.open;$('#countOpen').textContent=t.recruiting;$('#countFte').textContent=fteText(t.fte);$('#countApprovedFte').textContent=fteText(t.approvedFte);
-  syncDateFilterUi();$('#zoomLabel').textContent=Math.round(zoom*100)+'%';renderFilterStrip();syncBulkBar();
+  syncDateFilterUi();$('#zoomLabel').textContent=Math.round(zoom*100)+'%';renderFilterStrip();renderSideBadges();syncBulkBar();renderSaveStatus();
   $('#empty').style.display='none';
   if(currentView==='chart'){
     const m=getChartModel(),lay=m.lay,search=$('#search').value.trim().toLowerCase();
@@ -1591,6 +1676,7 @@ function applyPathClasses(){
     c.classList.toggle('on-path',path.size>1&&path.has(from)&&(!to||path.has(to)));
   });
 }
+function suggestedFileBase(){return (slug(branding?.companyName||'')||'orgflow')+'-org-chart';}
 async function saveWorkspaceToDisk(saveAs=false){
   if(documentOperationBusy||workspaceIOBusy)return;
   if(!await allowEnterpriseExport('workspace'))return;
@@ -1601,15 +1687,15 @@ async function saveWorkspaceToDisk(saveAs=false){
     if(window.orgflowDesktop?.saveDocumentAs&&(saveAs||!candidate)){
       const picked=await window.orgflowDesktop.saveDocumentAs();if(!picked)return;candidate=nativeDocumentHandle(picked);
     }
-    if(!window.orgflowDesktop&&window.showSaveFilePicker&&(saveAs||!candidate))candidate=await window.showSaveFilePicker({suggestedName:`orgflow-workspace-${today}.json`,types:[{description:'OrgFlow workspace',accept:{'application/json':['.json']}}]});
+    if(!window.orgflowDesktop&&window.showSaveFilePicker&&(saveAs||!candidate))candidate=await window.showSaveFilePicker({suggestedName:`${suggestedFileBase()}.json`,types:[{description:'OrgFlow workspace',accept:{'application/json':['.json']}}]});
     if(candidate?.createWritable){
       const savedRevision=filePersistence.revision;
       await filePersistence.save({handle:candidate});
       if(candidate!==workspaceFileHandle){workspaceFileHandle=candidate;fileHandleNeedsReconnect=false;await rememberFileHandle(candidate);filePersistence.setTarget(candidate,{saved:savedRevision===filePersistence.revision});syncAutosaveUi();}
       await refreshRecentFiles();renderSaveStatus();toast('Workspace saved');return;
     }
-    downloadBlob(new Blob([JSON.stringify(workspacePayload(),null,2)],{type:'application/json'}),`orgflow-workspace-${today}.json`);
-    toast('Backup downloaded. This browser cannot keep a file linked.');
+    downloadBlob(new Blob([JSON.stringify(workspacePayload(),null,2)],{type:'application/json'}),`${suggestedFileBase()}-${today}.json`);
+    toast('Copy downloaded. This browser cannot keep a file linked — use Save again for a newer copy.');
   }catch(error){if(error?.name!=='AbortError'){toast(error.message||'Save failed. Your previous file link is unchanged.');renderSaveStatus();}}finally{documentOperationBusy=false;}
 }
 function nativeDocumentHandle(picked){
@@ -1627,8 +1713,9 @@ async function rememberFileHandle(handle){
 async function refreshRecentFiles(){
   if(!window.orgflowDesktop?.recentDocuments)return;
   const rows=await window.orgflowDesktop.recentDocuments();
-  $('#recentFilesRow').hidden=!rows.length;
-  $('#recentFiles').innerHTML='<option value="">Choose a file…</option>'+rows.map(r=>`<option value="${r.index}">${esc(r.name)} — ${esc(r.location)}</option>`).join('');
+  const html=rows.slice(0,6).map(r=>`<button type="button" class="recent-file" data-recent-index="${r.index}" title="${esc(r.location)}"><span class="mi">▤</span><span><b>${esc(r.name)}</b><small>${esc(r.location)}</small></span></button>`).join('');
+  $('#recentFilesRow').hidden=!rows.length;$('#recentFiles').innerHTML=html;
+  $('#welcomeRecent').hidden=!rows.length;$('#welcomeRecentList').innerHTML=html;
 }
 async function restoreWorkspacePicker(recentIndex=null){
   if(documentOperationBusy||workspaceIOBusy)return;
@@ -1730,7 +1817,7 @@ function replaceWorkspace(next,{brandingNext=null,palette='indigo',theme='light'
 async function loadSampleWorkspace(sampleId,{empty=false,skipConfirm=false}={}){
   if(modelLoadError){toast('Restore your workspace before loading an example.');return;}
   const label=empty?'a blank organization':(ORGFLOW_EXAMPLES[sampleId]?.branding?.companyName||'this example');
-  if(!skipConfirm&&!confirm(`Replace the current workspace with ${label}?\n\nThis overwrites scenarios, people and branding in this browser. The current workspace is checkpointed first and stays recoverable under Recovery & backups.`))return;
+  if(!skipConfirm&&!confirm(`Replace the current workspace with ${label}?\n\nThis overwrites scenarios, people and branding in this browser. The current workspace is checkpointed first and stays recoverable under File → Recovery.`))return;
   try{
     await checkpointWorkspace(`Before loading ${empty?'a blank organization':'an example'}`);
     if(empty){
@@ -1757,17 +1844,16 @@ async function loadStarterTemplate(id,{skipConfirm=false}={}){
 }
 function markWelcomeSeen(){try{appStorage.setItem(WELCOME_KEY,'1');}catch{}}
 function closeWelcome(){markWelcomeSeen();welcomeFirstRun=false;closeDialog('welcomeModal');}
-function populateTemplateGrid(){
-  const host=$('#templateGrid');if(!host)return;
-  const items=[
-    {kind:'example',id:'harbor-and-co',name:'Harbor & Co',blurb:'Product company · 17 positions'},
-    {kind:'example',id:'northstar-commerce',name:'Northstar Commerce',blurb:'Retail operations · 14 positions'},
-    ...Object.entries(typeof ORGFLOW_TEMPLATES==='undefined'?{}:ORGFLOW_TEMPLATES).map(([id,t])=>({kind:'template',id,name:t.branding.companyName,blurb:t.label+' · '+t.blurb}))
-  ];
-  host.innerHTML=items.map(item=>`<button type="button" class="template-card" data-kind="${item.kind}" data-id="${esc(item.id)}"><b>${esc(item.name)}</b><small>${esc(item.blurb)}</small></button>`).join('');
+function modalOpenId(id){return !!$('#'+id)?.classList.contains('open');}
+function populateStartPage(){
+  if(!workspace||modelLoadError)return;
+  const s=activeScenario(),count=workspace.scenarios.filter(x=>!x.archived).length,file=filePersistence.state().target;
+  $('#continueName').textContent=documentDisplayName();
+  $('#continueMeta').textContent=`${s.positions.length} position${s.positions.length===1?'':'s'} · ${count} scenario${count===1?'':'s'} · ${file?'linked to '+file:window.OrgFlowEnterprise?.enabled?'shared workspace':'saved in this browser'}`;
+  $('#welcomeSkip').textContent=welcomeFirstRun?'Explore this sample':'Continue';
 }
 function openWelcome(force=false){
-  populateTemplateGrid();
+  closeMenus();populateStartPage();
   openDialog('welcomeModal');
   if(force)markWelcomeSeen();
 }
@@ -1907,15 +1993,21 @@ svg.addEventListener('click',e=>{
   openDrawer(id);
 });
 $('#themeBtn').onclick=()=>setTheme(document.documentElement.dataset.theme==='dark'?'light':'dark');
-$('#paletteBtn').onclick=e=>{e.stopPropagation();$('#exportMenu').classList.remove('open');$('#paletteMenu').classList.toggle('open')};
+$('#paletteBtn').onclick=e=>{e.stopPropagation();toggleMenu('paletteMenu');};
+$('#fileBtn').onclick=e=>{e.stopPropagation();toggleMenu('fileMenu');};
+$('#docStatusBtn').onclick=e=>{e.stopPropagation();toggleMenu('fileMenu');};
+$('#moreBtn').onclick=e=>{e.stopPropagation();toggleMenu('moreMenu');};
+$('#moreMenu').addEventListener('click',e=>{const sw=e.target.closest('[data-palette]');if(sw){setPalette(sw.dataset.palette);return;}if(e.target.closest('button[role=menuitem],a'))closeMenus();});
+$('#morePeopleBtn').onclick=()=>$('#directoryBtn').click();
+$('#fileMenu').addEventListener('click',e=>{if(e.target.closest('button[role=menuitem]'))closeMenus();});
 $('#paletteMenu').onclick=e=>{const b=e.target.closest('button[data-palette]');if(!b)return;setPalette(b.dataset.palette);closeMenus();toast(`${b.querySelector('b')?.textContent||'Palette'} palette applied`)};
 $('#drawerClose').onclick=requestCloseDrawer;$('#drawerCancel').onclick=requestCloseDrawer;$('#saveBtn').onclick=saveDrawer;$('#deleteBtn').onclick=deleteSelected;$('#addBtn').onclick=()=>openDrawer('',true);
 $('#search').addEventListener('input',()=>{const q=$('#search').value.trim().toLowerCase();if(q){const hits=people.filter(p=>baseVisible(p)&&matchesSearch(p,q));if(hits.length){maxDepth=99;$$('#depthSeg button').forEach(b=>b.classList.toggle('active',b.dataset.depth==='99'));for(const hit of hits){let id=hit.managerId;const guard=new Set();while(id&&!guard.has(id)){guard.add(id);collapsed.delete(id);id=people.find(x=>x.id===id)?.managerId||''}}}}render()});
 $('#asOf').onchange=render;$('#dateFilter').onchange=render;$('#depthSeg').onclick=e=>{const b=e.target.closest('button[data-depth]');if(!b)return;maxDepth=+b.dataset.depth;$$('#depthSeg button').forEach(x=>x.classList.toggle('active',x===b));render()};
 $('#expandBtn').onclick=()=>{collapsed.clear();maxDepth=99;$$('#depthSeg button').forEach(x=>x.classList.toggle('active',x.dataset.depth==='99'));render();centerChart();};
 $('#collapseBtn').onclick=()=>{collapsed=new Set(people.filter(p=>p.type==='Team Leader').map(p=>p.id));maxDepth=2;$$('#depthSeg button').forEach(x=>x.classList.toggle('active',x.dataset.depth==='2'));render()};$('#centerBtn').onclick=fitChart;
-$('#csvBtn').onclick=async()=>{if(await allowEnterpriseExport('csv'))exportCSV()};$('#templateBtn').onclick=downloadTemplate;$('#importBtn').onclick=()=>{if(enterpriseBlocksWrite()){toast('You can view this organization but you cannot import.');return;}triggerImport();};$('#sideImportBtn').onclick=()=>$('#importBtn').click();$('#fileInput').onchange=e=>e.target.files[0]&&importFile(e.target.files[0]);
-$('#exportBtn').onclick=e=>{e.stopPropagation();$('#paletteMenu').classList.remove('open');$('#exportMenu').classList.toggle('open')};$('#exportMenu').onclick=async e=>{
+$('#templateBtn').onclick=downloadTemplate;$('#bundleBtn').onclick=async()=>{if(await allowEnterpriseExport('bundle'))exportOrgflowBundle();};$('#importBtn').onclick=()=>{if(enterpriseBlocksWrite()){toast('You can view this organization but you cannot import.');return;}triggerImport();};$('#fileInput').onchange=e=>e.target.files[0]&&importFile(e.target.files[0]);
+$('#exportBtn').onclick=e=>{e.stopPropagation();toggleMenu('exportMenu');};$('#exportMenu').onclick=async e=>{
   const b=e.target.closest('button[data-export]');if(!b)return;closeMenus();const kind=b.dataset.export;
   if(kind==='restore'){restoreWorkspacePicker();return;}
   const audit=kind==='save'||kind==='saveAs'?'workspace':kind==='print'?'a3':kind;
@@ -1943,7 +2035,28 @@ window.addEventListener('keydown',e=>{
   if((e.metaKey||e.ctrlKey)&&e.key.toLowerCase()==='z'&&!typing){e.preventDefault();if(e.shiftKey)redoChange();else undoChange();return;}
   if((e.metaKey||e.ctrlKey)&&e.key.toLowerCase()==='o'&&!typing){e.preventDefault();restoreWorkspacePicker();return;}
   if((e.metaKey||e.ctrlKey)&&e.key.toLowerCase()==='s'){e.preventDefault();if(!typing)saveWorkspaceToDisk(e.shiftKey);return;}
+  const openMenu=$('.menu.open');
+  if(openMenu&&['ArrowDown','ArrowUp'].includes(e.key)){
+    const items=[...openMenu.querySelectorAll('button,a[href],input')].filter(x=>!x.disabled&&x.getClientRects().length);
+    const i=items.indexOf(document.activeElement);e.preventDefault();
+    items[(i+(e.key==='ArrowDown'?1:-1)+items.length)%items.length]?.focus();return;
+  }
+  // Single-key shortcuts only while no field, editor or menu has the user's attention.
+  if(!typing&&!e.metaKey&&!e.ctrlKey&&!e.altKey&&!openMenu&&!$('#drawer').classList.contains('open')&&!$('.modal-backdrop.open')){
+    const views={1:'chart',2:'positions',3:'compare',4:'management'};
+    if(e.key==='?'){e.preventDefault();openDialog('shortcutsModal');return;}
+    if(e.key==='/'){e.preventDefault();if($('.layout').classList.contains('sidebar-collapsed'))setSidebarCollapsed(false);else if(compactLayout())setFiltersOpen(true);$('#search').focus();return;}
+    if(e.key==='['){e.preventDefault();toggleFiltersPanel();return;}
+    if(views[e.key]){e.preventDefault();setView(views[e.key]);return;}
+    if(currentView==='chart'){
+      if(e.key==='+'||e.key==='='){e.preventDefault();setZoom(zoom+.1);return;}
+      if(e.key==='-'||e.key==='_'){e.preventDefault();setZoom(zoom-.1);return;}
+      if(e.key==='0'){e.preventDefault();fitChart();return;}
+    }
+    if(e.key.toLowerCase()==='n'&&!enterpriseBlocksWrite()&&!$('#addBtn').hidden){e.preventDefault();openDrawer('',true);return;}
+  }
   if(e.key==='Escape'){
+    if($('.menu.open')){const open=$('.menu.open').id;closeMenus();$(MENU_TRIGGERS[open])?.focus();return;}
     const top=dialogStack.at(-1);if(top){if(top.id==='welcomeModal')markWelcomeSeen();closeDialog(top.id);e.preventDefault();return;}
     const modalOpen=id=>$('#'+id)?.classList.contains('open');
     if(modalOpen('brandingModal')){closeBranding();return;}
@@ -1958,7 +2071,7 @@ window.addEventListener('keydown',e=>{
   }
 });window.addEventListener('resize',render);
 function paintPlanner(){
-  loadSavedPlanningView();setupTheme();setupChips();setupPlanningEvents();updateUndoButtons();syncAutosaveUi();
+  loadSavedPlanningView();setupSidebarSections();setupTheme();setupChips();setupPlanningEvents();updateUndoButtons();syncAutosaveUi();
 }
 async function startLocalPlanner(){
   configureWorkspaceScope(null);await initPlanning();paintPlanner();
@@ -1985,7 +2098,7 @@ async function applyEnterpriseWorkspace(doc){
   try{
     const pending=await OrgFlowStore.getPending();
     if(pending?.planning&&JSON.stringify(pending.planning)!==JSON.stringify(next)){
-      toast('Local changes that never reached the server were kept — see Recovery & backups.');
+      toast('Local changes that never reached the server were kept — see File → Recovery.');
     }
   }catch{}
 }
@@ -2000,7 +2113,9 @@ function acceptEnterpriseSnapshot(doc,{preserveView=true}={}){
 }
 window.applyEnterpriseWorkspace=applyEnterpriseWorkspace;
 window.enterpriseWorkspacePayload=()=>workspacePayload();
-$('#undoBtn').onclick=undoChange;$('#redoBtn').onclick=redoChange;$('#helpBtn').onclick=()=>openWelcome(true);
+$('#undoBtn').onclick=undoChange;$('#redoBtn').onclick=redoChange;$('#helpBtn').onclick=$('#fileNewBtn').onclick=()=>openWelcome(true);
+$('#shortcutsBtn').onclick=()=>openDialog('shortcutsModal');$('#shortcutsClose').onclick=()=>closeDialog('shortcutsModal');
+$('#welcomeOpenBtn').onclick=()=>{closeWelcome();restoreWorkspacePicker();};
 $('#historyBtn').onclick=openHistory;$('#historyClose').onclick=()=>closeDialog('historyModal');
 $('#autoSaveFile').onchange=e=>{try{appStorage.setItem(AUTOSAVE_KEY,e.target.checked?'1':'0');}catch{}filePersistence.setEnabled(e.target.checked);syncAutosaveUi();};
 $('#retrySave').onclick=()=>saveWorkspaceToDisk();$('#unlinkFile').onclick=unlinkWorkspaceFile;
@@ -2035,17 +2150,17 @@ $('#recoveryPending').onclick=e=>{
 };
 $('#reconnectFile').onclick=reconnectSavedFile;
 $('#welcomeClose').onclick=$('#welcomeSkip').onclick=closeWelcome;
-$('#welcomeHarbor').onclick=()=>{const skip=welcomeFirstRun;closeWelcome();loadSampleWorkspace('harbor-and-co',{skipConfirm:skip});};
-$('#templateGrid').onclick=e=>{const b=e.target.closest('.template-card');if(!b)return;const skip=welcomeFirstRun;closeWelcome();if(b.dataset.kind==='example')loadSampleWorkspace(b.dataset.id,{skipConfirm:skip});else loadStarterTemplate(b.dataset.id,{skipConfirm:skip});};
 $('#uploadPhotoBtn').onclick=()=>{$('#photoInput').value='';$('#photoInput').click();};
 $('#photoInput').onchange=async e=>{const file=e.target.files[0];if(!file)return;const session=drawerSession;photoBusy=true;$('#saveBtn').disabled=true;try{const photo=await normalizePersonPhoto(file);if(session!==drawerSession)return;photoDraft=photo;updatePhotoNote();toast('Photo attached');}catch(error){if(session===drawerSession)toast(error.message||'Could not use this photo.');}finally{if(session===drawerSession){photoBusy=false;$('#saveBtn').disabled=false;}}};
 $('#removePhotoBtn').onclick=()=>{drawerSession++;photoBusy=false;$('#saveBtn').disabled=false;photoDraft=null;updatePhotoNote();};
-$('#exampleHarborBtn').onclick=()=>loadSampleWorkspace('harbor-and-co');
-$('#exampleNorthstarBtn').onclick=()=>loadSampleWorkspace('northstar-commerce');
-$('#exampleEmptyBtn').onclick=()=>loadSampleWorkspace('',{empty:true});
-$('#exampleFirstLightBtn').onclick=()=>loadStarterTemplate('first-light');
-$('#exampleLumenBtn').onclick=()=>loadStarterTemplate('lumen-studio');
-$('#exampleCedarBtn').onclick=()=>loadStarterTemplate('cedar-kind');
+// Start-page cards. On first run the sample is disposable, so no confirmation.
+function startCard(load){return()=>{const skip=welcomeFirstRun;if(modalOpenId('welcomeModal'))closeWelcome();load(skip);};}
+$('#exampleHarborBtn').onclick=startCard(skip=>loadSampleWorkspace('harbor-and-co',{skipConfirm:skip}));
+$('#exampleNorthstarBtn').onclick=startCard(skip=>loadSampleWorkspace('northstar-commerce',{skipConfirm:skip}));
+$('#exampleEmptyBtn').onclick=startCard(skip=>loadSampleWorkspace('',{empty:true,skipConfirm:skip}));
+$('#exampleFirstLightBtn').onclick=startCard(skip=>loadStarterTemplate('first-light',{skipConfirm:skip}));
+$('#exampleLumenBtn').onclick=startCard(skip=>loadStarterTemplate('lumen-studio',{skipConfirm:skip}));
+$('#exampleCedarBtn').onclick=startCard(skip=>loadStarterTemplate('cedar-kind',{skipConfirm:skip}));
 
 $('#zoomOut').onclick=()=>setZoom(zoom-.1);$('#zoomIn').onclick=()=>setZoom(zoom+.1);
 $$('input[name="importMode"]').forEach(input=>input.onchange=renderImportReview);
@@ -2072,7 +2187,7 @@ $('#saveImportProfile').onclick=()=>{
   }catch(error){toast(error.message);}
 };
 
-$('#recentFiles').onchange=e=>{if(e.target.value!=='')restoreWorkspacePicker(Number(e.target.value));e.target.value='';};
+for(const host of ['#recentFiles','#welcomeRecentList'])$(host).onclick=e=>{const b=e.target.closest('[data-recent-index]');if(!b)return;closeMenus();if(modalOpenId('welcomeModal'))closeWelcome();restoreWorkspacePicker(Number(b.dataset.recentIndex));};
 async function refreshUpdateUi(){
   if(!window.orgflowDesktop?.updateState)return;
   $('#updatesSection').hidden=false;
@@ -2111,3 +2226,26 @@ $('#updateAppBtn').onclick=async()=>{
   finally{clearInterval(updatePoll);await refreshUpdateUi();}
 };
 refreshUpdateUi().catch(error=>toast(error.message));
+// Drop a workspace (.json/.orgflow) to open it, or a CSV to review an import.
+// Drop zones that handle their own files (logo panels) call preventDefault first.
+(function setupFileDrop(){
+  const overlay=document.createElement('div');overlay.className='drop-overlay';overlay.hidden=true;
+  overlay.innerHTML='<div class="drop-card"><b>Drop to open</b><span>.json or .orgflow opens an org chart · .csv reviews a position import</span></div>';
+  document.body.append(overlay);
+  let depth=0;
+  const hasFiles=e=>[...(e.dataTransfer?.types||[])].includes('Files');
+  const blocked=()=>dialogStack.length||modalOpenId('brandingModal')||$('#drawer').classList.contains('open');
+  window.addEventListener('dragenter',e=>{if(!hasFiles(e)||blocked())return;depth++;overlay.hidden=false;});
+  window.addEventListener('dragleave',e=>{if(!hasFiles(e))return;depth=Math.max(0,depth-1);if(!depth)overlay.hidden=true;});
+  window.addEventListener('dragover',e=>{if(hasFiles(e)&&!blocked())e.preventDefault();});
+  window.addEventListener('drop',e=>{
+    depth=0;overlay.hidden=true;
+    if(e.defaultPrevented||!hasFiles(e)||blocked())return;
+    e.preventDefault();
+    const files=[...e.dataTransfer.files];if(files.length!==1){toast('Drop one file at a time.');return;}
+    const file=files[0],name=file.name.toLowerCase();
+    if(name.endsWith('.csv')){if(enterpriseBlocksWrite()){toast('You can view this organization but you cannot import.');return;}importFile(file);}
+    else if(name.endsWith('.json')||name.endsWith('.orgflow'))restoreWorkspace(file);
+    else toast('Drop a .json or .orgflow workspace, or a .csv of positions.');
+  });
+})();

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 'use strict';
-/* global document, localStorage */
+/* global document, localStorage, openWelcome */
 
 const fs = require('node:fs');
 const path = require('node:path');
@@ -30,6 +30,7 @@ async function main() {
       await page.waitForFunction(() => !document.querySelector('#welcomeModal.open'));
     }
     await captureCompany(page, 'harbor-and-co');
+    await page.evaluate(() => openWelcome(true)); // Templates live on the Start page.
     await page.click('#exampleNorthstarBtn');
     await page.waitForFunction(() => document.querySelector('#brandName')?.textContent.includes('Northstar'));
     await new Promise(r => setTimeout(r, 2300));

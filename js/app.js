@@ -605,11 +605,13 @@ function renderSaveStatus() {
   const serverText=durableError?`Device save failed: ${durableError}`:durableWrites?'Saving on this device…':server ? `Shared server · ${enterprise.saveState || 'Saved'}` : window.orgflowDesktop?(desktopSaveError?'Desktop recovery save failed':'Saved on this device'):'Saved in this browser';
   const fileText=state.linked ? `${state.target || 'Linked file'} · ${state.error?'Save failed':state.writing?'Saving…':state.dirty?'Unsaved file changes':'Saved'}` : '';
   el.textContent=[serverText,fileText].filter(Boolean).join(' | ');
-  const kind=durableError||desktopSaveError||state.error||enterprise?.saveState==='Conflict'?'error':state.dirty||durableWrites||state.writing?'dirty':'saved';
+  const serverState=server?(enterprise.saveState||'Saved'):'Saved';
+  const serverFailed=['Conflict','Save failed'].includes(serverState),serverPending=serverState!=='Saved'&&!serverFailed;
+  const kind=durableError||desktopSaveError||state.error||serverFailed?'error':state.dirty||durableWrites||state.writing||serverPending?'dirty':'saved';
   el.dataset.state=kind;
   el.title=durableError || desktopSaveError || state.error || (server?'Shared workspace. File backup is separate.':'Browser storage is not a backup. Save a workspace file for recovery.');
   // Header chip: one short answer to "is my work safe, and where?".
-  const short=kind==='error'?(state.error?'File save failed':durableError?'Device save failed':enterprise?.saveState==='Conflict'?'Server conflict':'Save failed')
+  const short=kind==='error'?(state.error?'File save failed':durableError?'Device save failed':serverState==='Conflict'?'Server conflict':serverFailed?'Server save failed':'Save failed')
     :state.linked?(fileHandleNeedsReconnect?'File disconnected · saved in browser':state.writing?'Saving to file…':state.dirty?(filePersistence.enabled?'Saving to file…':'Unsaved file changes'):'Saved to file')
     :server?`Shared · ${enterprise.saveState||'Saved'}`:durableWrites?'Saving…':window.orgflowDesktop?'Kept on this device · ⌘S saves a file':'Kept in this browser · ⌘S saves a file';
   const name=documentDisplayName(),file=state.target||workspaceFileHandle?.name||'';

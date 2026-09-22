@@ -203,6 +203,9 @@ class BrowserTests(unittest.TestCase):
             self.assertEqual(self.ev('activeScenario().positions[0].title'),'My local title')
             self.click('#serverSaveRetry');self.page.wait_for_selector('#serverConflictModal.open');self.click('#serverConflictSave');self.page.wait_for_function("() => OrgFlowEnterprise.saveState==='Saved' && !OrgFlowEnterprise.busy")
             self.assertEqual(self.ev('activeScenario().positions[0].title'),'My local title');self.assertEqual(self.ev('activeScenario().positions[0].location'),'Remote office')
+            # The header chip must never look safe while the server copy is behind.
+            for state,dot in [('Unsaved','dirty'),('Saving','dirty'),('Save failed','error'),('Conflict','error'),('Saved','saved')]:
+                self.ev("s=>{OrgFlowEnterprise.saveState=s;renderSaveStatus();}",state);self.assertEqual(self.page.locator('#docDot').get_attribute('data-state'),dot,state)
             # A real shared proposal traverses authenticated metadata and decision endpoints.
             self.ev("createScenario('Shared browser proposal','current','Capacity review')");self.page.wait_for_function("() => OrgFlowEnterprise.saveState==='Saved' && !OrgFlowEnterprise.busy")
             self.planning('decisions');self.click('[data-decision-metadata]');self.page.locator('#planning-owner').fill('Engineering');self.page.locator('#planning-reviewers').fill('browser-admin@example.test');self.page.locator('#planning-rationale').fill('Real API decision test');self.click('#planningRecordSave')

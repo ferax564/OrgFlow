@@ -191,4 +191,6 @@ jobs:
           fail_on_unmatched_files: true
           draft: ${{ needs.version.outputs.stable == 'true' }}
           prerelease: ${{ needs.version.outputs.stable != 'true' }}
-          make_latest: ${{ needs.version.outputs.stable == 'true' }}
+          # GitHub refuses make_latest on drafts; a stable draft becomes
+          # latest when it is published after the signed-update drill.
+          make_latest: false

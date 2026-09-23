@@ -10,7 +10,7 @@ GitHub repository signing secrets are absent. The local keychain contains Apple 
 
 1. On a branch, bump `version` in `package.json` (`npm version <x.y.z[-rc.n]> --no-git-tag-version`), add a matching `## <version>` section to `CHANGELOG.md`, and update the download links in `README.md` and `index.html`.
 2. Merge to `main`. The **Desktop binaries** workflow sees that `v<version>` does not exist yet, runs the full quality gate, builds Windows, macOS and Linux, then creates the tag at the merge commit and publishes the GitHub Release with the changelog section as notes.
-3. Versions with a pre-release suffix (`-rc.n`) publish immediately as pre-releases. Stable versions require signing credentials, verify signatures, and are published as **drafts** until the signed-update drill below has been recorded.
+3. Versions with a pre-release suffix (`-rc.n`) publish immediately as pre-releases. Stable versions require signing credentials, verify signatures, and are published as **drafts** until the signed-update drill below has been recorded; publishing that draft makes it the latest release.
 
 Pushing a `v*` tag by hand still works; the tag must equal the `package.json` version. Pushes to `main` that do not change the version never release. GitHub Pages redeploys the web app on every push to `main`.
 

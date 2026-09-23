@@ -9,13 +9,50 @@ on:
 
 concurrency:
   group: desktop-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  # Never cancel a run on main or a tag: it may be publishing a release.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   quality:
     uses: ./.github/workflows/ci.yml
+  # Decide whether this run publishes a release. A pushed v* tag releases that
+  # tag. On main, a package.json version with no matching tag yet releases
+  # automatically, so merging a version bump is the whole release procedure.
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.plan.outputs.tag }}
+      release: ${{ steps.plan.outputs.release }}
+      stable: ${{ steps.plan.outputs.stable }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Plan release
+        id: plan
+        shell: bash
+        run: |
+          set -euo pipefail
+          version=$(node -p "require('./package.json').version")
+          tag="v$version"
+          release=false
+          if [ "$GITHUB_REF_TYPE" = tag ]; then
+            if [ "$GITHUB_REF_NAME" != "$tag" ]; then
+              echo "::error::Tag $GITHUB_REF_NAME does not match package.json version $version"; exit 1
+            fi
+            release=true
+          elif [ "$GITHUB_REF" = refs/heads/main ] && [ "$GITHUB_EVENT_NAME" != pull_request ]; then
+            if git ls-remote --exit-code --tags origin "refs/tags/$tag" >/dev/null; then
+              echo "$tag already exists; this main build does not release."
+            else
+              release=true
+            fi
+          fi
+          stable=$([[ "$version" == *-* ]] && echo false || echo true)
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "release=$release" >> "$GITHUB_OUTPUT"
+          echo "stable=$stable" >> "$GITHUB_OUTPUT"
+          echo "Release plan: tag=$tag release=$release stable=$stable"
   desktop:
-    needs: quality
+    needs: [quality, version]
     name: ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
     strategy:
@@ -63,7 +100,7 @@ jobs:
         if: runner.os == 'Linux'
         run: xvfb-run -a npm run test:desktop
       - name: Require signing for stable releases
-        if: startsWith(github.ref, 'refs/tags/v') && !contains(github.ref, '-') && runner.os != 'Linux'
+        if: needs.version.outputs.release == 'true' && needs.version.outputs.stable == 'true' && runner.os != 'Linux'
         shell: bash
         env:
           MAC_SIGN: ${{ secrets.CSC_LINK }}
@@ -100,7 +137,7 @@ jobs:
           fi
           npm run ${{ matrix.script }}
       - name: Verify shipped signatures and notarization
-        if: startsWith(github.ref, 'refs/tags/v') && !contains(github.ref, '-') && runner.os != 'Linux'
+        if: needs.version.outputs.release == 'true' && needs.version.outputs.stable == 'true' && runner.os != 'Linux'
         env:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           WIN_PUBLISHER_NAME: ${{ vars.WIN_PUBLISHER_NAME }}
@@ -115,23 +152,45 @@ jobs:
 
   release:
     name: GitHub Release
-    needs: desktop
-    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [version, desktop]
+    if: needs.version.outputs.release == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
           pattern: OrgFlow-*
           merge-multiple: true
           path: dist
+      - name: Release notes from CHANGELOG
+        shell: bash
+        env:
+          TAG: ${{ needs.version.outputs.tag }}
+        run: |
+          set -euo pipefail
+          version="${TAG#v}"
+          awk -v v="$version" '$0=="## "v{f=1;next} /^## /{if(f)exit} f' CHANGELOG.md > release-notes.md
+          if [ ! -s release-notes.md ]; then echo "::error::CHANGELOG.md has no '## $version' section"; exit 1; fi
+          if [ "${{ needs.version.outputs.stable }}" != true ]; then
+            printf '> Unsigned release candidate. Windows SmartScreen and macOS Gatekeeper will warn; see the README for how to open it.\n\n' | cat - release-notes.md > notes.tmp && mv notes.tmp release-notes.md
+          fi
+      # Creates the tag at this commit when it does not exist yet. Release
+      # candidates publish immediately; stable releases stay drafts until the
+      # signed-update drill in RELEASE_OPERATIONS.md has been recorded.
       - name: Publish tagged binaries
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ needs.version.outputs.tag }}
+          target_commitish: ${{ github.sha }}
+          name: OrgFlow ${{ needs.version.outputs.tag }}${{ needs.version.outputs.stable != 'true' && ' — unsigned release candidate' || '' }}
+          body_path: release-notes.md
           files: |
             dist/*
-          generate_release_notes: true
           fail_on_unmatched_files: true
-          draft: true
-          prerelease: ${{ contains(github.ref, '-') }}
+          draft: ${{ needs.version.outputs.stable == 'true' }}
+          prerelease: ${{ needs.version.outputs.stable != 'true' }}
+          # GitHub refuses make_latest on drafts; a stable draft becomes
+          # latest when it is published after the signed-update drill.
+          make_latest: false

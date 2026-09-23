@@ -6,6 +6,14 @@ The public static deployment at https://ferax564.github.io/OrgFlow/ passes the r
 
 GitHub repository signing secrets are absent. The local keychain contains Apple Development and Apple Distribution identities, but no Developer ID Application identity for direct macOS distribution. A different Apple certificate is not a substitute. No enterprise production URL or approved test account has been supplied. Signed artifacts, notarization and the signed-update drill therefore remain unverified; do not relabel the existing unsigned assets as stable.
 
+## Release procedure
+
+1. On a branch, bump `version` in `package.json` (`npm version <x.y.z[-rc.n]> --no-git-tag-version`), add a matching `## <version>` section to `CHANGELOG.md`, and update the download links in `README.md` and `index.html`.
+2. Merge to `main`. The **Desktop binaries** workflow sees that `v<version>` does not exist yet, runs the full quality gate, builds Windows, macOS and Linux, then creates the tag at the merge commit and publishes the GitHub Release with the changelog section as notes.
+3. Versions with a pre-release suffix (`-rc.n`) publish immediately as pre-releases. Stable versions require signing credentials, verify signatures, and are published as **drafts** until the signed-update drill below has been recorded; publishing that draft makes it the latest release.
+
+Pushing a `v*` tag by hand still works; the tag must equal the `package.json` version. Pushes to `main` that do not change the version never release. GitHub Pages redeploys the web app on every push to `main`.
+
 ## Configure signing securely
 
 Configure these in [repository Actions secrets](https://github.com/ferax564/OrgFlow/settings/secrets/actions). Do not put certificates, private keys or passwords in issues, commits or chat.

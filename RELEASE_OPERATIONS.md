@@ -4,13 +4,14 @@
 
 The public static deployment at https://ferax564.github.io/OrgFlow/ passes the read-only deployment check: HTTPS, planner HTML and all ten JavaScript assets match the tested checkout. This deployment does not use the optional enterprise server; OIDC and database operations are not prerequisites for using the public browser-only planner.
 
-GitHub repository signing secrets are absent. The local keychain contains Apple Development and Apple Distribution identities, but no Developer ID Application identity for direct macOS distribution. A different Apple certificate is not a substitute. No enterprise production URL or approved test account has been supplied. Signed artifacts, notarization and the signed-update drill therefore remain unverified; do not relabel the existing unsigned assets as stable.
+GitHub repository signing secrets are absent. The local keychain contains Apple Development and Apple Distribution identities, but no Developer ID Application identity for direct macOS distribution. A different Apple certificate is not a substitute. No enterprise production URL or approved test account has been supplied. Signed artifacts, notarization and the signed-update drill therefore remain unverified. From 2.5.0 the owner chose to publish stable releases unsigned until certificates are configured; the pipeline switches to signed builds automatically when they are.
 
 ## Release procedure
 
 1. On a branch, bump `version` in `package.json` (`npm version <x.y.z[-rc.n]> --no-git-tag-version`), add a matching `## <version>` section to `CHANGELOG.md`, and update the download links in `README.md` and `index.html`.
 2. Merge to `main`. The **Desktop binaries** workflow sees that `v<version>` does not exist yet, runs the full quality gate, builds Windows, macOS and Linux, then creates the tag at the merge commit and publishes the GitHub Release with the changelog section as notes.
-3. Versions with a pre-release suffix (`-rc.n`) publish immediately as pre-releases. Stable versions require signing credentials, verify signatures, and are published as **drafts** until the signed-update drill below has been recorded; publishing that draft makes it the latest release.
+3. Versions with a pre-release suffix (`-rc.n`) publish as pre-releases, which the desktop updater ignores. Other versions publish as the latest release and reach installed apps through automatic updates.
+4. Each platform is signed when its credentials are configured (see below), and the shipped files are then verified. With no credentials the build ships unsigned and the release notes say so; partly configured credentials fail the build.
 
 Pushing a `v*` tag by hand still works; the tag must equal the `package.json` version. Pushes to `main` that do not change the version never release. GitHub Pages redeploys the web app on every push to `main`.
 
@@ -31,7 +32,7 @@ Configure these in [repository Actions secrets](https://github.com/ferax564/OrgF
 
 If the Windows certificate uses a hardware token or a cloud signing service, configure that provider's builder signing integration instead of attempting to export its non-exportable key. The current workflow expects PKCS#12; it does not claim cloud/HSM support.
 
-The workflow checks required credentials before stable builds and verifies the actual distributables before upload. macOS verification extracts the final ZIP, checks the Developer ID/team and nested signatures, validates the stapled notarization ticket, and checks Gatekeeper. Windows verifies both the installer and portable executable with Authenticode, requires a timestamp and checks the configured publisher. Unsigned/invalid artifacts fail. These commands cannot create certificates or establish the publisher's legal identity.
+When credentials are configured, the workflow verifies the actual distributables before upload. macOS verification extracts the final ZIP, checks the Developer ID/team and nested signatures, validates the stapled notarization ticket, and checks Gatekeeper. Windows verifies both the installer and portable executable with Authenticode, requires a timestamp and checks the configured publisher. Unsigned/invalid artifacts fail. These commands cannot create certificates or establish the publisher's legal identity.
 
 ```bash
 npm run verify:release -- dist

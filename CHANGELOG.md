@@ -1,8 +1,8 @@
 # Changelog
 
-## 2.5.0-rc.1
+## 2.5.0
 
-Unsigned release candidate focused on ease of use: one place for files, a tidy filters panel and faster keyboard work. Workspace data format is unchanged (document version 3); 2.4 files open as-is.
+Stable release of the 2.5.0-rc.1 candidate, focused on ease of use: one place for files, a tidy filters panel and faster keyboard work. Workspace data format is unchanged (document version 3); 2.4 files open as-is.
 
 - **File menu** in the header gathers New, Open (⌘O), recent files, Save (⌘S), Save as… (⇧⌘S), auto-save, CSV import, backups and Recovery. The Share menu now only shares and exports charts and data.
 - **Save-status chip** next to the company name shows at a glance whether the chart is saved to a file (green), only kept in this browser (amber), saving (pulsing) or failed (red). The tab title shows the file name and a • for unsaved file changes. First Save suggests a file name from the company name.
@@ -13,7 +13,7 @@ Unsigned release candidate focused on ease of use: one place for files, a tidy f
 - **Keyboard shortcuts** dialog (`?`) and new single-key shortcuts: `/` search, `N` add position, `+`/`−` zoom, `0` fit, `1`–`4` switch views, arrow keys inside menus. Single keys never fire while typing.
 - Header decluttered: **People** button, undo/redo icons, branding and help in a **⋯** menu (which also carries People and the palette on phones). Distinct icons for expand/collapse versus zoom in the chart toolbar.
 - The status chip also stays amber while a shared-server save is pending and turns red when it fails.
-- **Release pipeline**: merging a version bump to `main` now builds, tags and publishes the release automatically (release candidates publish immediately; stable releases stay drafts pending the signed-update drill). Notes come from this changelog.
+- **Release pipeline**: merging a version bump to `main` builds, tags and publishes the release automatically, with notes from this changelog. Builds are signed per platform when signing credentials are configured and otherwise ship unsigned (the release notes say so); `-rc` versions publish as pre-releases, which the desktop updater ignores.
 - Browser regression suite grows to 32 tests covering the File menu, sidebar badges and persistence, Start page, shortcuts and file drop.
 
 ### Upgrade notes

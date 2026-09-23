@@ -99,8 +99,11 @@ jobs:
       - name: Desktop lifecycle test (Linux)
         if: runner.os == 'Linux'
         run: xvfb-run -a npm run test:desktop
-      - name: Require signing for stable releases
-        if: needs.version.outputs.release == 'true' && needs.version.outputs.stable == 'true' && runner.os != 'Linux'
+      # Sign whenever this platform's credentials are configured. Without them
+      # the build ships unsigned (SmartScreen/Gatekeeper warn on first open);
+      # half-configured credentials are an error rather than a silent downgrade.
+      - name: Detect signing credentials
+        id: signing
         shell: bash
         env:
           MAC_SIGN: ${{ secrets.CSC_LINK }}
@@ -110,10 +113,20 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           WIN_PUBLISHER_NAME: ${{ vars.WIN_PUBLISHER_NAME }}
         run: |
-          if [ "${{ runner.os }}" = macOS ]; then
-            test -n "$MAC_SIGN" && test -n "$APPLE_ID" && test -n "$APPLE_APP_SPECIFIC_PASSWORD" && test -n "$APPLE_TEAM_ID"
+          set -euo pipefail
+          case "${{ runner.os }}" in
+            macOS) required=(MAC_SIGN APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID) ;;
+            Windows) required=(WIN_SIGN WIN_PUBLISHER_NAME) ;;
+            *) required=() ;;
+          esac
+          present=0
+          for name in "${required[@]}"; do if [ -n "${!name:-}" ]; then present=$((present+1)); fi; done
+          if [ ${#required[@]} -gt 0 ] && [ "$present" -eq ${#required[@]} ]; then
+            echo "configured=true" >> "$GITHUB_OUTPUT"; echo "Signing credentials found: building signed."
+          elif [ "$present" -gt 0 ]; then
+            echo "::error::Signing credentials are only partly configured (${present}/${#required[@]}): ${required[*]}"; exit 1
           else
-            test -n "$WIN_SIGN" && test -n "$WIN_PUBLISHER_NAME"
+            echo "configured=false" >> "$GITHUB_OUTPUT"; echo "::notice::No signing credentials for ${{ runner.os }}: this build is unsigned."
           fi
       - name: Build app and update metadata
         shell: bash
@@ -137,7 +150,7 @@ jobs:
           fi
           npm run ${{ matrix.script }}
       - name: Verify shipped signatures and notarization
-        if: needs.version.outputs.release == 'true' && needs.version.outputs.stable == 'true' && runner.os != 'Linux'
+        if: steps.signing.outputs.configured == 'true' && needs.version.outputs.release == 'true'
         env:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           WIN_PUBLISHER_NAME: ${{ vars.WIN_PUBLISHER_NAME }}
@@ -168,29 +181,31 @@ jobs:
         shell: bash
         env:
           TAG: ${{ needs.version.outputs.tag }}
+          MAC_SIGN: ${{ secrets.CSC_LINK }}
+          WIN_SIGN: ${{ secrets.WIN_CSC_LINK }}
         run: |
           set -euo pipefail
           version="${TAG#v}"
           awk -v v="$version" '$0=="## "v{f=1;next} /^## /{if(f)exit} f' CHANGELOG.md > release-notes.md
           if [ ! -s release-notes.md ]; then echo "::error::CHANGELOG.md has no '## $version' section"; exit 1; fi
-          if [ "${{ needs.version.outputs.stable }}" != true ]; then
-            printf '> Unsigned release candidate. Windows SmartScreen and macOS Gatekeeper will warn; see the README for how to open it.\n\n' | cat - release-notes.md > notes.tmp && mv notes.tmp release-notes.md
+          note=""
+          if [ "${{ needs.version.outputs.stable }}" != true ]; then note="Release candidate for testing. "; fi
+          if [ -z "${MAC_SIGN:-}" ] || [ -z "${WIN_SIGN:-}" ]; then
+            note="${note}The Windows and macOS builds are not code-signed: on Windows choose **More info → Run anyway** in SmartScreen; on macOS right-click OrgFlow.app and choose **Open** the first time. Automatic updates work for the Windows installer and the Linux AppImage."
           fi
-      # Creates the tag at this commit when it does not exist yet. Release
-      # candidates publish immediately; stable releases stay drafts until the
-      # signed-update drill in RELEASE_OPERATIONS.md has been recorded.
+          if [ -n "$note" ]; then printf '> %s\n\n' "$note" | cat - release-notes.md > notes.tmp && mv notes.tmp release-notes.md; fi
+      # Creates the tag at this commit when it does not exist yet and publishes
+      # the release. Pre-release versions (x.y.z-rc.n) never become "latest".
       - name: Publish tagged binaries
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ needs.version.outputs.tag }}
           target_commitish: ${{ github.sha }}
-          name: OrgFlow ${{ needs.version.outputs.tag }}${{ needs.version.outputs.stable != 'true' && ' — unsigned release candidate' || '' }}
+          name: OrgFlow ${{ needs.version.outputs.tag }}${{ needs.version.outputs.stable != 'true' && ' — release candidate' || '' }}
           body_path: release-notes.md
           files: |
             dist/*
           fail_on_unmatched_files: true
-          draft: ${{ needs.version.outputs.stable == 'true' }}
+          draft: false
           prerelease: ${{ needs.version.outputs.stable != 'true' }}
-          # GitHub refuses make_latest on drafts; a stable draft becomes
-          # latest when it is published after the signed-update drill.
-          make_latest: false
+          make_latest: ${{ needs.version.outputs.stable == 'true' }}

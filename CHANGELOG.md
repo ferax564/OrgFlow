@@ -12,6 +12,8 @@ Unsigned release candidate focused on ease of use: one place for files, a tidy f
 - **Hide the panel** on desktop with the new toggle in the planning bar or `[` (remembered); on phones the same control opens it as an overlay with a close button.
 - **Keyboard shortcuts** dialog (`?`) and new single-key shortcuts: `/` search, `N` add position, `+`/`−` zoom, `0` fit, `1`–`4` switch views, arrow keys inside menus. Single keys never fire while typing.
 - Header decluttered: **People** button, undo/redo icons, branding and help in a **⋯** menu (which also carries People and the palette on phones). Distinct icons for expand/collapse versus zoom in the chart toolbar.
+- The status chip also stays amber while a shared-server save is pending and turns red when it fails.
+- **Release pipeline**: merging a version bump to `main` now builds, tags and publishes the release automatically (release candidates publish immediately; stable releases stay drafts pending the signed-update drill). Notes come from this changelog.
 - Browser regression suite grows to 32 tests covering the File menu, sidebar badges and persistence, Start page, shortcuts and file drop.
 
 ### Upgrade notes

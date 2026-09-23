@@ -101,11 +101,14 @@ jobs:
         run: xvfb-run -a npm run test:desktop
       # Sign whenever this platform's credentials are configured. Without them
       # the build ships unsigned (SmartScreen/Gatekeeper warn on first open);
-      # half-configured credentials are an error rather than a silent downgrade.
+      # half-configured credentials fail a release rather than silently
+      # downgrading it. Other runs (e.g. fork PRs, where GitHub withholds
+      # secrets but not variables) just build unsigned.
       - name: Detect signing credentials
         id: signing
         shell: bash
         env:
+          RELEASE: ${{ needs.version.outputs.release }}
           MAC_SIGN: ${{ secrets.CSC_LINK }}
           WIN_SIGN: ${{ secrets.WIN_CSC_LINK }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
@@ -123,8 +126,10 @@ jobs:
           for name in "${required[@]}"; do if [ -n "${!name:-}" ]; then present=$((present+1)); fi; done
           if [ ${#required[@]} -gt 0 ] && [ "$present" -eq ${#required[@]} ]; then
             echo "configured=true" >> "$GITHUB_OUTPUT"; echo "Signing credentials found: building signed."
-          elif [ "$present" -gt 0 ]; then
+          elif [ "$present" -gt 0 ] && [ "$RELEASE" = true ]; then
             echo "::error::Signing credentials are only partly configured (${present}/${#required[@]}): ${required[*]}"; exit 1
+          elif [ "$present" -gt 0 ]; then
+            echo "configured=false" >> "$GITHUB_OUTPUT"; echo "::warning::Signing credentials are only partly available (${present}/${#required[@]}); building unsigned because this run does not release."
           else
             echo "configured=false" >> "$GITHUB_OUTPUT"; echo "::notice::No signing credentials for ${{ runner.os }}: this build is unsigned."
           fi
@@ -190,8 +195,13 @@ jobs:
           if [ ! -s release-notes.md ]; then echo "::error::CHANGELOG.md has no '## $version' section"; exit 1; fi
           note=""
           if [ "${{ needs.version.outputs.stable }}" != true ]; then note="Release candidate for testing. "; fi
-          if [ -z "${MAC_SIGN:-}" ] || [ -z "${WIN_SIGN:-}" ]; then
-            note="${note}The Windows and macOS builds are not code-signed: on Windows choose **More info → Run anyway** in SmartScreen; on macOS right-click OrgFlow.app and choose **Open** the first time. Automatic updates work for the Windows installer and the Linux AppImage."
+          # The build jobs fail a release with partial credentials, so a
+          # platform's signing secret present here means that platform shipped signed.
+          if [ -z "${WIN_SIGN:-}" ]; then
+            note="${note}The Windows build is not code-signed: in SmartScreen choose **More info → Run anyway**. "
+          fi
+          if [ -z "${MAC_SIGN:-}" ]; then
+            note="${note}The macOS build is not code-signed: right-click OrgFlow.app and choose **Open** the first time; it cannot update itself automatically. "
           fi
           if [ -n "$note" ]; then printf '> %s\n\n' "$note" | cat - release-notes.md > notes.tmp && mv notes.tmp release-notes.md; fi
       # Creates the tag at this commit when it does not exist yet and publishes

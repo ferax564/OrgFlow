@@ -463,10 +463,16 @@ class BrowserTests(unittest.TestCase):
         self.assertEqual(self.ev("OrgFlowSeatingUI.state.plan?.mode"),'calibrate','an import asks for the scale straight away')
         self.settle()
         img=lambda px,py:self.seat_xy(100+px*2,100+py*2)
-        self.page.mouse.click(*img(100,580));self.page.mouse.click(*img(600,580))
-        # Clicks land on whole pixels (about 3 cm here in Firefox), so compare with the distance actually picked.
+        # Two points 500 image px (10 m at the default 2 cm/px) apart, mid-height so they stay clear of the canvas edges.
+        for n,(px,py) in enumerate([(250,300),(750,300)],1):
+            x,y=img(px,py)
+            self.assertTrue(self.ev("([x,y])=>document.elementFromPoint(x,y)?.closest('#seatingSvg')!==null",[x,y]),f'calibration point {n} is off the canvas')
+            self.page.mouse.click(x,y)
+            self.page.wait_for_function("n=>OrgFlowSeatingUI.state.plan.points.length===n",arg=n)
+        # Clicks land on whole pixels (about 3 cm at this zoom), so compare with the distance actually picked.
         measured=self.ev("(([a,b])=>Math.hypot(b.x-a.x,b.y-a.y))(OrgFlowSeatingUI.state.plan.points)")
-        self.assertAlmostEqual(measured,1000,delta=8)
+        diag=self.ev("(c=>({zoom:OrgFlowSeatingUI.state.zoom,scroll:[c.scrollLeft,c.scrollTop],canvas:c.getBoundingClientRect().toJSON(),points:OrgFlowSeatingUI.state.plan.points}))(document.querySelector('#seatingCanvas'))")
+        self.assertAlmostEqual(measured,1000,delta=8,msg=str(diag))
         self.assertRegex(self.page.locator('.seat-plan-card').inner_text(),r'(9\.9\d|10(\.0\d)?) m apart')
         self.page.fill('#seatCalibM','15');self.page.keyboard.press('Enter')
         self.page.wait_for_function("()=>!OrgFlowSeatingUI.state.plan")

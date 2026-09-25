@@ -27,13 +27,13 @@ Then open http://localhost:4173/ or http://localhost:4173/app.html. Opening the 
 
 ### Desktop app
 
-CI builds desktop binaries for each OS. **v2.5.0** is the current release. The Windows and macOS builds are not code-signed yet, so the first open shows a SmartScreen or Gatekeeper prompt (see each row below). Download it below, or browse [all GitHub Releases](https://github.com/ferax564/OrgFlow/releases) (or the **Desktop binaries** workflow artifacts). You do not install into Program Files or `/Applications`.
+CI builds desktop binaries for each OS. **v2.6.0** is the current release. The Windows and macOS builds are not code-signed yet, so the first open shows a SmartScreen or Gatekeeper prompt (see each row below). Download it below, or browse [all GitHub Releases](https://github.com/ferax564/OrgFlow/releases) (or the **Desktop binaries** workflow artifacts). You do not install into Program Files or `/Applications`.
 
 | OS | File | How to run |
 | --- | --- | --- |
-| Windows | [OrgFlow-2.5.0-windows.exe](https://github.com/ferax564/OrgFlow/releases/download/v2.5.0/OrgFlow-2.5.0-windows.exe) | Double-click the `.exe`. Windows may show SmartScreen on an unsigned build — More info → Run anyway. Workspace data is stored in `OrgFlow-data` next to the exe. |
-| macOS | [OrgFlow-2.5.0-mac.zip](https://github.com/ferax564/OrgFlow/releases/download/v2.5.0/OrgFlow-2.5.0-mac.zip) | Unzip and double-click `OrgFlow.app`. You can leave it in Downloads; you do not need to drag it to Applications. If Gatekeeper blocks it, right-click → Open. |
-| Linux | [OrgFlow-2.5.0-linux.AppImage](https://github.com/ferax564/OrgFlow/releases/download/v2.5.0/OrgFlow-2.5.0-linux.AppImage) | `chmod +x OrgFlow-*-linux.AppImage && ./OrgFlow-*-linux.AppImage` |
+| Windows | [OrgFlow-2.6.0-windows.exe](https://github.com/ferax564/OrgFlow/releases/download/v2.6.0/OrgFlow-2.6.0-windows.exe) | Double-click the `.exe`. Windows may show SmartScreen on an unsigned build — More info → Run anyway. Workspace data is stored in `OrgFlow-data` next to the exe. |
+| macOS | [OrgFlow-2.6.0-mac.zip](https://github.com/ferax564/OrgFlow/releases/download/v2.6.0/OrgFlow-2.6.0-mac.zip) | Unzip and double-click `OrgFlow.app`. You can leave it in Downloads; you do not need to drag it to Applications. If Gatekeeper blocks it, right-click → Open. |
+| Linux | [OrgFlow-2.6.0-linux.AppImage](https://github.com/ferax564/OrgFlow/releases/download/v2.6.0/OrgFlow-2.6.0-linux.AppImage) | `chmod +x OrgFlow-*-linux.AppImage && ./OrgFlow-*-linux.AppImage` |
 
 ```bash
 npm ci
@@ -55,7 +55,7 @@ The desktop app loads the planner from a fixed `orgflow://` origin, so restarts 
 
 On this public site there is no backend. IndexedDB is the authoritative document store, with full recovery checkpoints and an atomic pending-change queue. `localStorage` is an optional cache and preference store; its quota failure does not prevent durable saves. Concurrent stale tabs are refused rather than overwriting newer commits. Clearing *all* site data still removes everything; export a JSON backup first. An optional Node host can share one org — see [Enterprise host](#enterprise-host-optional).
 
-Windows automatic updates require the [installer](https://github.com/ferax564/OrgFlow/releases/download/v2.5.0/OrgFlow-2.5.0-windows-setup.exe). The portable EXE uses manual replacement. See [release validation](RELEASE_VALIDATION.md), [changes](CHANGELOG.md), and [host operations](server/README.md).
+Windows automatic updates require the [installer](https://github.com/ferax564/OrgFlow/releases/download/v2.6.0/OrgFlow-2.6.0-windows-setup.exe). The portable EXE uses manual replacement. See [release validation](RELEASE_VALIDATION.md), [changes](CHANGELOG.md), and [host operations](server/README.md).
 
 ## Using the planner
 

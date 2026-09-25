@@ -1,12 +1,20 @@
 # Changelog
 
-## Unreleased
+## 2.6.0
+
+Seating plans: draw the office, trace an existing floor plan, lay out desks and seat people by position. Workspace data format is unchanged (document version 3); the seating plan is an optional new field and 2.5 files open as-is.
 
 - **Seating plans**: a new **Seating** tab (`5`) for drawing rooms and assigning desks. Draw a room as a rectangle or corner by corner with right-angle snapping and live wall lengths, then reshape it by dragging corners. Add desks one at a time, or drag an area to fill it with benches of two or single rows. Move, rotate, duplicate and nudge desks on a 10 cm–1 m snap grid. Desks outside the walls or overlapping another desk are flagged. On touch screens, dragging empty floor pans the plan.
 - Desks belong to positions, so one shared floor plan shows the occupants of whichever scenario is active. Assign by dragging a name onto a desk, choosing from the desk panel, or **Auto-seat by team**. Seating someone who already has a desk moves them, and hot desks stay unassigned. The position editor shows the desk.
 - **Rooms of any shape**: rectangle, L, U and T presets; walls drawn with right-angle and 45° snapping; resizing keeps the shape.
 - **Floor plan images**: import or drop a PNG, JPEG, WebP or SVG plan under a room, set its scale from two points of a known distance, move it into place, adjust its opacity or hide it, and trace the walls over it. Plans are downscaled, embedded in the workspace and included in the room PNG export.
 - Seating CSV and room PNG export. The plan is saved in the workspace as an optional `seating` field. Older 2.x builds keep it unchanged as an unknown field. Shared-host conflict merges include it, and subtree-scoped members do not receive it.
+- Room outlines whose walls cross or touch each other are rejected. Undo keeps one copy of each floor-plan image rather than one per step, and local "Earlier versions" leave the images out and take them from the current plan on restore.
+- Browser regression suite grows to 38 tests (drawing walls and room shapes, desk blocks and editing, assignment across scenarios with export and reload, touch panning, floor-plan import and scaling); seating geometry and validation have 19 unit tests.
+
+### Upgrade notes
+
+No data migration. A 2.5 build that opens a 2.6 workspace keeps the seating plan untouched but cannot show or edit it. On a shared enterprise host, update the server to 2.6 before using seating: 2.5 servers do not withhold the seating plan from subtree-scoped members. Floor-plan images count toward the 12 MB workspace limit (about 1.9 MB per plan, 6 MB in total).
 
 ## 2.5.0
 

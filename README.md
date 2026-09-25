@@ -80,7 +80,7 @@ You can also **drag a file onto the window**: `.json`/`.orgflow` opens it, `.csv
 
 ### Keyboard shortcuts
 
-Press `?` for the full list. Besides the file shortcuts: `⌘/Ctrl+K` or `/` search, `N` add a position, `+`/`−` zoom, `0` fit the chart, `[` show or hide the filters panel, `1`–`4` switch between Org chart, Positions, Compare and Planning, `⌘/Ctrl+Z` undo. Single keys never fire while you type in a field.
+Press `?` for the full list. Besides the file shortcuts: `⌘/Ctrl+K` or `/` search, `N` add a position, `+`/`−` zoom, `0` fit the chart, `[` show or hide the filters panel, `1`–`5` switch between Org chart, Positions, Compare, Planning and Seating, `⌘/Ctrl+Z` undo. Single keys never fire while you type in a field.
 
 ### Working with the chart
 
@@ -100,6 +100,18 @@ Press `?` for the full list. Besides the file shortcuts: `⌘/Ctrl+K` or `/` sea
 - **Narrow screens** hide the filters panel. Open it with the panel toggle in the planning bar and close it with × or `Escape`; People and the colour palette move into the **⋯** menu. The chart pans with touch or by dragging empty space with the mouse.
 - **Branding** (⋯ menu) stores company name, chart title and logos in this browser. Logos are sanitized and rasterized locally.
 
+### Seating plans
+
+The **Seating** tab (`5`) draws rooms and assigns desks. One floor plan is shared by every scenario. Desks are assigned to **positions**, not people, so each scenario shows who sits where in that plan. A desk can also be kept for a vacancy.
+
+- **Rooms**: **＋ Room** creates a rectangle of the width and depth you enter. You can add as many rooms as you need, each with a floor or building label. Use **Room** (`Q`) to drag a new rectangle, or **Walls** (`W`) to click corner by corner. Walls snap to right angles (hold Shift for any angle), and the live length shows while you draw. Enter, double-clicking or clicking the first corner closes the shape. In **Select** (`V`), drag a corner to reshape the room, click ＋ on a wall to add a corner, or double-click a corner to remove it. Wall lengths and the area in m² are always shown.
+- **Any room shape**: rooms are polygons with up to 64 corners, not just rectangles. The **Shape** buttons turn a room into a rectangle, L, U or T that fills its current footprint. **Walls** snaps to right angles and 45° diagonals (Shift for any angle). **Resize** stretches any shape to a new width and depth without losing its corners. Walls that cross each other are rejected.
+- **Floor plan images**: trace a room over an existing plan. Use **Start from a floor plan image…** on the empty canvas, **Import plan image…** in the room panel, or drop a PNG, JPEG, WebP or SVG onto the Seating tab. OrgFlow first asks for the scale: click both ends of something whose real length you know, such as a wall or scale bar, and enter that length. You can then trace the walls with **Walls**, **Move plan** to line it up (drag, or arrow keys in 10 cm steps), change its opacity, or hide it. Export PDFs as an image first. Images are shrunk to at most 2400 px and stored in the workspace, so they travel with backups and PNG exports. Local "Earlier versions" keep the walls and desks but not the image, which is taken from the current plan when you restore.
+- **Desks**: **Desk** (`D`) places one desk per click (hold Alt to turn it 90°). **Desk block** (`B`) fills a dragged area with as many desks as fit. Choose benches of two back to back or single rows, and set the desk size, gap and aisle in the room panel. Desks that would sit outside the walls or on another desk are skipped. Labels continue automatically (D1, D2…).
+- **Editing**: drag desks to move them, or drag empty space to select several. `R` rotates, `⌘/Ctrl+D` duplicates, the arrow keys nudge by the snap grid (10 cm to 1 m), and Delete removes. Pan with the scrollbars, Space-drag or the middle mouse button, or on a touch screen by dragging empty floor. ⌘/Ctrl + scroll zooms. Desks outside the walls or overlapping another desk are outlined in red. Every change can be undone.
+- **Assigning**: drag a name from **People & positions** onto a desk, pick a position in the desk panel, or select a desk and click a name. Seating someone who already has a desk moves them. **Auto-seat by team** fills the free desks in reading order, keeping each group together. **Hot desks** are shared and cannot be assigned. The position editor shows each position's desk.
+- **Export**: seating CSV (room, floor, desk, position, person, group, site) and a PNG of the room. Seating travels with the JSON backup and `.orgflow` bundle. Subtree-scoped members of a shared host do not receive the seating plan and cannot change it.
+
 ### Export
 
 | Export | Contents |
@@ -112,7 +124,8 @@ Press `?` for the full list. Besides the file shortcuts: `⌘/Ctrl+K` or `/` sea
 | Shareable HTML snapshot | Self-contained page with the chart inline and workspace JSON for restore |
 | Positions + assignments (CSV) | Active scenario, including custom fields |
 | People directory (CSV) | People in the active scenario |
-| Workspace backup (JSON) | Every scenario, unassigned people, branding, palette, saved views and the current view |
+| Workspace backup (JSON) | Every scenario, unassigned people, branding, palette, saved views, seating plan and the current view |
+| Seating CSV / PNG | From the Seating tab: one row per desk with its occupant in the active scenario, or a picture of the selected room |
 | OrgFlow bundle (.orgflow) | Workspace plus checkpoints — the file you hand someone for editing and recovery. Older OrgFlow 2.0/2.1 builds refuse this document instead of silently dropping fields |
 | File → Save | Overwrites the last JSON file you picked when the browser supports it; **Auto-save changes to the linked file** writes every change through to that file. The file link survives restarts but requires explicit reconnection — if the browser needs permission again, **Reconnect saved file** appears instead of silently going stale |
 | Print / A3 pages (PDF) | Tiled A3 landscape pages of the visible chart |
@@ -147,6 +160,7 @@ Import can replace, append, or update by position ID, and defaults to a new Draf
 - Approval and hiring-state filters, including vacant and recruiting seats
 - Positions kept separate from people; FTE is position capacity, not salary
 - Scenario planning and before/after comparison
+- Seating plans: draw rooms, fill them with desk blocks, and assign desks to positions by dragging or auto-seating by team
 - Company branding, light/dark modes, palettes (Indigo, Crimson, Graphite, Ocean, Emerald)
 - Start page with starter templates (startup, agency, nonprofit), recent files and open-from-file
 - Portable desktop app (Windows exe, macOS .app, Linux AppImage) with no installer
@@ -233,7 +247,7 @@ python3 -m playwright install chromium firefox webkit
 python3 tests/browser-regressions.py --browser chromium
 ```
 
-The suite covers CSV parsing, spreadsheet-formula escaping, scenario validation, dotted-line rules, custom-field CSV round-trips, starter templates, comparison diffs, example workspaces, filter-set migration, stacked chart layout, sibling reordering, custom position levels, group/site chips, bulk edit, named views, A3 tiling, schema-version guards and forward-compatible field preservation, share-dataset redaction and subtree scoping, the journaled desktop workspace store (atomic writes, rotating backups, newest-revision selection), the desktop file server, and enterprise ACL/stress cases (forged cookies, path traversal, oversized bodies, last-admin protection, concurrent saves).
+The suite covers CSV parsing, spreadsheet-formula escaping, scenario validation, dotted-line rules, custom-field CSV round-trips, starter templates, comparison diffs, example workspaces, filter-set migration, stacked chart layout, sibling reordering, custom position levels, group/site chips, bulk edit, named views, A3 tiling, schema-version guards and forward-compatible field preservation, seating-plan geometry (walls, desk overlap, desk blocks, auto-seat and redaction), share-dataset redaction and subtree scoping, the journaled desktop workspace store (atomic writes, rotating backups, newest-revision selection), the desktop file server, and enterprise ACL/stress cases (forged cookies, path traversal, oversized bodies, last-admin protection, concurrent saves).
 
 With Chrome and `puppeteer-core` installed locally:
 

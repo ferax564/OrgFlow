@@ -68,6 +68,8 @@ function filterDocument(doc, scopePositionId) {
     planning: {
       ...planning,
       namedViews: [], importProfiles: [],
+      // The floor plan names desks across the whole organization; scoped members cannot edit it either.
+      ...(planning.seating ? { seating: { rooms: [] } } : {}),
       scenarios: planning.scenarios.map(s => filterScenarioTree(s, scopePositionId))
     }
   };

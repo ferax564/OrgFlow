@@ -17,7 +17,7 @@ const Share = require('../../js/share-export');
 const ROOT = path.resolve(__dirname, '../..');
 const APP_VERSION = require('../../package.json').version;
 const MCP_PROTOCOL = '2025-11-25';
-const EXPORT_KINDS = ['png', 'groups', 'pdf', 'html', 'csv', 'people', 'workspace', 'compare', 'interactive', 'bundle'];
+const EXPORT_KINDS = ['png', 'groups', 'pdf', 'html', 'csv', 'people', 'workspace', 'compare', 'interactive', 'bundle', 'seating-png', 'seating-csv'];
 
 function visExtra(vis, membership, url) {
   return {

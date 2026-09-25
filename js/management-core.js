@@ -274,10 +274,11 @@
       // Server decisions/baselines remain authoritative. A subsequent data save invalidates approval if necessary.
       scenarios.push({...copy(r),...data,name:details.name,description:details.description,archived:details.archived});
     }
-    const meta = doc => ({positions:[{id:'workspace-settings',branding:doc.branding,palette:doc.palette,theme:doc.theme,positionLevels:doc.planning.positionLevels||[],namedViews:doc.planning.namedViews||[],importProfiles:doc.planning.importProfiles||[]}]});
+    const meta = doc => ({positions:[{id:'workspace-settings',branding:doc.branding,palette:doc.palette,theme:doc.theme,positionLevels:doc.planning.positionLevels||[],namedViews:doc.planning.namedViews||[],importProfiles:doc.planning.importProfiles||[],seating:doc.planning.seating}]});
     const details=mergeWithPrefix('workspace',meta(baseDoc),meta(localDoc),meta(remoteDoc)).positions[0];
     return {conflicts,workspace:{...copy(remoteDoc),branding:details.branding,palette:details.palette,theme:details.theme,
       view:copy(localDoc.view||{}),planning:{...copy(remote),scenarios,positionLevels:details.positionLevels,namedViews:details.namedViews,importProfiles:details.importProfiles,
+        ...(details.seating===undefined?{}:{seating:details.seating}),
         activeScenarioId:scenarios.some(s=>s.id===local.activeScenarioId&&!s.archived)?local.activeScenarioId:'current'}}};
   }
 

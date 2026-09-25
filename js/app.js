@@ -476,6 +476,8 @@ function stripPlanningMedia(planning){
     for(const e of s.employees||[])e.photo=null;
     for(const field of ['baseSnapshot','applicationBaseline','appliedBefore','appliedAfter'])for(const e of s[field]?.employees||[])e.photo=null;
   }
+  // Floor-plan images would crowd the small local history out of browser storage; restore puts them back.
+  for(const room of copy.seating?.rooms||[])if(room.background)room.background.image='';
   return copy;
 }
 function persistLocalHistory(planningText,note){
@@ -490,9 +492,13 @@ function persistLocalHistory(planningText,note){
     }
   }catch{}
 }
+// Undo entries reference floor-plan images kept once here instead of copying megabytes per step.
+const undoPlanImages={ids:new Map(),data:[]};
+function packUndo(text){return OrgFlowSeating.packPlanImages(text,undoPlanImages);}
 function applyPlanningSnapshot(text,message){
   if(enterpriseBlocksWrite())throw new Error('You cannot edit this organization.');
   assertCacheCurrent();
+  text=OrgFlowSeating.unpackPlanImages(text,undoPlanImages);
   const checked=validatePlanning(touchWorkspace(JSON.parse(text)));
   for(const previous of workspace.scenarios){
     const target=checked.scenarios.find(s=>s.id===previous.id);
@@ -509,19 +515,19 @@ function undoChange(){
   if(!undoStack.length||enterpriseBlocksWrite())return;
   if(drawerIsDirty()&&!confirm('Discard unsaved position edits before Undo?'))return;
   const previous=lastSavedPlanningText, target=undoStack.at(-1);
-  try{applyPlanningSnapshot(target,'Undone');undoStack.pop();redoStack.push(previous);updateUndoButtons();}
+  try{applyPlanningSnapshot(target,'Undone');undoStack.pop();redoStack.push(packUndo(previous));updateUndoButtons();}
   catch(error){toast(error.message);}
 }
 function redoChange(){
   if(!redoStack.length||enterpriseBlocksWrite())return;
   if(drawerIsDirty()&&!confirm('Discard unsaved position edits before Redo?'))return;
   const previous=lastSavedPlanningText, target=redoStack.at(-1);
-  try{applyPlanningSnapshot(target,'Redone');redoStack.pop();undoStack.push(previous);updateUndoButtons();}
+  try{applyPlanningSnapshot(target,'Redone');redoStack.pop();undoStack.push(packUndo(previous));updateUndoButtons();}
   catch(error){toast(error.message);}
 }
 function recordUndoFrom(previousText,note){
   if(!previousText||previousText===lastSavedPlanningText)return;
-  undoStack.push(previousText);
+  undoStack.push(packUndo(previousText));
   if(undoStack.length>50)undoStack.shift();
   redoStack=[];
   persistLocalHistory(previousText,note);
@@ -750,7 +756,7 @@ function openDrawer(id,newPosition=false){
   $('#groupSuggestions').innerHTML=[...new Set(people.map(p=>p.group).filter(Boolean))].sort().map(g=>`<option value="${esc(g)}"></option>`).join('');
   $('#locationSuggestions').innerHTML=[...new Set(people.map(p=>p.location).filter(Boolean))].sort().map(g=>`<option value="${esc(g)}"></option>`).join('');
   $('#familySuggestions').innerHTML=[...new Set(people.map(p=>p.jobFamily).filter(Boolean))].sort().map(g=>`<option value="${esc(g)}"></option>`).join('');
-  $('#deleteBtn').classList.toggle('hidden',newPosition);$('#orderRow').classList.toggle('hidden',newPosition);$('#drawer').inert=false;$('#drawer').classList.add('open');updateAssignmentFields();updateOrderControls();drawerSnapshot=drawerFormState();setTimeout(()=>$('#fTitle').focus(),100);
+  $('#deleteBtn').classList.toggle('hidden',newPosition);$('#orderRow').classList.toggle('hidden',newPosition);$('#drawer').inert=false;$('#drawer').classList.add('open');updateAssignmentFields();updateOrderControls();window.OrgFlowSeatingUI?.describeSeat($('#drawerSeat'),newPosition?'':p.id);drawerSnapshot=drawerFormState();setTimeout(()=>$('#fTitle').focus(),100);
 }
 function updatePhotoNote(){
   const note=$('#photoNote');if(!note)return;
@@ -805,7 +811,7 @@ function deleteSelected(){
   try{updateScenario(s=>{s.positions=s.positions.filter(x=>x.id!==p.id);s.positions.forEach(x=>{if(x.managerId===p.id)x.managerId=p.managerId;if(x.secondaryManagerId===p.id)x.secondaryManagerId='';});},'Position removed; people records preserved');hidePositionEditor();}catch(error){showValidation(error.message);}
 }
 function setView(view){
-  if(!['chart','positions','compare','management'].includes(view))return;
+  if(!['chart','positions','compare','management','seating'].includes(view))return;
   if(drawerIsDirty()&&!confirm('Discard unsaved position edits and change view?'))return;
   hidePositionEditor();currentView=view;render();if(view==='chart')setTimeout(centerChart,0);
 }
@@ -815,7 +821,7 @@ function renderPlanningHeader(){
   $('#scenarioSelect').innerHTML=workspace.scenarios.filter(x=>!x.archived).map(x=>`<option value="${esc(x.id)}">${esc(x.name)}${x.id==='current'?' · live':''}</option>`).join('');$('#scenarioSelect').value=s.id;
   $$('.plan-tabs [data-view]').forEach(b=>{b.classList.toggle('active',b.dataset.view===currentView);b.setAttribute('aria-pressed',String(b.dataset.view===currentView));});
   $('.toolbar').classList.toggle('hidden',currentView!=='chart');$('#canvasWrap').classList.toggle('hidden',currentView!=='chart');
-  $('#positionsPanel').classList.toggle('hidden',currentView!=='positions');$('#comparePanel').classList.toggle('hidden',currentView!=='compare');$('#managementPanel').classList.toggle('hidden',currentView!=='management');$('.layout').classList.toggle('comparison-mode',currentView==='compare');
+  $('#positionsPanel').classList.toggle('hidden',currentView!=='positions');$('#comparePanel').classList.toggle('hidden',currentView!=='compare');$('#managementPanel').classList.toggle('hidden',currentView!=='management');$('#seatingPanel').classList.toggle('hidden',currentView!=='seating');$('.layout').classList.toggle('comparison-mode',currentView==='compare');$('.layout').classList.toggle('seating-mode',currentView==='seating');
   const note=$('#scenarioNote');note.innerHTML=s.id==='current'?'<b>Current organization.</b> Edits here change Current only. Create a scenario to explore a proposed structure.':`<b>Planning: ${esc(s.name)} · ${esc(s.workflow?.state||'Draft')}.</b> Current is unchanged.<label class="check"><input id="highlightChanges" type="checkbox" ${showChartChanges?'checked':''}> Highlight changes vs original baseline</label>`;
   $('#highlightChanges')?.addEventListener('change',e=>{showChartChanges=e.target.checked;render();});
   if(modelLoadError){$('#loadError').classList.remove('hidden');$('#loadError').textContent=`Workspace could not be loaded: ${modelLoadError} Saved data has not been overwritten. Open a backup from File → Open file… or File → Recovery.`;}
@@ -1363,6 +1369,7 @@ function render(){
   }else if(currentView==='positions')renderPositionTable();
   else if(currentView==='compare')renderComparison();
   else if(currentView==='management')window.OrgFlowPlanningUI?.render();
+  else if(currentView==='seating')window.OrgFlowSeatingUI?.render();
   if($('#drawer').classList.contains('open')&&selectedId)updateOrderControls();
   rememberPlanningView();renderSaveStatus();
 }
@@ -1941,7 +1948,7 @@ async function restoreHistoryIndex(index){
   let list=[];try{list=JSON.parse(appStorage.getItem(HISTORY_KEY)||'[]');}catch{list=[];}
   const item=list[index];if(!item?.planning)return;
   if(!confirm('Restore this earlier version? Current work stays in Undo for this session and is checkpointed first.'))return;
-  try{await checkpointWorkspace('Before restoring an earlier version');commitPlanning(item.planning,'Restored earlier version',{historyNote:'Before restoring a local version'});closeDialog('historyModal');}catch(error){toast(error.message);}
+  try{await checkpointWorkspace('Before restoring an earlier version');OrgFlowSeating.restoreBackgrounds(item.planning.seating,workspace.seating);commitPlanning(item.planning,'Restored earlier version',{historyNote:'Before restoring a local version'});closeDialog('historyModal');}catch(error){toast(error.message);}
 }
 async function normalizePersonPhoto(file){
   const logo=await normalizeLogoFile(file);
@@ -2036,6 +2043,7 @@ window.addEventListener('keydown',e=>{
   if((e.metaKey||e.ctrlKey)&&e.key.toLowerCase()==='o'&&!typing){e.preventDefault();restoreWorkspacePicker();return;}
   if((e.metaKey||e.ctrlKey)&&e.key.toLowerCase()==='s'){e.preventDefault();if(!typing)saveWorkspaceToDisk(e.shiftKey);return;}
   const openMenu=$('.menu.open');
+  if(currentView==='seating'&&!dialogStack.length&&!openMenu&&!$('#drawer').classList.contains('open')&&window.OrgFlowSeatingUI?.handleKey(e,typing))return;
   if(openMenu&&['ArrowDown','ArrowUp'].includes(e.key)){
     const items=[...openMenu.querySelectorAll('button,a[href],input')].filter(x=>!x.disabled&&x.getClientRects().length);
     const i=items.indexOf(document.activeElement);e.preventDefault();
@@ -2043,7 +2051,7 @@ window.addEventListener('keydown',e=>{
   }
   // Single-key shortcuts only while no field, editor or menu has the user's attention.
   if(!typing&&!e.metaKey&&!e.ctrlKey&&!e.altKey&&!openMenu&&!$('#drawer').classList.contains('open')&&!$('.modal-backdrop.open')){
-    const views={1:'chart',2:'positions',3:'compare',4:'management'};
+    const views={1:'chart',2:'positions',3:'compare',4:'management',5:'seating'};
     if(e.key==='?'){e.preventDefault();openDialog('shortcutsModal');return;}
     if(e.key==='/'){e.preventDefault();if($('.layout').classList.contains('sidebar-collapsed'))setSidebarCollapsed(false);else if(compactLayout())setFiltersOpen(true);$('#search').focus();return;}
     if(e.key==='['){e.preventDefault();toggleFiltersPanel();return;}
@@ -2246,6 +2254,7 @@ refreshUpdateUi().catch(error=>toast(error.message));
     const file=files[0],name=file.name.toLowerCase();
     if(name.endsWith('.csv')){if(enterpriseBlocksWrite()){toast('You can view this organization but you cannot import.');return;}importFile(file);}
     else if(name.endsWith('.json')||name.endsWith('.orgflow'))restoreWorkspace(file);
-    else toast('Drop a .json or .orgflow workspace, or a .csv of positions.');
+    else if(currentView==='seating'&&/\.(png|jpe?g|webp|svg)$/.test(name))window.OrgFlowSeatingUI?.importBackground(file);
+    else toast(currentView==='seating'?'Drop a floor plan image (PNG, JPEG, WebP or SVG), a workspace or a .csv.':'Drop a .json or .orgflow workspace, or a .csv of positions.');
   });
 })();

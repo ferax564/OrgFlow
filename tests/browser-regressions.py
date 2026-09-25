@@ -438,6 +438,18 @@ class BrowserTests(unittest.TestCase):
             self.page.wait_for_function("() => typeof workspace!=='undefined' && workspace && workspace.seating?.rooms.length===1")
             self.assertEqual(self.ev("workspace.seating.rooms[0].desks.filter(d=>d.positionId).length"),filled)
             self.assertEqual(self.ev("currentView"),'seating','the Seating tab is remembered')
+    def test_32_seating_touch_drag_pans_instead_of_selecting(self):
+        self.seat_room()
+        self.page.keyboard.press('v')
+        for _ in range(6):self.page.keyboard.press('+')
+        before=self.ev("[document.querySelector('#seatingCanvas').scrollLeft,document.querySelector('#seatingCanvas').scrollTop]")
+        x,y=self.seat_xy(600,400)
+        self.ev("""([x,y])=>{const s=document.querySelector('#seatingSvg'),target=document.elementFromPoint(x,y);
+          const fire=(type,dx,dy)=>target.dispatchEvent(new PointerEvent(type,{bubbles:true,pointerId:7,pointerType:'touch',isPrimary:true,button:type==='pointermove'?-1:0,buttons:type==='pointerup'?0:1,clientX:x+dx,clientY:y+dy}));
+          fire('pointerdown',0,0);s.dispatchEvent(new PointerEvent('pointermove',{bubbles:true,pointerId:7,pointerType:'touch',buttons:1,clientX:x-120,clientY:y-80}));s.dispatchEvent(new PointerEvent('pointerup',{bubbles:true,pointerId:7,pointerType:'touch',clientX:x-120,clientY:y-80}));}""",[x,y])
+        after=self.ev("[document.querySelector('#seatingCanvas').scrollLeft,document.querySelector('#seatingCanvas').scrollTop]")
+        self.assertGreater(after[0],before[0]);self.assertGreater(after[1],before[1])
+        self.assertEqual(self.ev("OrgFlowSeatingUI.state.selected.size"),0)
 
 if __name__=='__main__':
     suite=unittest.defaultTestLoader.loadTestsFromTestCase(BrowserTests)

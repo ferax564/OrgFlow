@@ -373,12 +373,16 @@
   }
 
   // ---- Pointer interaction ----------------------------------------------------------
+  // Capture keeps a drag alive outside the canvas; it throws if the pointer is already gone.
+  function capture(e) { try { svgEl().setPointerCapture(e.pointerId); } catch { /* the drag still works inside the canvas */ } }
   function onPointerDown(e) {
     const r = room();
     if (!r || (e.button !== 0 && e.button !== 1)) return;
     const raw = toWorld(e), p = snapPoint(raw), c = canvas();
-    if (e.button === 1 || st.space) { st.drag = { kind: 'pan', x: e.clientX, y: e.clientY, left: c.scrollLeft, top: c.scrollTop }; svgEl().setPointerCapture(e.pointerId); e.preventDefault(); return; }
     const deskEl = e.target.closest('[data-desk-id]'), vertex = e.target.closest('[data-vertex]'), edge = e.target.closest('[data-edge]');
+    // Touch has no scroll wheel or middle button: a finger on empty floor in Select pans instead of box-selecting.
+    const touchPan = e.pointerType === 'touch' && st.tool === 'select' && !deskEl && !vertex && !edge;
+    if (e.button === 1 || st.space || touchPan) { st.drag = { kind: 'pan', x: e.clientX, y: e.clientY, left: c.scrollLeft, top: c.scrollTop }; capture(e); e.preventDefault(); return; }
     if (st.tool === 'select') {
       if (vertex && editable()) st.drag = { kind: 'vertex', index: Number(vertex.dataset.vertex), outline: r.outline.map(q => [...q]), moved: false };
       else if (edge && editable()) { const i = Number(edge.dataset.edge), outline = r.outline.map(q => [...q]), a = outline[i], b = outline[(i + 1) % outline.length], mid = snapPoint({ x: (a[0] + b[0]) / 2, y: (a[1] + b[1]) / 2 }); outline.splice(i + 1, 0, [mid.x, mid.y]); st.drag = { kind: 'vertex', index: i + 1, outline, moved: true }; }
@@ -405,7 +409,7 @@
       paint();
       return;
     }
-    if (st.drag) { svgEl().setPointerCapture(e.pointerId); e.preventDefault(); }
+    if (st.drag) { capture(e); e.preventDefault(); }
   }
   function constrain(p, free) {
     const last = st.draft?.at(-1);
@@ -509,10 +513,11 @@
   const EXPORT_CSS = '.seat-floor{fill:#ffffff}.seat-wall{fill:none;stroke:#0f172a;stroke-width:12;stroke-linejoin:round}.seat-dim{fill:#64748b;font-weight:700}.seat-top{fill:#f8fafc;stroke:#94a3b8;stroke-width:2}.seat-chair{fill:#e2e8f0;stroke:#94a3b8;stroke-width:1.5}.seat-desk.free .seat-top{fill:#ecfdf3;stroke:#12b76a}.seat-desk.hot .seat-top{fill:#fff7ed;stroke:#f79009;stroke-dasharray:8 5}.seat-desk.missing .seat-top{fill:#fff0ee;stroke:#b42318}.seat-label{fill:#0f172a;font-weight:800}.seat-name{fill:#334155;font-weight:600}text{font-family:ui-sans-serif,system-ui,sans-serif}';
   function exportArt(r) {
     const byId = positionsById(), b = S.bounds([...r.outline, ...r.desks.flatMap(d => S.deskCorners(d))]), pad = 120, head = 170, keep = st.zoom;
-    st.zoom = 1; // dimension labels are sized for the export, not the current zoom
     const x = b.x - pad, y = b.y - pad - head, w = b.w + pad * 2, h = b.h + pad * 2 + head, sub = [r.floor, `${activeScenario().name} · ${today}`].filter(Boolean).join(' · ');
-    const body = roomMarkup(r, r.outline, { handles: false }) + r.desks.map(d => deskMarkup(d, { byId, exportMode: true })).join('');
-    st.zoom = keep;
+    let body;
+    st.zoom = 1; // dimension labels are sized for the export, not the current zoom
+    try { body = roomMarkup(r, r.outline, { handles: false }) + r.desks.map(d => deskMarkup(d, { byId, exportMode: true })).join(''); }
+    finally { st.zoom = keep; }
     const px = Math.min(1, 2400 / w);
     const xml = `<svg xmlns="${NS}" viewBox="${x} ${y} ${w} ${h}" width="${Math.round(w * px)}" height="${Math.round(h * px)}"><style>${EXPORT_CSS}</style><rect x="${x}" y="${y}" width="${w}" height="${h}" fill="#f3f5f9"/><text x="${b.x}" y="${b.y - pad - 80}" font-size="54" font-weight="800" fill="#0f172a">${esc(r.name)}</text><text x="${b.x}" y="${b.y - pad - 24}" font-size="30" fill="#64748b">${esc(sub)}</text>${body}</svg>`;
     return { xml, width: Math.round(w * px), height: Math.round(h * px) };

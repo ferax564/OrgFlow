@@ -12,6 +12,10 @@
   const MIN_DESK = 30, MAX_DESK = 500;
   const DESK_DEFAULTS = Object.freeze({ w: 160, h: 80 });
   const BLOCK_DEFAULTS = Object.freeze({ layout: 'pairs', gap: 0, aisle: 120, spacing: 20 });
+  // Floor-plan images are embedded in the workspace (12 MB document limit), so keep them bounded.
+  const MAX_BACKGROUND_CHARS = 2500000, MAX_BACKGROUND_TOTAL = 8000000;
+  const BACKGROUND_TYPES = /^data:image\/(?:png|jpeg|webp);base64,[A-Za-z0-9+/]+=*$/;
+  const SHAPES = ['rect', 'L', 'U', 'T'];
 
   function makeId(prefix) { return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`; }
   function text(value, label, max, required = false) {
@@ -150,12 +154,27 @@
     if (note) out.note = note;
     return out;
   }
+  /** A traced floor-plan image under the room. An empty image (stripped from a local history copy) drops the background. */
+  function sanitizeBackground(bg, label) {
+    if (bg === undefined || bg === null) return undefined;
+    if (typeof bg !== 'object') throw new Error(`${label} has an invalid floor plan.`);
+    if (bg.image === '') return undefined;
+    if (typeof bg.image !== 'string' || bg.image.length > MAX_BACKGROUND_CHARS || !BACKGROUND_TYPES.test(bg.image)) throw new Error(`${label}: the floor plan must be a PNG, JPEG or WebP image under ${Math.round(MAX_BACKGROUND_CHARS * 0.75 / 1e6 * 10) / 10} MB.`);
+    const opacity = Number(bg.opacity ?? 0.6);
+    return {
+      image: bg.image,
+      x: num(bg.x, 'Floor plan position', -MAX_COORD, MAX_COORD), y: num(bg.y, 'Floor plan position', -MAX_COORD, MAX_COORD),
+      w: num(bg.w, 'Floor plan width', 10, MAX_COORD * 2), h: num(bg.h, 'Floor plan height', 10, MAX_COORD * 2),
+      opacity: Number.isFinite(opacity) ? Math.round(Math.max(0.05, Math.min(1, opacity)) * 100) / 100 : 0.6,
+      hidden: bg.hidden === true
+    };
+  }
   function sanitizeSeating(input) {
     if (input === undefined || input === null) return { rooms: [] };
     if (typeof input !== 'object' || !Array.isArray(input.rooms)) throw new Error('Seating must contain a rooms list.');
     if (input.rooms.length > MAX_ROOMS) throw new Error(`At most ${MAX_ROOMS} rooms are supported.`);
     const roomIds = new Set(), deskIds = new Set(), seated = new Map();
-    let total = 0;
+    let total = 0, imageChars = 0;
     const rooms = input.rooms.map((r, index) => {
       if (!r || typeof r !== 'object') throw new Error(`Invalid room at position ${index + 1}.`);
       const id = text(r.id, 'Room ID', 150, true), name = text(r.name, 'Room name', 80, true);
@@ -174,16 +193,59 @@
         }
         return desk;
       });
-      return {
+      const out = {
         id, name, floor: text(r.floor, 'Floor / building', 80),
         outline: sanitizeOutline(r.outline, name), desks,
         deskSize: { w: num(r.deskSize?.w ?? DESK_DEFAULTS.w, 'Default desk width', MIN_DESK, MAX_DESK), h: num(r.deskSize?.h ?? DESK_DEFAULTS.h, 'Default desk depth', MIN_DESK, MAX_DESK) }
       };
+      const background = sanitizeBackground(r.background, name);
+      if (background) { imageChars += background.image.length; out.background = background; }
+      return out;
     });
+    if (imageChars > MAX_BACKGROUND_TOTAL) throw new Error('Floor plan images are too large together. Remove one or import smaller images.');
     return { rooms };
   }
 
   // ---- Editing helpers --------------------------------------------------------
+  /** Next wall corner while drawing: snapped to the grid and, unless `free`, to 45° steps from the previous corner. */
+  function snapWallPoint(last, p, grid, free = false) {
+    const g = { x: snap(p.x, grid), y: snap(p.y, grid) };
+    if (!last || free) return g;
+    const dx = p.x - last.x, dy = p.y - last.y, angle = Math.round(Math.atan2(dy, dx) / (Math.PI / 4)) * (Math.PI / 4);
+    const ux = Math.round(Math.cos(angle)), uy = Math.round(Math.sin(angle));
+    if (!ux || !uy) return ux ? { x: g.x, y: last.y } : { x: last.x, y: g.y };
+    // Diagonal: equal steps in x and y keep the corner on the grid.
+    const step = snap((Math.abs(dx) + Math.abs(dy)) / 2, grid);
+    return { x: last.x + ux * step, y: last.y + uy * step };
+  }
+  /** Preset outlines that fill a bounding box: rectangle, L, U and T shapes. */
+  function shapeOutline(kind, x, y, w, h, grid = 10) {
+    const X = v => snap(x + v * w, grid), Y = v => snap(y + v * h, grid);
+    if (kind === 'L') return [[X(0), Y(0)], [X(1), Y(0)], [X(1), Y(0.5)], [X(0.5), Y(0.5)], [X(0.5), Y(1)], [X(0), Y(1)]];
+    if (kind === 'U') return [[X(0), Y(0)], [X(1 / 3), Y(0)], [X(1 / 3), Y(0.5)], [X(2 / 3), Y(0.5)], [X(2 / 3), Y(0)], [X(1), Y(0)], [X(1), Y(1)], [X(0), Y(1)]];
+    if (kind === 'T') return [[X(0), Y(0)], [X(1), Y(0)], [X(1), Y(0.45)], [X(2 / 3), Y(0.45)], [X(2 / 3), Y(1)], [X(1 / 3), Y(1)], [X(1 / 3), Y(0.45)], [X(0), Y(0.45)]];
+    return rectOutline(snap(x, grid), snap(y, grid), snap(w, grid), snap(h, grid));
+  }
+  /** Stretches any outline to a new bounding width and depth, keeping its shape and top-left corner. */
+  function scaleOutline(outline, w, h) {
+    const b = bounds(outline);
+    if (!b.w || !b.h) throw new Error('This room has no area to resize.');
+    return simplifyOutline(outline.map(([x, y]) => [b.x + (x - b.x) * w / b.w, b.y + (y - b.y) * h / b.h]));
+  }
+  /** Rescales a floor plan so the distance between two picked points equals `realCm`, keeping the first point fixed. */
+  function calibrateBackground(bg, a, b, realCm) {
+    const measured = Math.hypot(b.x - a.x, b.y - a.y), real = Number(realCm);
+    if (measured < 1) throw new Error('Pick two points further apart.');
+    if (!Number.isFinite(real) || real <= 0) throw new Error('Enter the real distance between the two points.');
+    const f = real / measured;
+    return { ...bg, x: Math.round(a.x - (a.x - bg.x) * f), y: Math.round(a.y - (a.y - bg.y) * f), w: Math.round(bg.w * f), h: Math.round(bg.h * f) };
+  }
+  /** Local history copies drop plan images; put them back from the live workspace when a room still has one. */
+  function restoreBackgrounds(target, source) {
+    const byId = new Map((source?.rooms || []).filter(r => r.background?.image).map(r => [r.id, r.background.image]));
+    for (const room of target?.rooms || []) if (room.background && !room.background.image && byId.has(room.id)) room.background.image = byId.get(room.id);
+    return target;
+  }
   function createRoom({ id = makeId('room'), name = 'Room', floor = '', width = 1200, depth = 800, x = 100, y = 100 } = {}) {
     return { id, name, floor, outline: rectOutline(x, y, num(width, 'Room width', 50, MAX_COORD - x), num(depth, 'Room depth', 50, MAX_COORD - y)), desks: [], deskSize: { ...DESK_DEFAULTS } };
   }
@@ -260,6 +322,7 @@
   function duplicateRoom(room, idFactory = makeId) {
     const copy = JSON.parse(JSON.stringify(room));
     copy.id = idFactory('room');
+    delete copy.background; // images are large; import the plan again if the copy needs it
     copy.name = `${room.name} (copy)`.slice(0, 80);
     copy.desks = copy.desks.map(d => ({ ...d, id: idFactory('desk'), positionId: '' }));
     return copy;
@@ -300,6 +363,7 @@
   }
 
   return {
+    MAX_BACKGROUND_CHARS, MAX_BACKGROUND_TOTAL, SHAPES, sanitizeBackground, snapWallPoint, shapeOutline, scaleOutline, calibrateBackground, restoreBackgrounds,
     MAX_ROOMS, MAX_DESKS_PER_ROOM, MAX_DESKS, MAX_POINTS, MAX_COORD, MIN_DESK, MAX_DESK, DESK_DEFAULTS, BLOCK_DEFAULTS, CSV_COLUMNS,
     makeId, snap, rectOutline, bounds, polygonArea, pointInPolygon, selfIntersects, simplifyOutline,
     deskCorners, deskBounds, deskInsideRoom, desksOverlap, roomIssues, normRotation,

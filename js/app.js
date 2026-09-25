@@ -476,6 +476,8 @@ function stripPlanningMedia(planning){
     for(const e of s.employees||[])e.photo=null;
     for(const field of ['baseSnapshot','applicationBaseline','appliedBefore','appliedAfter'])for(const e of s[field]?.employees||[])e.photo=null;
   }
+  // Floor-plan images would crowd the small local history out of browser storage; restore puts them back.
+  for(const room of copy.seating?.rooms||[])if(room.background)room.background.image='';
   return copy;
 }
 function persistLocalHistory(planningText,note){
@@ -1942,7 +1944,7 @@ async function restoreHistoryIndex(index){
   let list=[];try{list=JSON.parse(appStorage.getItem(HISTORY_KEY)||'[]');}catch{list=[];}
   const item=list[index];if(!item?.planning)return;
   if(!confirm('Restore this earlier version? Current work stays in Undo for this session and is checkpointed first.'))return;
-  try{await checkpointWorkspace('Before restoring an earlier version');commitPlanning(item.planning,'Restored earlier version',{historyNote:'Before restoring a local version'});closeDialog('historyModal');}catch(error){toast(error.message);}
+  try{await checkpointWorkspace('Before restoring an earlier version');OrgFlowSeating.restoreBackgrounds(item.planning.seating,workspace.seating);commitPlanning(item.planning,'Restored earlier version',{historyNote:'Before restoring a local version'});closeDialog('historyModal');}catch(error){toast(error.message);}
 }
 async function normalizePersonPhoto(file){
   const logo=await normalizeLogoFile(file);
@@ -2248,6 +2250,7 @@ refreshUpdateUi().catch(error=>toast(error.message));
     const file=files[0],name=file.name.toLowerCase();
     if(name.endsWith('.csv')){if(enterpriseBlocksWrite()){toast('You can view this organization but you cannot import.');return;}importFile(file);}
     else if(name.endsWith('.json')||name.endsWith('.orgflow'))restoreWorkspace(file);
-    else toast('Drop a .json or .orgflow workspace, or a .csv of positions.');
+    else if(currentView==='seating'&&/\.(png|jpe?g|webp|svg)$/.test(name))window.OrgFlowSeatingUI?.importBackground(file);
+    else toast(currentView==='seating'?'Drop a floor plan image (PNG, JPEG, WebP or SVG), a workspace or a .csv.':'Drop a .json or .orgflow workspace, or a .csv of positions.');
   });
 })();

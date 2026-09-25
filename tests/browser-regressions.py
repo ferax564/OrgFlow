@@ -336,10 +336,13 @@ class BrowserTests(unittest.TestCase):
         self.assertTrue(self.ev("document.querySelector('.drop-overlay').hidden"))
 
     def seat_xy(self,x,y):return self.ev("([x,y])=>{const m=document.querySelector('#seatingSvg').getScreenCTM(),p=new DOMPoint(x,y).matrixTransform(m);return [p.x,p.y]}",[x,y])
+    # The canvas repaints once more when its scrollbars and legend appear; click after layout settles.
+    def settle(self):self.ev("()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(()=>setTimeout(r,50))))")
     def seat_room(self):
         self.page.keyboard.press('5');self.page.wait_for_selector('#seatingPanel:not(.hidden)')
         self.page.fill('#seatingNewW','10');self.page.fill('#seatingNewD','6');self.click('#seatingCreateFirst')
         self.page.wait_for_function("()=>workspace.seating?.rooms.length===1")
+        self.settle()
     def test_29_seating_draw_walls_and_rectangle_room(self):
         self.seat_room()
         self.assertEqual(self.ev("workspace.seating.rooms[0].outline"),[[100,100],[1100,100],[1100,700],[100,700]])
@@ -450,6 +453,59 @@ class BrowserTests(unittest.TestCase):
         after=self.ev("[document.querySelector('#seatingCanvas').scrollLeft,document.querySelector('#seatingCanvas').scrollTop]")
         self.assertGreater(after[0],before[0]);self.assertGreater(after[1],before[1])
         self.assertEqual(self.ev("OrgFlowSeatingUI.state.selected.size"),0)
+    PLAN_SVG=b'<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="600" viewBox="0 0 1000 600"><rect width="1000" height="600" fill="#fff"/><path d="M100 60H900V330H600V540H100Z" fill="none" stroke="#222" stroke-width="8"/><path d="M100 580H600" stroke="#c00" stroke-width="4"/></svg>'
+    def test_33_seating_floor_plan_import_and_scale(self):
+        self.page.keyboard.press('5');self.page.wait_for_selector('#seatingPanel:not(.hidden)')
+        self.page.set_input_files('#seatingPlanFile',files=[{'name':'hq-level-2.svg','mimeType':'image/svg+xml','buffer':self.PLAN_SVG}])
+        self.page.wait_for_function("()=>workspace.seating?.rooms[0]?.background")
+        room=self.ev("(({name,outline,background:{x,y,w,h,opacity,hidden,image}})=>({name,outline,x,y,w,h,opacity,hidden,raster:/^data:image\\/(webp|jpeg);base64,/.test(image)}))(workspace.seating.rooms[0])")
+        self.assertEqual(room,{'name':'hq level 2','outline':[[100,100],[2100,100],[2100,1300],[100,1300]],'x':100,'y':100,'w':2000,'h':1200,'opacity':0.6,'hidden':False,'raster':True})
+        self.assertEqual(self.ev("OrgFlowSeatingUI.state.plan?.mode"),'calibrate','an import asks for the scale straight away')
+        self.settle()
+        img=lambda px,py:self.seat_xy(100+px*2,100+py*2)
+        self.page.mouse.click(*img(100,580));self.page.mouse.click(*img(600,580))
+        self.assertIn('10',self.page.locator('.seat-plan-card').inner_text())
+        self.page.fill('#seatCalibM','15');self.page.keyboard.press('Enter')
+        self.page.wait_for_function("()=>workspace.seating.rooms[0].background.w===3000")
+        bg=self.ev("(({x,y,w,h})=>({x,y,w,h}))(workspace.seating.rooms[0].background)")
+        self.assertEqual(bg,{'x':100,'y':100,'w':3000,'h':1800},'scaled 1.5×, then kept on the canvas')
+        self.assertEqual(self.ev("workspace.seating.rooms[0].outline"),[[100,100],[3100,100],[3100,1900],[100,1900]],'walls still on the image frame follow the plan')
+        self.assertIsNone(self.ev("OrgFlowSeatingUI.state.plan"))
+        # Move the plan, change opacity, hide it and bring it back.
+        self.click('[data-seat-action="plan-move"]');self.page.keyboard.press('ArrowRight');self.page.keyboard.press('Shift+ArrowDown')
+        self.page.wait_for_function("()=>workspace.seating.rooms[0].background.x===110&&workspace.seating.rooms[0].background.y===150")
+        self.page.keyboard.press('Escape')
+        self.page.locator('#seatPlanOpacity').fill('0.3');self.page.wait_for_function("()=>workspace.seating.rooms[0].background.opacity===0.3")
+        self.page.locator('[data-plan-field="hidden"]').uncheck();self.page.wait_for_function("()=>workspace.seating.rooms[0].background.hidden")
+        self.assertEqual(self.page.locator('#seatPlanLayer image').count(),0)
+        self.page.locator('[data-plan-field="hidden"]').check();self.page.wait_for_function("()=>!workspace.seating.rooms[0].background.hidden")
+        # Local history copies drop the image; restoring puts it back from the live plan.
+        self.assertEqual(self.ev("JSON.parse(localStorage.getItem('orgflow.history.v1'))[0].planning.seating.rooms[0].background?.image"),'')
+        self.ev("()=>{window.confirm=()=>true}");self.ev("()=>restoreHistoryIndex(0)")
+        self.page.wait_for_function("()=>workspace.seating.rooms[0].background.image.startsWith('data:image/')")
+        with self.page.expect_download() as info:self.click('#seatingPngBtn')
+        self.assertEqual(Path(info.value.path()).read_bytes()[:4],b'\x89PNG')
+        self.click('[data-seat-action="plan-remove"]')
+        self.page.wait_for_function("()=>!workspace.seating.rooms[0].background")
+    def test_34_seating_non_rectangular_rooms(self):
+        self.seat_room()
+        self.page.keyboard.press('Escape')
+        for kind,corners in [('L',6),('U',8),('T',8)]:
+            self.click(f'[data-seat-shape="{kind}"]')
+            self.page.wait_for_function("n=>workspace.seating.rooms[0].outline.length===n",arg=corners)
+        self.assertEqual(self.ev("OrgFlowSeating.bounds(workspace.seating.rooms[0].outline)"),{'x':100,'y':100,'w':1000,'h':600,'maxX':1100,'maxY':700})
+        self.page.fill('#seatRoomW','20');self.page.fill('#seatRoomD','12');self.click('[data-seat-action="resize"]')
+        self.page.wait_for_function("()=>OrgFlowSeating.bounds(workspace.seating.rooms[0].outline).w===2000")
+        self.assertEqual(self.ev("workspace.seating.rooms[0].outline.length"),8,'resizing keeps the T shape')
+        # Diagonal walls: 45° snapping keeps equal steps; Shift allows any angle.
+        self.click('[data-seat-shape="rect"]');self.page.wait_for_function("()=>workspace.seating.rooms[0].outline.length===4")
+        self.page.keyboard.press('w')
+        for x,y in [(300,100),(900,100),(1110,290),(1100,500)]:self.page.mouse.click(*self.seat_xy(x,y))
+        self.page.keyboard.down('Shift');self.page.mouse.click(*self.seat_xy(700,640));self.page.keyboard.up('Shift')
+        self.page.mouse.click(*self.seat_xy(300,650));self.page.mouse.click(*self.seat_xy(110,480))
+        self.page.keyboard.press('Enter')
+        self.page.wait_for_function("()=>workspace.seating.rooms[0].outline.length===7")
+        self.assertEqual(self.ev("workspace.seating.rooms[0].outline"),[[300,100],[900,100],[1100,300],[1100,500],[700,650],[300,650],[100,450]])
 
 if __name__=='__main__':
     suite=unittest.defaultTestLoader.loadTestsFromTestCase(BrowserTests)

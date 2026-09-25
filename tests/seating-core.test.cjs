@@ -159,3 +159,53 @@ test('conflict merge keeps a seating edit made on either side', () => {
   assert.equal(merged.conflicts.length, 0);
   assert.equal(merged.workspace.planning.seating.rooms[0].name, 'Renamed locally');
 });
+
+test('walls snap to 45° steps and stay on the grid; Shift draws any angle', () => {
+  const last = { x: 100, y: 100 };
+  assert.deepEqual(S.snapWallPoint(last, { x: 390, y: 130 }, 50), { x: 400, y: 100 }, 'nearly horizontal becomes horizontal');
+  assert.deepEqual(S.snapWallPoint(last, { x: 130, y: 590 }, 50), { x: 100, y: 600 }, 'nearly vertical becomes vertical');
+  assert.deepEqual(S.snapWallPoint(last, { x: 390, y: 420 }, 50), { x: 400, y: 400 }, 'diagonal keeps equal steps');
+  assert.deepEqual(S.snapWallPoint(last, { x: -180, y: 410 }, 50), { x: -200, y: 400 }, 'diagonal down-left');
+  assert.deepEqual(S.snapWallPoint(last, { x: 390, y: 230 }, 50, true), { x: 400, y: 250 }, 'free angle still snaps to the grid');
+  assert.deepEqual(S.snapWallPoint(null, { x: 123, y: 77 }, 50), { x: 100, y: 100 });
+});
+
+test('non-rectangular rooms validate: presets, diagonal walls and scaled shapes', () => {
+  for (const kind of S.SHAPES) {
+    const outline = S.shapeOutline(kind, 100, 100, 1200, 900);
+    const clean = S.sanitizeSeating({ rooms: [room({ outline })] }).rooms[0].outline;
+    assert.deepEqual(S.bounds(clean), S.bounds(S.rectOutline(100, 100, 1200, 900)), `${kind} fills its box`);
+    assert.equal(S.selfIntersects(clean), false);
+  }
+  assert.equal(S.shapeOutline('U', 0, 0, 900, 600).length, 8);
+  // A hexagon-like room with 45° walls.
+  const angled = [[300, 100], [900, 100], [1100, 300], [1100, 700], [900, 900], [300, 900], [100, 700], [100, 300]];
+  const r = room({ outline: angled });
+  assert.equal(S.sanitizeSeating({ rooms: [r] }).rooms[0].outline.length, 8);
+  assert.equal(S.deskInsideRoom({ x: 200, y: 200, w: 160, h: 80, rotation: 0 }, angled), false, 'cut corner');
+  assert.equal(S.deskInsideRoom({ x: 600, y: 500, w: 160, h: 80, rotation: 45 }, angled), true);
+  const scaled = S.scaleOutline(angled, 2000, 1600);
+  assert.deepEqual(S.bounds(scaled), { x: 100, y: 100, w: 2000, h: 1600, maxX: 2100, maxY: 1700 });
+  assert.equal(scaled.length, 8, 'resizing keeps the shape');
+});
+
+const PIXEL = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+test('floor plan backgrounds validate, calibrate and survive history stripping', () => {
+  const r = room({ background: { image: PIXEL, x: -50, y: 0, w: 2000, h: 1000, opacity: 3, hidden: 'yes' } });
+  const bg = S.sanitizeSeating({ rooms: [r] }).rooms[0].background;
+  assert.deepEqual({ ...bg, image: 'x' }, { image: 'x', x: -50, y: 0, w: 2000, h: 1000, opacity: 1, hidden: false });
+  assert.throws(() => S.sanitizeSeating({ rooms: [room({ background: { ...bg, image: 'data:image/svg+xml;base64,PHN2Zz4=' } })] }), /PNG, JPEG or WebP/);
+  assert.throws(() => S.sanitizeSeating({ rooms: [room({ background: { ...bg, image: 'javascript:alert(1)' } })] }), /PNG, JPEG or WebP/);
+  assert.throws(() => S.sanitizeSeating({ rooms: [room({ background: { ...bg, image: 'data:image/png;base64,' + 'A'.repeat(S.MAX_BACKGROUND_CHARS) } })] }), /under/);
+  assert.equal('background' in S.sanitizeSeating({ rooms: [room({ background: { ...bg, image: '' } })] }).rooms[0], false, 'a stripped image drops the background');
+  // Two points 500 units apart on the image are really 10 m apart: the plan doubles around the first point.
+  const cal = S.calibrateBackground({ x: 0, y: 0, w: 1000, h: 500 }, { x: 100, y: 100 }, { x: 600, y: 100 }, 1000);
+  assert.deepEqual(cal, { x: -100, y: -100, w: 2000, h: 1000 });
+  assert.throws(() => S.calibrateBackground(cal, { x: 1, y: 1 }, { x: 1, y: 1 }, 100), /further apart/);
+  assert.throws(() => S.calibrateBackground(cal, { x: 1, y: 1 }, { x: 90, y: 1 }, 0), /real distance/);
+  const stripped = { rooms: [{ id: 'R1', background: { ...bg, image: '' } }] };
+  assert.equal(S.restoreBackgrounds(stripped, { rooms: [{ id: 'R1', background: bg }] }).rooms[0].background.image, PIXEL);
+  assert.equal('background' in S.duplicateRoom({ ...room(), background: bg }), false, 'copies do not duplicate the image');
+  const planning = OrgFlow.validatePlanning({ ...harbor.planning, seating: { rooms: [{ ...room(), background: bg }] } });
+  assert.equal(planning.seating.rooms[0].background.image, PIXEL, 'round-trips through workspace validation');
+});

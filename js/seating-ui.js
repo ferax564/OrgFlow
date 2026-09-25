@@ -7,11 +7,15 @@
   const HINTS = {
     select: 'Click a desk to edit or assign it and drag to move it. Drag empty space to select several desks. Drag a corner to reshape the walls, ＋ on a wall adds a corner, double-click a corner removes it.',
     rect: 'Drag to draw the room as a rectangle. It replaces the current walls; desks stay where they are.',
-    walls: 'Click each corner of the room. Walls snap to right angles; hold Shift for any angle. Click the first corner, double-click or press Enter to finish. Backspace removes the last corner, Esc cancels.',
+    walls: 'Click each corner of the room. Walls snap to right angles and 45°; hold Shift for any angle. Click the first corner, double-click or press Enter to finish. Backspace removes the last corner, Esc cancels.',
     desk: 'Click to place a desk. Hold Alt to place it turned 90°. Desk size comes from the room settings.',
     block: 'Drag across an empty area to fill it with desks. Choose benches of two or single rows in the room settings. Desks that would sit outside the walls or on another desk are skipped.'
   };
-  const st = { roomId: '', tool: 'select', zoom: 1, grid: 50, selected: new Set(), drag: null, draft: null, ghost: null, search: '', filter: 'unseated', block: { ...S.BLOCK_DEFAULTS }, fitted: '', space: false, dropDesk: '' };
+  const PLAN_HINTS = {
+    calibrate: 'Set the plan scale: click both ends of something whose real length you know, such as a wall or door. Then enter that length in the panel. Esc cancels.',
+    move: 'Drag the floor plan to line it up with the walls. Arrow keys nudge it. Press Esc or Done when it fits.'
+  };
+  const st = { plan: null, roomId: '', tool: 'select', zoom: 1, grid: 50, selected: new Set(), drag: null, draft: null, ghost: null, search: '', filter: 'unseated', block: { ...S.BLOCK_DEFAULTS }, fitted: '', space: false, dropDesk: '' };
   try { const saved = JSON.parse(appStorage.getItem(PREFS_KEY) || '{}') || {}; if ([10, 25, 50, 100].includes(saved.grid)) st.grid = saved.grid; if (typeof saved.roomId === 'string') st.roomId = saved.roomId; if (saved.block && typeof saved.block === 'object') st.block = { layout: saved.block.layout === 'rows' ? 'rows' : 'pairs', spacing: clampInt(saved.block.spacing, 0, 300, 0), aisle: clampInt(saved.block.aisle, 0, 600, 120) }; if (['unseated', 'all', 'room', 'vacant'].includes(saved.filter)) st.filter = saved.filter; } catch { /* preferences are optional */ }
   function clampInt(v, min, max, fallback) { const n = Math.round(Number(v)); return Number.isFinite(n) ? Math.max(min, Math.min(max, n)) : fallback; }
   function savePrefs() { safePreference(PREFS_KEY, JSON.stringify({ grid: st.grid, roomId: st.roomId, block: st.block, filter: st.filter })); }
@@ -55,15 +59,16 @@
     return { x: p.x, y: p.y };
   }
   function snapPoint(p) { return { x: Math.max(0, Math.min(S.MAX_COORD, S.snap(p.x, st.grid))), y: Math.max(0, Math.min(S.MAX_COORD, S.snap(p.y, st.grid))) }; }
+  function planBox(bg) { return bg && !bg.hidden ? [[bg.x, bg.y], [bg.x + bg.w, bg.y + bg.h]] : []; }
   function world(r) {
-    const c = canvas(), pts = [...(r?.outline || []), ...(r?.desks || []).flatMap(d => S.deskCorners(d)), ...(st.draft || []).map(p => [p.x, p.y])];
+    const c = canvas(), pts = [...(r?.outline || []), ...(r?.desks || []).flatMap(d => S.deskCorners(d)), ...(st.draft || []).map(p => [p.x, p.y]), ...planBox(r?.background)];
     const b = S.bounds(pts.length ? pts : [[0, 0]]), sc = scale();
     return { x: 0, y: 0, w: Math.ceil(Math.max(b.maxX + 600, (c?.clientWidth || 800) / sc)), h: Math.ceil(Math.max(b.maxY + 600, (c?.clientHeight || 500) / sc)) };
   }
   function fit() {
     const r = room(), c = canvas();
     if (!r || !c || !c.clientWidth) return;
-    const b = S.bounds([...r.outline, ...r.desks.flatMap(d => S.deskCorners(d))]);
+    const b = S.bounds([...r.outline, ...r.desks.flatMap(d => S.deskCorners(d)), ...planBox(r.background)]);
     st.zoom = Math.max(0.1, Math.min(4, Math.min((c.clientWidth - 40) / ((b.w + 160) * BASE), (c.clientHeight - 40) / ((b.h + 160) * BASE))));
     st.fitted = r.id;
     paint();
@@ -77,13 +82,47 @@
     c.scrollLeft = cx * scale() - c.clientWidth / 2; c.scrollTop = cy * scale() - c.clientHeight / 2;
   }
 
+  // ---- Floor plan images ---------------------------------------------------------------
+  // Data URLs can be megabytes; re-parsing one on every repaint is slow, so the canvas uses a cached blob URL.
+  const planUrls = new Map();
+  function planUrl(image) {
+    if (!planUrls.has(image)) {
+      if (planUrls.size >= 6) { for (const url of planUrls.values()) URL.revokeObjectURL(url); planUrls.clear(); }
+      const [head, b64] = image.split(','), bin = atob(b64), bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      planUrls.set(image, URL.createObjectURL(new Blob([bytes], { type: head.slice(5, head.indexOf(';')) })));
+    }
+    return planUrls.get(image);
+  }
+  function planMarkup(bg, href, at = bg) {
+    return bg && !bg.hidden ? `<image class="seat-plan" href="${href}" x="${at.x}" y="${at.y}" width="${bg.w}" height="${bg.h}" opacity="${bg.opacity}" preserveAspectRatio="none"/>` : '';
+  }
+  /** Downscales an imported plan and re-encodes it (WebP, else JPEG) on white so it fits the workspace limits. */
+  async function processPlanImage(file) {
+    if (!/^image\/(png|jpeg|webp|svg\+xml)$/.test(file.type) && !/\.(png|jpe?g|webp|svg)$/i.test(file.name || '')) throw new Error('Choose a PNG, JPEG, WebP or SVG floor plan. Export PDFs as an image first.');
+    if (file.size > 30 * 1024 * 1024) throw new Error('That image is over 30 MB. Export a smaller version of the plan.');
+    const img = await readImage(file), w = img.naturalWidth || 1600, h = img.naturalHeight || 1200;
+    let k = Math.min(1, 2400 / Math.max(w, h));
+    for (let attempt = 0; attempt < 7; attempt++, k *= 0.75) {
+      const cw = Math.max(1, Math.round(w * k)), ch = Math.max(1, Math.round(h * k)), c = document.createElement('canvas');
+      c.width = cw; c.height = ch;
+      const ctx = c.getContext('2d');
+      if (!ctx) throw new Error('This browser cannot process images.');
+      ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, cw, ch); ctx.drawImage(img, 0, 0, cw, ch);
+      let data = c.toDataURL('image/webp', 0.85);
+      if (!data.startsWith('data:image/webp')) data = c.toDataURL('image/jpeg', 0.85);
+      if (data.length <= S.MAX_BACKGROUND_CHARS * 0.95) return { data, w: cw, h: ch };
+    }
+    throw new Error('This plan is too detailed to embed. Export a smaller PNG or JPEG.');
+  }
+
   // ---- Scene markup ---------------------------------------------------------------
   function roomMarkup(r, outline = r.outline, { handles = false, labels = true } = {}) {
     const sc = scale(), pts = outline.map(p => p.join(',')).join(' ');
     let signed = 0;
     for (let i = 0; i < outline.length; i++) { const [x1, y1] = outline[i], [x2, y2] = outline[(i + 1) % outline.length]; signed += x1 * y2 - x2 * y1; }
     const dir = signed > 0 ? 1 : -1, fs = 12 / sc;
-    let out = `<polygon class="seat-floor" points="${pts}"/><polygon class="seat-wall" points="${pts}"/>`;
+    let out = `<polygon class="seat-floor${r.background && !r.background.hidden ? ' over-plan' : ''}" points="${pts}"/><polygon class="seat-wall" points="${pts}"/>`;
     if (labels) outline.forEach((a, i) => {
       const b = outline[(i + 1) % outline.length], len = Math.hypot(b[0] - a[0], b[1] - a[1]);
       if (len * sc < 34) return;
@@ -130,8 +169,10 @@
     s.setAttribute('viewBox', `${wv.x} ${wv.y} ${wv.w} ${wv.h}`);
     s.setAttribute('width', Math.ceil(wv.w * sc)); s.setAttribute('height', Math.ceil(wv.h * sc));
     s.dataset.tool = st.tool;
+    s.dataset.plan = st.plan?.mode || '';
     s.innerHTML = gridDefs(sc) + `<rect class="seat-grid-bg" x="${wv.x}" y="${wv.y}" width="${wv.w}" height="${wv.h}" fill="url(#seatGridMajor)"/>`
-      + `<g id="seatRoomLayer">${roomMarkup(r, st.drag?.kind === 'vertex' ? st.drag.outline : r.outline, { handles: st.tool === 'select' && editable() })}</g>`
+      + `<g id="seatPlanLayer">${r.background ? planMarkup(r.background, planUrl(r.background.image)) : ''}</g>`
+      + `<g id="seatRoomLayer">${roomMarkup(r, st.drag?.kind === 'vertex' ? st.drag.outline : r.outline, { handles: st.tool === 'select' && editable() && !st.plan })}</g>`
       + `<g id="seatDeskLayer">${r.desks.map(d => deskMarkup(d, { byId, issues: flagged, selected: st.selected.has(d.id) })).join('')}</g><g id="seatOverlay"></g>`;
     paintOverlay();
   }
@@ -157,6 +198,11 @@
       out += `<polyline class="seat-draft" points="${pts.map(p => `${p.x},${p.y}`).join(' ')}"/>` + st.draft.map((p, i) => `<circle class="seat-draft-point${i === 0 && st.draft.length >= 3 ? ' closable' : ''}" cx="${p.x}" cy="${p.y}" r="${(i === 0 ? 8 : 5) / sc}"/>`).join('');
       if (st.ghost) { const last = st.draft.at(-1), len = Math.hypot(st.ghost.x - last.x, st.ghost.y - last.y); if (len) out += `<text class="seat-dim live" x="${(st.ghost.x + last.x) / 2}" y="${(st.ghost.y + last.y) / 2 - 10 / sc}" font-size="${13 / sc}" text-anchor="middle">${metres(len)} m</text>`; }
     }
+    if (st.plan?.mode === 'calibrate' && st.plan.points.length) {
+      const [a, b] = [st.plan.points[0], st.plan.points[1] || st.plan.hover];
+      out += st.plan.points.map(p => `<circle class="seat-calib-point" cx="${p.x}" cy="${p.y}" r="${6 / sc}"/>`).join('');
+      if (b) out += `<line class="seat-calib" x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}" stroke-width="${3 / sc}"/><text class="seat-dim live" x="${(a.x + b.x) / 2}" y="${(a.y + b.y) / 2 - 10 / sc}" font-size="${13 / sc}" text-anchor="middle">${metres(Math.hypot(b.x - a.x, b.y - a.y))} m now</text>`;
+    }
     if (st.tool === 'desk' && st.ghost && !d) {
       const w = r.deskSize.w, h = r.deskSize.h;
       out += `<g class="seat-ghost" transform="translate(${st.ghost.x} ${st.ghost.y}) rotate(${st.ghost.rotation || 0})"><rect x="${-w / 2}" y="${-h / 2}" width="${w}" height="${h}" rx="6"/></g>`;
@@ -169,7 +215,7 @@
     return { fit, skipped: specs.length - fit.length };
   }
   function hint(text) { const el = $('#seatingHint'); if (el) el.textContent = text; }
-  function toolHint() { hint(!room() ? '' : editable() ? HINTS[st.tool] : readOnlyReason() + ' Select a desk to see who sits there.'); }
+  function toolHint() { hint(!room() ? '' : !editable() ? readOnlyReason() + ' Select a desk to see who sits there.' : st.plan ? PLAN_HINTS[st.plan.mode] : HINTS[st.tool]); }
 
   // ---- Panels ------------------------------------------------------------------------
   function render() {
@@ -185,7 +231,8 @@
     $$('#seatingPanel [data-seat-tool]').forEach(b => { const on = b.dataset.seatTool === st.tool; b.classList.toggle('active', on); b.setAttribute('aria-pressed', String(on)); b.disabled = !r || (!editable() && b.dataset.seatTool !== 'select'); });
     $('#seatingGrid').value = String(st.grid);
     $('#seatingEmpty').classList.toggle('hidden', Boolean(r));
-    $('#seatingCreateFirst').disabled = !editable();
+    $('#seatingCreateFirst').disabled = $('#seatingFromPlan').disabled = !editable();
+    if (st.plan && !r?.background) st.plan = null;
     $('#seatingCsvBtn').disabled = $('#seatingPngBtn').disabled = !list.length;
     if (!editable() && st.tool !== 'select') setTool('select', false);
     if (r && st.fitted !== r.id && canvas().clientWidth) fit(); else paint();
@@ -240,7 +287,10 @@
         <div class="seat-fields"><div class="field"><label for="seatRoomName">Name</label><input id="seatRoomName" data-room-field="name" maxlength="80" value="${esc(r.name)}" ${dis}></div><div class="field"><label for="seatRoomFloor">Floor / building</label><input id="seatRoomFloor" data-room-field="floor" maxlength="80" value="${esc(r.floor)}" placeholder="e.g. Level 2 · HQ" ${dis}></div></div>
         <div class="form-divider">Size</div>
         <div class="seat-fields"><div class="field"><label for="seatRoomW">Width m</label><input id="seatRoomW" type="number" min="0.5" max="150" step="0.1" value="${b.w / 100}" ${dis}></div><div class="field"><label for="seatRoomD">Depth m</label><input id="seatRoomD" type="number" min="0.5" max="150" step="0.1" value="${b.h / 100}" ${dis}></div></div>
-        <button class="btn" type="button" data-seat-action="resize" ${dis}>${r.outline.length === 4 && S.polygonArea(r.outline) * 10000 === b.w * b.h ? 'Resize room' : 'Replace walls with this rectangle'}</button>
+        <button class="btn" type="button" data-seat-action="resize" ${dis}>Resize${r.outline.length === 4 && S.polygonArea(r.outline) * 10000 === b.w * b.h ? ' room' : ', keeping the shape'}</button>
+        <div class="seat-shape-row" role="group" aria-label="Room shape"><span>Shape</span>${[['rect', 'Rectangle', 'M3 5h18v14H3z'], ['L', 'L-shape', 'M3 3h18v9h-9v9H3z'], ['U', 'U-shape', 'M3 3h6v8h6V3h6v18H3z'], ['T', 'T-shape', 'M3 3h18v8h-6v10H9V11H3z']].map(([k, label, d]) => `<button class="iconbtn" type="button" data-seat-shape="${k}" title="${label}: redraw the walls in this shape" aria-label="${label}" ${dis}><svg viewBox="0 0 24 24" fill="none"><path d="${d}" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg></button>`).join('')}<span class="hint">or draw any shape with Walls</span></div>
+        <div class="form-divider">Floor plan</div>
+        ${planControls(r, dis)}
         <div class="form-divider">New desks</div>
         <div class="seat-fields"><div class="field"><label for="seatDeskW">Desk width cm</label><input id="seatDeskW" type="number" min="${S.MIN_DESK}" max="${S.MAX_DESK}" step="5" data-room-field="deskW" value="${r.deskSize.w}" ${dis}></div><div class="field"><label for="seatDeskH">Desk depth cm</label><input id="seatDeskH" type="number" min="${S.MIN_DESK}" max="${S.MAX_DESK}" step="5" data-room-field="deskH" value="${r.deskSize.h}" ${dis}></div>
         <div class="field"><label for="seatBlockLayout">Desk-block layout</label><select id="seatBlockLayout" data-block-field="layout"><option value="pairs" ${st.block.layout === 'pairs' ? 'selected' : ''}>Benches of two, back to back</option><option value="rows" ${st.block.layout === 'rows' ? 'selected' : ''}>Single rows, same direction</option></select></div><div class="field"><label for="seatBlockSpacing">Gap between desks cm</label><input id="seatBlockSpacing" type="number" min="0" max="300" step="5" data-block-field="spacing" value="${st.block.spacing}"></div>
@@ -251,11 +301,28 @@
         ${orphaned ? `<p class="issue warn">${orphaned} desk${orphaned === 1 ? '' : 's'} point at positions that no longer exist in any scenario. <button class="small-link" type="button" data-seat-action="orphans" ${dis}>Free them</button></p>` : ''}
         <div class="seat-actions"><button class="btn" type="button" data-seat-action="duplicate-room" ${dis}>Duplicate room</button><button class="btn danger" type="button" data-seat-action="delete-room" ${dis}>Delete room</button></div></section>`;
     }
+    if (st.plan && r.background) top = planCard();
     el.innerHTML = top + `<section class="seat-card seat-people"><div class="seat-card-head"><h3>People &amp; positions</h3></div>
       <div class="seat-people-controls"><input type="search" id="seatPeopleSearch" placeholder="Find a person or position…" aria-label="Find a person or position to seat" value="${esc(st.search)}"><select id="seatPeopleFilter" aria-label="Which people to list"><option value="unseated">Without a desk</option><option value="all">Everyone</option><option value="room">Seated in this room</option><option value="vacant">Vacant positions</option></select></div>
       <div id="seatPeopleList" class="seat-people-list"></div><p class="hint">${editable() ? 'Drag a name onto a desk, or select a desk and click a name.' : 'Click a seated name to find their desk.'}</p></section>`;
     $('#seatPeopleFilter').value = st.filter;
     renderPeopleList();
+  }
+  function planControls(r, dis) {
+    const bg = r.background;
+    if (!bg) return `<p class="hint">Import a PNG, JPEG, WebP or SVG of an existing plan, set its scale, then trace the walls over it. You can also drop an image onto the canvas.</p><button class="btn" type="button" data-seat-action="plan-import" ${dis}>Import plan image…</button>`;
+    return `<div class="seat-actions"><button class="btn" type="button" data-seat-action="plan-calibrate" ${dis}>Set scale…</button><button class="btn" type="button" data-seat-action="plan-move" ${dis}>Move plan</button><button class="btn" type="button" data-seat-action="plan-import" ${dis}>Replace…</button><button class="btn danger" type="button" data-seat-action="plan-remove" ${dis}>Remove</button></div>
+      <div class="seat-fields"><div class="field"><label for="seatPlanW">Plan width m</label><input id="seatPlanW" type="number" min="0.1" max="400" step="0.1" data-plan-field="w" value="${Math.round(bg.w / 10) / 10}" ${dis}></div><div class="field"><label for="seatPlanOpacity">Opacity</label><input id="seatPlanOpacity" type="range" min="0.1" max="1" step="0.05" data-plan-field="opacity" value="${bg.opacity}" ${dis}></div></div>
+      <label class="check"><input type="checkbox" data-plan-field="hidden" ${bg.hidden ? '' : 'checked'} ${dis}> Show floor plan</label>`;
+  }
+  function planCard() {
+    const p = st.plan;
+    if (p.mode === 'move') return `<section class="seat-card seat-plan-card"><div class="seat-card-head"><h3>Move floor plan</h3></div><p class="hint">${PLAN_HINTS.move}</p><div class="seat-actions"><button class="btn primary" type="button" data-seat-action="plan-done">Done</button></div></section>`;
+    const [a, b] = p.points, measured = b ? Math.hypot(b.x - a.x, b.y - a.y) : 0;
+    return `<section class="seat-card seat-plan-card"><div class="seat-card-head"><h3>Set plan scale</h3><span class="hint">${p.points.length}/2 points</span></div>
+      <p class="hint">${b ? `Those points are ${metres(measured)} m apart at the current scale. How far apart are they really?` : PLAN_HINTS.calibrate}</p>
+      ${b ? `<div class="field"><label for="seatCalibM">Real distance m</label><input id="seatCalibM" type="number" min="0.01" step="0.01" value="${(measured / 100).toFixed(2)}"></div>` : ''}
+      <div class="seat-actions">${b ? '<button class="btn primary" type="button" data-seat-action="plan-apply">Apply scale</button>' : ''}<button class="btn" type="button" data-seat-action="plan-done">Cancel</button></div></section>`;
   }
   function renderPeopleList() {
     const el = $('#seatPeopleList');
@@ -285,7 +352,7 @@
   // ---- Actions ----------------------------------------------------------------
   function setTool(tool, announce = true) {
     if (!Object.values(TOOLS).includes(tool)) return;
-    st.tool = tool; st.draft = null; st.ghost = null; st.drag = null;
+    st.tool = tool; st.draft = null; st.ghost = null; st.drag = null; st.plan = null;
     if (tool !== 'select') st.selected.clear();
     if (announce) render();
   }
@@ -323,7 +390,7 @@
     else if (kind === 'resize') {
       const w = Math.round(Number($('#seatRoomW').value) * 100), h = Math.round(Number($('#seatRoomD').value) * 100), b = S.bounds(r.outline);
       if (!(w >= 50 && h >= 50)) { toast('Enter a width and depth of at least 0.5 m.'); return; }
-      mutate(withRoom(rm => { rm.outline = S.rectOutline(b.x, b.y, w, h); }), `Room is now ${metres(w)} × ${metres(h)} m`);
+      mutate(withRoom(rm => { rm.outline = S.scaleOutline(rm.outline, w, h); }), `Room is now ${metres(w)} × ${metres(h)} m`);
     } else if (kind === 'autoseat') {
       let n = 0;
       if (mutate(withRoom((rm, doc) => { n = S.autoSeat(doc, rm.id, people); if (!n) throw new Error('No free desks or unseated people.'); }), 'Auto-seated', true)) toast(`${n} ${n === 1 ? 'person' : 'people'} seated by team. Drag names to fine-tune.`);
@@ -333,7 +400,12 @@
     } else if (kind === 'duplicate-room') {
       let id = '';
       if (mutate(doc => { if (doc.rooms.length >= S.MAX_ROOMS) throw new Error(`At most ${S.MAX_ROOMS} rooms are supported.`); const copy = S.duplicateRoom(doc.rooms.find(x => x.id === r.id)); id = copy.id; doc.rooms.push(copy); }, 'Room duplicated without assignments')) selectRoom(id);
-    } else if (kind === 'delete-room') {
+    } else if (kind === 'plan-import') pickPlan(false);
+    else if (kind === 'plan-remove') { if (confirm('Remove the floor plan image from this room? Walls and desks stay. You can undo this.')) { st.plan = null; mutate(withRoom(rm => { delete rm.background; }), 'Floor plan removed'); } }
+    else if (kind === 'plan-calibrate' || kind === 'plan-move') { if (!r.background || !editable()) return; st.tool = 'select'; st.selected.clear(); st.draft = null; st.plan = { mode: kind === 'plan-move' ? 'move' : 'calibrate', points: [] }; render(); }
+    else if (kind === 'plan-done') { st.plan = null; render(); }
+    else if (kind === 'plan-apply') applyCalibration();
+    else if (kind === 'delete-room') {
       if (!confirm(`Delete “${r.name}” and its ${r.desks.length} desk${r.desks.length === 1 ? '' : 's'}? People keep their positions; only their desk is removed. You can undo this.`)) return;
       if (mutate(doc => { doc.rooms = doc.rooms.filter(x => x.id !== r.id); }, 'Room deleted')) { st.roomId = ''; st.selected.clear(); st.fitted = ''; savePrefs(); render(); }
     }
@@ -350,6 +422,75 @@
       else if (field === 'rotation') d.rotation = S.normRotation(target.value);
       else d[field] = Math.max(S.MIN_DESK, Math.min(S.MAX_DESK, Math.round(Number(target.value) || d[field])));
     }), 'Desk updated', true);
+  }
+  function applyCalibration() {
+    const p = st.plan, r = room();
+    if (!p || p.points.length < 2 || !r?.background) return;
+    const real = Number($('#seatCalibM')?.value) * 100;
+    mutate(withRoom(rm => {
+      const before = rm.background, after = S.calibrateBackground(before, p.points[0], p.points[1], real);
+      // A room still using the plan's own frame as its walls (fresh from an import) scales with the plan.
+      const frame = S.rectOutline(before.x, before.y, before.w, before.h);
+      if (JSON.stringify(rm.outline) === JSON.stringify(frame)) rm.outline = S.rectOutline(after.x, after.y, after.w, after.h);
+      rm.background = after;
+      // Keep the plan's top-left on the canvas; walls and desks shift with it so they stay aligned.
+      const b = S.bounds([...rm.outline, [after.x, after.y]]), dx = Math.max(0, 100 - b.x), dy = Math.max(0, 100 - b.y);
+      if (dx || dy) {
+        after.x += dx; after.y += dy;
+        rm.outline = rm.outline.map(([x, y]) => [x + dx, y + dy]);
+        for (const d of rm.desks) { d.x += dx; d.y += dy; }
+      }
+    }), `Plan scaled · ${metres(real)} m between the points`);
+    st.plan = null; st.fitted = ''; render();
+    hint('Scale set. Trace the walls with Walls (W), or pick a room shape, then add desks.');
+  }
+  function updatePlanField(field, target) {
+    const quiet = field === 'opacity';
+    mutate(withRoom(rm => {
+      const bg = rm.background;
+      if (!bg) return false;
+      if (field === 'hidden') bg.hidden = !target.checked;
+      else if (field === 'opacity') bg.opacity = Math.max(0.05, Math.min(1, Number(target.value) || bg.opacity));
+      else if (field === 'w') { const w = Math.round(Number(target.value) * 100); if (!(w >= 10)) throw new Error('Enter the plan width in metres.'); bg.h = Math.round(bg.h * w / bg.w); bg.w = w; }
+    }), field === 'w' ? 'Plan resized' : 'Floor plan updated', quiet || field === 'hidden');
+  }
+  function pickPlan(newRoom) {
+    if (!editable()) { toast(readOnlyReason()); return; }
+    const input = $('#seatingPlanFile');
+    input.dataset.newRoom = newRoom ? '1' : '';
+    input.value = '';
+    input.click();
+  }
+  /** Imports a floor plan image into the selected room, or into a new room sized to the image. Then asks for the scale. */
+  async function importBackground(file, newRoom = !room()) {
+    if (!editable()) { toast(readOnlyReason()); return false; }
+    let img;
+    try { img = await processPlanImage(file); } catch (error) { toast(error.message); return false; }
+    const current = room(), b = current && !newRoom ? S.bounds(current.outline) : null;
+    const w = b ? Math.max(b.w, 500) : 2000, h = Math.max(10, Math.round(w * img.h / img.w)), x = b ? b.x : 100, y = b ? b.y : 100;
+    const background = { image: img.data, x, y, w, h, opacity: 0.6, hidden: false };
+    let ok;
+    if (newRoom) {
+      const id = S.makeId('room'), name = (String(file.name || '').replace(/\.[a-z0-9]+$/i, '').replace(/[-_]+/g, ' ').trim() || `Room ${rooms().length + 1}`).slice(0, 80);
+      ok = mutate(doc => {
+        if (doc.rooms.length >= S.MAX_ROOMS) throw new Error(`At most ${S.MAX_ROOMS} rooms are supported.`);
+        const rm = S.createRoom({ id, name, x, y, width: w, depth: Math.min(h, S.MAX_COORD - y) });
+        rm.background = background; doc.rooms.push(rm);
+      }, 'Floor plan imported', true);
+      if (ok) st.roomId = id;
+    } else ok = mutate(withRoom(rm => { rm.background = background; }), 'Floor plan imported', true);
+    if (!ok) return false;
+    st.selected.clear(); st.fitted = ''; st.tool = 'select'; st.draft = null;
+    st.plan = { mode: 'calibrate', points: [] };
+    savePrefs(); render();
+    toast('Plan imported. Click two points of a known distance to set its scale.');
+    return true;
+  }
+  function applyShape(kind) {
+    const r = room();
+    if (!r) return;
+    const b = S.bounds(r.outline);
+    mutate(withRoom(rm => { rm.outline = S.shapeOutline(kind, b.x, b.y, b.w, b.h, Math.min(st.grid, 50)); }), kind === 'rect' ? 'Room is rectangular' : `Room is now ${kind}-shaped · drag corners to adjust`);
   }
   function updateRoomField(field, target) {
     mutate(withRoom(rm => {
@@ -382,7 +523,15 @@
     const deskEl = e.target.closest('[data-desk-id]'), vertex = e.target.closest('[data-vertex]'), edge = e.target.closest('[data-edge]');
     // Touch has no scroll wheel or middle button: a finger on empty floor in Select pans instead of box-selecting.
     const touchPan = e.pointerType === 'touch' && st.tool === 'select' && !deskEl && !vertex && !edge;
-    if (e.button === 1 || st.space || touchPan) { st.drag = { kind: 'pan', x: e.clientX, y: e.clientY, left: c.scrollLeft, top: c.scrollTop }; capture(e); e.preventDefault(); return; }
+    if (e.button === 1 || st.space || (touchPan && st.plan?.mode !== 'move')) { st.drag = { kind: 'pan', x: e.clientX, y: e.clientY, left: c.scrollLeft, top: c.scrollTop }; capture(e); e.preventDefault(); return; }
+    if (st.plan && r.background && editable()) {
+      if (st.plan.mode === 'move') { st.drag = { kind: 'plan', start: raw, orig: { x: r.background.x, y: r.background.y }, dx: 0, dy: 0 }; capture(e); e.preventDefault(); return; }
+      // Calibration points are not snapped: they should land exactly on the drawing.
+      st.plan.points = st.plan.points.length >= 2 ? [raw] : [...st.plan.points, raw];
+      render();
+      if (st.plan.points.length === 2) setTimeout(() => { $('#seatCalibM')?.focus(); $('#seatCalibM')?.select(); }, 0);
+      return;
+    }
     if (st.tool === 'select') {
       if (vertex && editable()) st.drag = { kind: 'vertex', index: Number(vertex.dataset.vertex), outline: r.outline.map(q => [...q]), moved: false };
       else if (edge && editable()) { const i = Number(edge.dataset.edge), outline = r.outline.map(q => [...q]), a = outline[i], b = outline[(i + 1) % outline.length], mid = snapPoint({ x: (a[0] + b[0]) / 2, y: (a[1] + b[1]) / 2 }); outline.splice(i + 1, 0, [mid.x, mid.y]); st.drag = { kind: 'vertex', index: i + 1, outline, moved: true }; }
@@ -403,7 +552,7 @@
       mutate(withRoom(rm => { const [d] = S.addDesks(rm, [{ x: p.x, y: p.y, rotation }]); st.selected = new Set([d.id]); }), 'Desk added', true);
       return;
     } else if (st.tool === 'walls') {
-      const pt = constrain(p, e.shiftKey);
+      const pt = constrain(raw, e.shiftKey);
       if (st.draft?.length >= 3) { const f = st.draft[0]; if (Math.hypot(raw.x - f.x, raw.y - f.y) * scale() < 12 || (pt.x === f.x && pt.y === f.y)) { finishWalls(); return; } }
       st.draft = [...(st.draft || []), pt];
       paint();
@@ -411,22 +560,27 @@
     }
     if (st.drag) { capture(e); e.preventDefault(); }
   }
-  function constrain(p, free) {
-    const last = st.draft?.at(-1);
-    if (!last || free) return p;
-    return Math.abs(p.x - last.x) >= Math.abs(p.y - last.y) ? { x: p.x, y: last.y } : { x: last.x, y: p.y };
+  function constrain(raw, free) {
+    const q = S.snapWallPoint(st.draft?.at(-1), raw, st.grid, free);
+    return { x: Math.max(0, Math.min(S.MAX_COORD, q.x)), y: Math.max(0, Math.min(S.MAX_COORD, q.y)) };
   }
   function onPointerMove(e) {
     const d = st.drag, r = room();
     if (!r) return;
     if (!d) {
-      if (st.tool === 'walls' && st.draft?.length) { st.ghost = constrain(snapPoint(toWorld(e)), e.shiftKey); paintOverlay(); }
+      if (st.plan?.mode === 'calibrate' && st.plan.points.length === 1) { st.plan.hover = toWorld(e); paintOverlay(); }
+      else if (st.tool === 'walls' && st.draft?.length) { st.ghost = constrain(toWorld(e), e.shiftKey); paintOverlay(); }
       else if (st.tool === 'desk' && editable()) { st.ghost = { ...snapPoint(toWorld(e)), rotation: e.altKey ? 90 : 0 }; paintOverlay(); }
       return;
     }
     if (d.kind === 'pan') { const c = canvas(); c.scrollLeft = d.left - (e.clientX - d.x); c.scrollTop = d.top - (e.clientY - d.y); return; }
     const raw = toWorld(e), p = snapPoint(raw);
-    if (d.kind === 'move') {
+    if (d.kind === 'plan') {
+      d.dx = Math.round(raw.x - d.start.x); d.dy = Math.round(raw.y - d.start.y);
+      const img = $('#seatPlanLayer image');
+      if (img) { img.setAttribute('x', d.orig.x + d.dx); img.setAttribute('y', d.orig.y + d.dy); }
+      hint(`Moving the plan by ${metres(d.dx)} m, ${metres(d.dy)} m`);
+    } else if (d.kind === 'move') {
       d.dx = S.snap(raw.x - d.start.x, st.grid); d.dy = S.snap(raw.y - d.start.y, st.grid);
       for (const [id, o] of d.orig) { const g = svgEl().querySelector(`[data-desk-id="${CSS.escape(id)}"]`); if (g) g.setAttribute('transform', `translate(${Math.max(0, o.x + d.dx)} ${Math.max(0, o.y + d.dy)})`); }
       if (d.dx || d.dy) hint(`Moving ${d.orig.size} desk${d.orig.size === 1 ? '' : 's'} by ${metres(d.dx)} m, ${metres(d.dy)} m`);
@@ -447,6 +601,10 @@
     st.drag = null;
     if (!d || !r) return;
     if (d.kind === 'pan') return;
+    if (d.kind === 'plan') {
+      if (d.dx || d.dy) mutate(withRoom(rm => { rm.background.x = d.orig.x + d.dx; rm.background.y = d.orig.y + d.dy; }), 'Floor plan moved', true);
+      toolHint(); return;
+    }
     if (d.kind === 'move') {
       if (d.dx || d.dy) mutate(withRoom(rm => { for (const q of rm.desks) if (d.orig.has(q.id)) { const o = d.orig.get(q.id); q.x = Math.max(0, Math.min(S.MAX_COORD, o.x + d.dx)); q.y = Math.max(0, Math.min(S.MAX_COORD, o.y + d.dy)); } }), d.orig.size === 1 ? 'Desk moved' : 'Desks moved', true);
       else { if (d.collapseTo) st.selected = new Set([d.collapseTo]); render(); }
@@ -484,6 +642,7 @@
     if (typing) return false;
     const key = e.key, mod = e.metaKey || e.ctrlKey;
     if (key === 'Escape') {
+      if (st.plan) { st.plan = null; render(); return true; }
       if (st.draft) { st.draft = null; st.ghost = null; paint(); toolHint(); return true; }
       if (st.drag) { st.drag = null; paint(); return true; }
       if (st.tool !== 'select') { setTool('select'); return true; }
@@ -491,6 +650,12 @@
       return false;
     }
     if (!room()) return false;
+    const planArrows = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[key];
+    if (st.plan?.mode === 'move' && planArrows && !mod) {
+      e.preventDefault(); const step = e.shiftKey ? 50 : 10;
+      mutate(withRoom(rm => { rm.background.x += planArrows[0] * step; rm.background.y += planArrows[1] * step; }), 'Floor plan moved', true);
+      return true;
+    }
     if (st.draft && key === 'Enter') { e.preventDefault(); finishWalls(); return true; }
     if (st.draft && key === 'Backspace') { e.preventDefault(); st.draft.pop(); if (!st.draft.length) st.draft = null; paint(); return true; }
     if (key === ' ' && !st.space) { st.space = true; canvas().classList.add('panning'); e.preventDefault(); return true; }
@@ -510,13 +675,13 @@
   window.addEventListener('keyup', e => { if (e.key === ' ' && st.space) { st.space = false; canvas()?.classList.remove('panning'); } });
 
   // ---- Export ------------------------------------------------------------------------
-  const EXPORT_CSS = '.seat-floor{fill:#ffffff}.seat-wall{fill:none;stroke:#0f172a;stroke-width:12;stroke-linejoin:round}.seat-dim{fill:#64748b;font-weight:700}.seat-top{fill:#f8fafc;stroke:#94a3b8;stroke-width:2}.seat-chair{fill:#e2e8f0;stroke:#94a3b8;stroke-width:1.5}.seat-desk.free .seat-top{fill:#ecfdf3;stroke:#12b76a}.seat-desk.hot .seat-top{fill:#fff7ed;stroke:#f79009;stroke-dasharray:8 5}.seat-desk.missing .seat-top{fill:#fff0ee;stroke:#b42318}.seat-label{fill:#0f172a;font-weight:800}.seat-name{fill:#334155;font-weight:600}text{font-family:ui-sans-serif,system-ui,sans-serif}';
+  const EXPORT_CSS = '.seat-floor{fill:#ffffff}.seat-floor.over-plan{fill-opacity:.18}.seat-wall{fill:none;stroke:#0f172a;stroke-width:12;stroke-linejoin:round}.seat-dim{fill:#64748b;font-weight:700}.seat-top{fill:#f8fafc;stroke:#94a3b8;stroke-width:2}.seat-chair{fill:#e2e8f0;stroke:#94a3b8;stroke-width:1.5}.seat-desk.free .seat-top{fill:#ecfdf3;stroke:#12b76a}.seat-desk.hot .seat-top{fill:#fff7ed;stroke:#f79009;stroke-dasharray:8 5}.seat-desk.missing .seat-top{fill:#fff0ee;stroke:#b42318}.seat-label{fill:#0f172a;font-weight:800}.seat-name{fill:#334155;font-weight:600}text{font-family:ui-sans-serif,system-ui,sans-serif}';
   function exportArt(r) {
-    const byId = positionsById(), b = S.bounds([...r.outline, ...r.desks.flatMap(d => S.deskCorners(d))]), pad = 120, head = 170, keep = st.zoom;
+    const byId = positionsById(), b = S.bounds([...r.outline, ...r.desks.flatMap(d => S.deskCorners(d)), ...planBox(r.background)]), pad = 120, head = 170, keep = st.zoom;
     const x = b.x - pad, y = b.y - pad - head, w = b.w + pad * 2, h = b.h + pad * 2 + head, sub = [r.floor, `${activeScenario().name} · ${today}`].filter(Boolean).join(' · ');
     let body;
     st.zoom = 1; // dimension labels are sized for the export, not the current zoom
-    try { body = roomMarkup(r, r.outline, { handles: false }) + r.desks.map(d => deskMarkup(d, { byId, exportMode: true })).join(''); }
+    try { body = planMarkup(r.background, r.background?.image) + roomMarkup(r, r.outline, { handles: false }) + r.desks.map(d => deskMarkup(d, { byId, exportMode: true })).join(''); }
     finally { st.zoom = keep; }
     const px = Math.min(1, 2400 / w);
     const xml = `<svg xmlns="${NS}" viewBox="${x} ${y} ${w} ${h}" width="${Math.round(w * px)}" height="${Math.round(h * px)}"><style>${EXPORT_CSS}</style><rect x="${x}" y="${y}" width="${w}" height="${h}" fill="#f3f5f9"/><text x="${b.x}" y="${b.y - pad - 80}" font-size="54" font-weight="800" fill="#0f172a">${esc(r.name)}</text><text x="${b.x}" y="${b.y - pad - 24}" font-size="30" fill="#64748b">${esc(sub)}</text>${body}</svg>`;
@@ -563,6 +728,8 @@
     });
     $('#seatingAddRoom').addEventListener('click', () => createRoom());
     $('#seatingCreateFirst').addEventListener('click', () => createRoom($('#seatingNewW').value, $('#seatingNewD').value));
+    $('#seatingFromPlan').addEventListener('click', () => pickPlan(true));
+    $('#seatingPlanFile').addEventListener('change', e => { const file = e.target.files?.[0]; if (file) importBackground(file, e.target.dataset.newRoom === '1' || !room()); });
     $('#seatingRoomList').addEventListener('click', e => { const b = e.target.closest('[data-seat-room]'); if (b) selectRoom(b.dataset.seatRoom); });
     panel.querySelector('.seating-tools').addEventListener('click', e => { const b = e.target.closest('[data-seat-tool]'); if (b && !b.disabled) setTool(b.dataset.seatTool); });
     $('#seatingGrid').addEventListener('change', e => { st.grid = Number(e.target.value) || 50; savePrefs(); paint(); });
@@ -576,11 +743,18 @@
       const t = e.target;
       if (t.dataset.seatField) updateDeskField(t.dataset.seatField, t);
       else if (t.dataset.roomField) updateRoomField(t.dataset.roomField, t);
+      else if (t.dataset.planField) updatePlanField(t.dataset.planField, t);
       else if (t.dataset.blockField) { const f = t.dataset.blockField; st.block[f] = f === 'layout' ? (t.value === 'rows' ? 'rows' : 'pairs') : clampInt(t.value, 0, f === 'aisle' ? 600 : 300, st.block[f]); savePrefs(); }
       else if (t.id === 'seatPeopleFilter') { st.filter = t.value; savePrefs(); renderPeopleList(); }
     });
-    inspector.addEventListener('input', e => { if (e.target.id === 'seatPeopleSearch') { st.search = e.target.value; renderPeopleList(); } });
+    inspector.addEventListener('input', e => {
+      if (e.target.id === 'seatPeopleSearch') { st.search = e.target.value; renderPeopleList(); }
+      else if (e.target.dataset.planField === 'opacity') $('#seatPlanLayer image')?.setAttribute('opacity', e.target.value);
+    });
+    inspector.addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.id === 'seatCalibM') { e.preventDefault(); applyCalibration(); } });
     inspector.addEventListener('click', e => {
+      const shape = e.target.closest('[data-seat-shape]');
+      if (shape && !shape.disabled) { applyShape(shape.dataset.seatShape); return; }
       const a = e.target.closest('[data-seat-action]'), open = e.target.closest('[data-seat-open]'), person = e.target.closest('[data-seat-position]');
       if (a && !a.disabled) action(a.dataset.seatAction);
       else if (open) openDrawer(open.dataset.seatOpen);
@@ -596,5 +770,5 @@
     new ResizeObserver(() => { if (currentView === 'seating' && room()) paint(); }).observe(c);
   }
   setup();
-  window.OrgFlowSeatingUI = { render, handleKey, describeSeat, fit, setTool, state: st };
+  window.OrgFlowSeatingUI = { render, handleKey, describeSeat, fit, setTool, importBackground, state: st };
 })();

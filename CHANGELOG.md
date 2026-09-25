@@ -4,6 +4,8 @@
 
 - **Seating plans**: a new **Seating** tab (`5`) for drawing rooms and assigning desks. Draw a room as a rectangle or corner by corner with right-angle snapping and live wall lengths, then reshape it by dragging corners. Add desks one at a time, or drag an area to fill it with benches of two or single rows. Move, rotate, duplicate and nudge desks on a 10 cm–1 m snap grid. Desks outside the walls or overlapping another desk are flagged. On touch screens, dragging empty floor pans the plan.
 - Desks belong to positions, so one shared floor plan shows the occupants of whichever scenario is active. Assign by dragging a name onto a desk, choosing from the desk panel, or **Auto-seat by team**. Seating someone who already has a desk moves them, and hot desks stay unassigned. The position editor shows the desk.
+- **Rooms of any shape**: rectangle, L, U and T presets; walls drawn with right-angle and 45° snapping; resizing keeps the shape.
+- **Floor plan images**: import or drop a PNG, JPEG, WebP or SVG plan under a room, set its scale from two points of a known distance, move it into place, adjust its opacity or hide it, and trace the walls over it. Plans are downscaled, embedded in the workspace and included in the room PNG export.
 - Seating CSV and room PNG export. The plan is saved in the workspace as an optional `seating` field. Older 2.x builds keep it unchanged as an unknown field. Shared-host conflict merges include it, and subtree-scoped members do not receive it.
 
 ## 2.5.0

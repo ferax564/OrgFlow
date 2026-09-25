@@ -8,6 +8,8 @@
 })(typeof globalThis !== 'undefined' ? globalThis : this, function () {
   'use strict';
   const Management = typeof module === 'object' && module.exports ? require('./management-core.js') : globalThis.OrgFlowManagement;
+  // Optional in the browser: the standalone share viewer embeds this file without seating support.
+  const Seating = typeof module === 'object' && module.exports ? require('./seating-core.js') : globalThis.OrgFlowSeating;
 
   const ROLE_TYPES = ['Head', 'Team Leader', 'Engineer', 'Specialist', 'Graduate', 'Intern'];
   const STATUSES = ['Approved', 'Not approved'];
@@ -36,7 +38,7 @@
   const KNOWN_POSITION_KEYS = new Set([...POSITION_FIELDS, 'fte', 'sortOrder', 'stacked', 'assignmentMode', 'reportingMode', 'externalId']);
   const KNOWN_EMPLOYEE_KEYS = new Set(['id', 'name', 'employeeNumber', 'photo', 'capacityFte', 'skills', 'externalId']);
   const KNOWN_SCENARIO_KEYS = new Set(['id', 'name', 'description', 'createdAt', 'updatedAt', 'baseScenarioId', 'archived', 'baseSnapshot', 'positions', 'employees', 'workflow', 'applicationBaseline', 'appliedBefore', 'appliedAfter', ...Management.COLLECTIONS]);
-  const KNOWN_WORKSPACE_KEYS = new Set(['version', 'schema', 'workspaceId', 'revision', 'lastCommittedAt', 'activeScenarioId', 'scenarios', 'positionLevels', 'namedViews', 'importProfiles']);
+  const KNOWN_WORKSPACE_KEYS = new Set(['version', 'schema', 'workspaceId', 'revision', 'lastCommittedAt', 'activeScenarioId', 'scenarios', 'positionLevels', 'namedViews', 'importProfiles', 'seating']);
   const KNOWN_SNAPSHOT_KEYS = new Set(['name', 'capturedAt', 'positions', 'employees']);
   const ALIASES = {
     id: ['positionid', 'id'],
@@ -394,6 +396,8 @@
     });
     if(new Set(planning.importProfiles.map(p=>p.name.toLowerCase())).size!==planning.importProfiles.length)throw new Error('Import profile names must be unique.');
     planning.namedViews = sanitizeNamedViews(input.namedViews, planning, todayStamp);
+    // Seating is workspace-wide (rooms are physical); desks reference stable position IDs so every scenario can show who sits where.
+    if (input.seating !== undefined) planning.seating = Seating ? Seating.sanitizeSeating(input.seating) : input.seating;
     return planning;
   }
   function migrateLegacy(legacy) {
@@ -831,7 +835,7 @@
       search: String(d.search || '').slice(0, 1000),
       asOf: isISODate(d.asOf || '') ? d.asOf : today,
       dateFilter: d.dateFilter === true,
-      view: ['chart', 'positions', 'compare', 'management'].includes(d.view) ? d.view : 'chart',
+      view: ['chart', 'positions', 'compare', 'management', 'seating'].includes(d.view) ? d.view : 'chart',
       zoom: typeof d.zoom === 'number' && d.zoom >= .15 && d.zoom <= 1.75 ? d.zoom : 1,
       showChartChanges: d.showChartChanges !== false,
       compareBaselineId: String(d.compareBaselineId || 'current').slice(0, 150),

@@ -750,7 +750,7 @@ function openDrawer(id,newPosition=false){
   $('#groupSuggestions').innerHTML=[...new Set(people.map(p=>p.group).filter(Boolean))].sort().map(g=>`<option value="${esc(g)}"></option>`).join('');
   $('#locationSuggestions').innerHTML=[...new Set(people.map(p=>p.location).filter(Boolean))].sort().map(g=>`<option value="${esc(g)}"></option>`).join('');
   $('#familySuggestions').innerHTML=[...new Set(people.map(p=>p.jobFamily).filter(Boolean))].sort().map(g=>`<option value="${esc(g)}"></option>`).join('');
-  $('#deleteBtn').classList.toggle('hidden',newPosition);$('#orderRow').classList.toggle('hidden',newPosition);$('#drawer').inert=false;$('#drawer').classList.add('open');updateAssignmentFields();updateOrderControls();drawerSnapshot=drawerFormState();setTimeout(()=>$('#fTitle').focus(),100);
+  $('#deleteBtn').classList.toggle('hidden',newPosition);$('#orderRow').classList.toggle('hidden',newPosition);$('#drawer').inert=false;$('#drawer').classList.add('open');updateAssignmentFields();updateOrderControls();window.OrgFlowSeatingUI?.describeSeat($('#drawerSeat'),newPosition?'':p.id);drawerSnapshot=drawerFormState();setTimeout(()=>$('#fTitle').focus(),100);
 }
 function updatePhotoNote(){
   const note=$('#photoNote');if(!note)return;
@@ -805,7 +805,7 @@ function deleteSelected(){
   try{updateScenario(s=>{s.positions=s.positions.filter(x=>x.id!==p.id);s.positions.forEach(x=>{if(x.managerId===p.id)x.managerId=p.managerId;if(x.secondaryManagerId===p.id)x.secondaryManagerId='';});},'Position removed; people records preserved');hidePositionEditor();}catch(error){showValidation(error.message);}
 }
 function setView(view){
-  if(!['chart','positions','compare','management'].includes(view))return;
+  if(!['chart','positions','compare','management','seating'].includes(view))return;
   if(drawerIsDirty()&&!confirm('Discard unsaved position edits and change view?'))return;
   hidePositionEditor();currentView=view;render();if(view==='chart')setTimeout(centerChart,0);
 }
@@ -815,7 +815,7 @@ function renderPlanningHeader(){
   $('#scenarioSelect').innerHTML=workspace.scenarios.filter(x=>!x.archived).map(x=>`<option value="${esc(x.id)}">${esc(x.name)}${x.id==='current'?' · live':''}</option>`).join('');$('#scenarioSelect').value=s.id;
   $$('.plan-tabs [data-view]').forEach(b=>{b.classList.toggle('active',b.dataset.view===currentView);b.setAttribute('aria-pressed',String(b.dataset.view===currentView));});
   $('.toolbar').classList.toggle('hidden',currentView!=='chart');$('#canvasWrap').classList.toggle('hidden',currentView!=='chart');
-  $('#positionsPanel').classList.toggle('hidden',currentView!=='positions');$('#comparePanel').classList.toggle('hidden',currentView!=='compare');$('#managementPanel').classList.toggle('hidden',currentView!=='management');$('.layout').classList.toggle('comparison-mode',currentView==='compare');
+  $('#positionsPanel').classList.toggle('hidden',currentView!=='positions');$('#comparePanel').classList.toggle('hidden',currentView!=='compare');$('#managementPanel').classList.toggle('hidden',currentView!=='management');$('#seatingPanel').classList.toggle('hidden',currentView!=='seating');$('.layout').classList.toggle('comparison-mode',currentView==='compare');$('.layout').classList.toggle('seating-mode',currentView==='seating');
   const note=$('#scenarioNote');note.innerHTML=s.id==='current'?'<b>Current organization.</b> Edits here change Current only. Create a scenario to explore a proposed structure.':`<b>Planning: ${esc(s.name)} · ${esc(s.workflow?.state||'Draft')}.</b> Current is unchanged.<label class="check"><input id="highlightChanges" type="checkbox" ${showChartChanges?'checked':''}> Highlight changes vs original baseline</label>`;
   $('#highlightChanges')?.addEventListener('change',e=>{showChartChanges=e.target.checked;render();});
   if(modelLoadError){$('#loadError').classList.remove('hidden');$('#loadError').textContent=`Workspace could not be loaded: ${modelLoadError} Saved data has not been overwritten. Open a backup from File → Open file… or File → Recovery.`;}
@@ -1363,6 +1363,7 @@ function render(){
   }else if(currentView==='positions')renderPositionTable();
   else if(currentView==='compare')renderComparison();
   else if(currentView==='management')window.OrgFlowPlanningUI?.render();
+  else if(currentView==='seating')window.OrgFlowSeatingUI?.render();
   if($('#drawer').classList.contains('open')&&selectedId)updateOrderControls();
   rememberPlanningView();renderSaveStatus();
 }
@@ -2036,6 +2037,7 @@ window.addEventListener('keydown',e=>{
   if((e.metaKey||e.ctrlKey)&&e.key.toLowerCase()==='o'&&!typing){e.preventDefault();restoreWorkspacePicker();return;}
   if((e.metaKey||e.ctrlKey)&&e.key.toLowerCase()==='s'){e.preventDefault();if(!typing)saveWorkspaceToDisk(e.shiftKey);return;}
   const openMenu=$('.menu.open');
+  if(currentView==='seating'&&!dialogStack.length&&!openMenu&&!$('#drawer').classList.contains('open')&&window.OrgFlowSeatingUI?.handleKey(e,typing))return;
   if(openMenu&&['ArrowDown','ArrowUp'].includes(e.key)){
     const items=[...openMenu.querySelectorAll('button,a[href],input')].filter(x=>!x.disabled&&x.getClientRects().length);
     const i=items.indexOf(document.activeElement);e.preventDefault();
@@ -2043,7 +2045,7 @@ window.addEventListener('keydown',e=>{
   }
   // Single-key shortcuts only while no field, editor or menu has the user's attention.
   if(!typing&&!e.metaKey&&!e.ctrlKey&&!e.altKey&&!openMenu&&!$('#drawer').classList.contains('open')&&!$('.modal-backdrop.open')){
-    const views={1:'chart',2:'positions',3:'compare',4:'management'};
+    const views={1:'chart',2:'positions',3:'compare',4:'management',5:'seating'};
     if(e.key==='?'){e.preventDefault();openDialog('shortcutsModal');return;}
     if(e.key==='/'){e.preventDefault();if($('.layout').classList.contains('sidebar-collapsed'))setSidebarCollapsed(false);else if(compactLayout())setFiltersOpen(true);$('#search').focus();return;}
     if(e.key==='['){e.preventDefault();toggleFiltersPanel();return;}

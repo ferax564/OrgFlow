@@ -209,3 +209,25 @@ test('floor plan backgrounds validate, calibrate and survive history stripping',
   const planning = OrgFlow.validatePlanning({ ...harbor.planning, seating: { rooms: [{ ...room(), background: bg }] } });
   assert.equal(planning.seating.rooms[0].background.image, PIXEL, 'round-trips through workspace validation');
 });
+
+test('outlines whose walls touch or reuse a corner are rejected', () => {
+  assert.throws(() => S.sanitizeSeating({ rooms: [room({ outline: [[0, 0], [200, 0], [200, 200], [100, 0], [0, 200]] })] }), /cross/, 'a corner ends on the first wall (T-junction)');
+  assert.throws(() => S.sanitizeSeating({ rooms: [room({ outline: [[0, 0], [400, 0], [400, 400], [200, 400], [200, 0], [0, 400]] })] }), /cross/);
+  assert.throws(() => S.sanitizeSeating({ rooms: [room({ outline: [[0, 0], [400, 0], [400, 200], [200, 200], [400, 400], [0, 400], [200, 200]] })] }), /cross/, 'a corner used twice');
+  assert.equal(S.selfIntersects([[0, 0], [1000, 0], [1000, 400], [500, 400], [500, 800], [0, 800]]), false);
+  for (const kind of S.SHAPES) assert.equal(S.selfIntersects(S.shapeOutline(kind, 100, 100, 1200, 900)), false, kind);
+});
+
+test('undo snapshots store each plan image once', () => {
+  const store = { ids: new Map(), data: [] };
+  const doc = img => JSON.stringify({ seating: { rooms: [{ id: 'R1', background: { image: img, x: 0 } }, { id: 'R2', background: { image: PIXEL, x: 5 } }] } });
+  const a = S.packPlanImages(doc(PIXEL), store), b = S.packPlanImages(doc(PIXEL), store);
+  assert.equal(store.data.length, 1, 'the same image is kept once across snapshots');
+  assert.equal(a.includes('base64'), false);
+  assert.equal(S.unpackPlanImages(b, store), doc(PIXEL));
+  const other = PIXEL.replace('iVBOR', 'iVBOS');
+  S.packPlanImages(doc(other), store);
+  assert.equal(store.data.length, 2);
+  assert.equal(S.unpackPlanImages('{"image":"orgflow-plan:99"}', store), '{"image":""}', 'an unknown reference drops the image rather than failing');
+  assert.equal(S.packPlanImages('{"photo":"data:image/png;base64,AAAA"}', store), '{"photo":"data:image/png;base64,AAAA"}', 'only plan images are packed');
+});

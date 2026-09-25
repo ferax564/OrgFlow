@@ -67,12 +67,19 @@
     const o1 = o(a, b, c), o2 = o(a, b, d), o3 = o(c, d, a), o4 = o(c, d, b);
     return o1 * o2 < 0 && o3 * o4 < 0;
   }
-  /** True when two non-adjacent wall segments intersect, i.e. the outline folds over itself. */
+  /** True when two non-adjacent walls cross or touch (a corner on another wall, or a corner used twice),
+   *  i.e. the outline is not a simple polygon. Neighbouring walls may share only their common corner. */
   function selfIntersects(points) {
-    const n = points.length;
+    const n = points.length, on = (p, a, b) => onSegment(p[0], p[1], a[0], a[1], b[0], b[1]);
     for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) {
-      if (j === i + 1 || (i === 0 && j === n - 1)) continue;
-      if (segmentsCross(points[i], points[(i + 1) % n], points[j], points[(j + 1) % n])) return true;
+      const a = points[i], b = points[(i + 1) % n], c = points[j], d = points[(j + 1) % n];
+      if (j === i + 1 || (i === 0 && j === n - 1)) {
+        // Adjacent walls: fold-backs overlap beyond the shared corner.
+        const shared = j === i + 1 ? b : a, far1 = j === i + 1 ? a : b, far2 = j === i + 1 ? d : c;
+        if (n > 3 && (on(far1, c, d) || on(far2, a, b)) && !(far1[0] === shared[0] && far1[1] === shared[1])) return true;
+        continue;
+      }
+      if (segmentsCross(a, b, c, d) || on(a, c, d) || on(b, c, d) || on(c, a, b) || on(d, a, b)) return true;
     }
     return false;
   }
@@ -240,6 +247,19 @@
     const f = real / measured;
     return { ...bg, x: Math.round(a.x - (a.x - bg.x) * f), y: Math.round(a.y - (a.y - bg.y) * f), w: Math.round(bg.w * f), h: Math.round(bg.h * f) };
   }
+  /** Undo snapshots are whole workspace strings; plan images inside them are swapped for references
+   *  into `store` so repeated edits keep one copy of each image instead of one per snapshot. */
+  const PLAN_IMAGE_IN_JSON = /"image":"(data:image\/(?:png|jpeg|webp);base64,[A-Za-z0-9+/]+=*)"/g;
+  function packPlanImages(text, store) {
+    return String(text).replace(PLAN_IMAGE_IN_JSON, (_, data) => {
+      let id = store.ids.get(data);
+      if (id === undefined) { id = store.data.length; store.ids.set(data, id); store.data.push(data); }
+      return `"image":"orgflow-plan:${id}"`;
+    });
+  }
+  function unpackPlanImages(text, store) {
+    return String(text).replace(/"image":"orgflow-plan:(\d+)"/g, (_, id) => `"image":"${store.data[Number(id)] || ''}"`);
+  }
   /** Local history copies drop plan images; put them back from the live workspace when a room still has one. */
   function restoreBackgrounds(target, source) {
     const byId = new Map((source?.rooms || []).filter(r => r.background?.image).map(r => [r.id, r.background.image]));
@@ -363,6 +383,7 @@
   }
 
   return {
+    packPlanImages, unpackPlanImages,
     MAX_BACKGROUND_CHARS, MAX_BACKGROUND_TOTAL, SHAPES, sanitizeBackground, snapWallPoint, shapeOutline, scaleOutline, calibrateBackground, restoreBackgrounds,
     MAX_ROOMS, MAX_DESKS_PER_ROOM, MAX_DESKS, MAX_POINTS, MAX_COORD, MIN_DESK, MAX_DESK, DESK_DEFAULTS, BLOCK_DEFAULTS, CSV_COLUMNS,
     makeId, snap, rectOutline, bounds, polygonArea, pointInPolygon, selfIntersects, simplifyOutline,

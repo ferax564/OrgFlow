@@ -492,9 +492,13 @@ function persistLocalHistory(planningText,note){
     }
   }catch{}
 }
+// Undo entries reference floor-plan images kept once here instead of copying megabytes per step.
+const undoPlanImages={ids:new Map(),data:[]};
+function packUndo(text){return OrgFlowSeating.packPlanImages(text,undoPlanImages);}
 function applyPlanningSnapshot(text,message){
   if(enterpriseBlocksWrite())throw new Error('You cannot edit this organization.');
   assertCacheCurrent();
+  text=OrgFlowSeating.unpackPlanImages(text,undoPlanImages);
   const checked=validatePlanning(touchWorkspace(JSON.parse(text)));
   for(const previous of workspace.scenarios){
     const target=checked.scenarios.find(s=>s.id===previous.id);
@@ -511,19 +515,19 @@ function undoChange(){
   if(!undoStack.length||enterpriseBlocksWrite())return;
   if(drawerIsDirty()&&!confirm('Discard unsaved position edits before Undo?'))return;
   const previous=lastSavedPlanningText, target=undoStack.at(-1);
-  try{applyPlanningSnapshot(target,'Undone');undoStack.pop();redoStack.push(previous);updateUndoButtons();}
+  try{applyPlanningSnapshot(target,'Undone');undoStack.pop();redoStack.push(packUndo(previous));updateUndoButtons();}
   catch(error){toast(error.message);}
 }
 function redoChange(){
   if(!redoStack.length||enterpriseBlocksWrite())return;
   if(drawerIsDirty()&&!confirm('Discard unsaved position edits before Redo?'))return;
   const previous=lastSavedPlanningText, target=redoStack.at(-1);
-  try{applyPlanningSnapshot(target,'Redone');redoStack.pop();undoStack.push(previous);updateUndoButtons();}
+  try{applyPlanningSnapshot(target,'Redone');redoStack.pop();undoStack.push(packUndo(previous));updateUndoButtons();}
   catch(error){toast(error.message);}
 }
 function recordUndoFrom(previousText,note){
   if(!previousText||previousText===lastSavedPlanningText)return;
-  undoStack.push(previousText);
+  undoStack.push(packUndo(previousText));
   if(undoStack.length>50)undoStack.shift();
   redoStack=[];
   persistLocalHistory(previousText,note);

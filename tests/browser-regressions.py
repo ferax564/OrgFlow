@@ -490,6 +490,22 @@ class BrowserTests(unittest.TestCase):
         self.page.wait_for_function("()=>workspace.seating.rooms[0].background.image.startsWith('data:image/')")
         with self.page.expect_download() as info:self.click('#seatingPngBtn')
         self.assertEqual(Path(info.value.path()).read_bytes()[:4],b'\x89PNG')
+        # Undo keeps working with packed plan images.
+        before=self.ev("workspace.seating.rooms[0].background.opacity")
+        self.page.locator('#seatPlanOpacity').fill('0.8');self.page.wait_for_function("()=>workspace.seating.rooms[0].background.opacity===0.8")
+        self.page.keyboard.press('Control+z')
+        self.page.wait_for_function("o=>workspace.seating.rooms[0].background.opacity===o&&workspace.seating.rooms[0].background.image.startsWith('data:image/')",arg=before)
+        self.assertFalse(self.ev("undoStack.some(t=>t.includes('base64,'))"),'undo entries reference the plan instead of copying it')
+        # Dropping an image on an existing room replaces its plan (the canvas must not swallow file drops).
+        if self.ev("()=>{try{const dt=new DataTransfer();dt.items.add(new File(['x'],'x.svg'));return new DragEvent('drop',{dataTransfer:dt}).dataTransfer?.files.length===1}catch{return false}}"):
+            old=self.ev("workspace.seating.rooms[0].background.image.length")
+            self.ev("""svg=>{const dt=new DataTransfer();dt.items.add(new File([svg.replace('#c00','#00c')],'annex.svg',{type:'image/svg+xml'}));
+              const target=document.querySelector('#seatingSvg'),opts={dataTransfer:dt,bubbles:true,cancelable:true};
+              target.dispatchEvent(new DragEvent('dragover',opts));target.dispatchEvent(new DragEvent('drop',opts));}""",self.PLAN_SVG.decode())
+            self.page.wait_for_function("n=>workspace.seating.rooms[0].background.image.length!==n",arg=old)
+            self.assertEqual(self.ev("workspace.seating.rooms.length"),1,'replaces the plan of the selected room')
+            self.assertEqual(self.ev("OrgFlowSeatingUI.state.plan?.mode"),'calibrate')
+            self.page.keyboard.press('Escape')
         self.click('[data-seat-action="plan-remove"]')
         self.page.wait_for_function("()=>!workspace.seating.rooms[0].background")
     def test_34_seating_non_rectangular_rooms(self):

@@ -713,7 +713,10 @@
     s.addEventListener('pointerleave', () => { if (!st.drag && st.ghost && st.tool === 'desk') { st.ghost = null; paintOverlay(); } });
     s.addEventListener('dblclick', onDoubleClick);
     c.addEventListener('wheel', e => { if (!(e.ctrlKey || e.metaKey) || !room()) return; e.preventDefault(); setZoom(st.zoom * (e.deltaY < 0 ? 1.1 : 1 / 1.1)); }, { passive: false });
+    // Only name drags are handled here; files (floor plans, workspaces) go on to the window-level importer.
+    const positionDrag = e => [...(e.dataTransfer?.types || [])].includes('text/x-orgflow-position');
     s.addEventListener('dragover', e => {
+      if (!positionDrag(e)) return;
       const g = document.elementFromPoint(e.clientX, e.clientY)?.closest('[data-desk-id]'), found = g && S.findDesk(seating(), g.dataset.deskId);
       const id = found && !found.desk.hotDesk && editable() ? found.desk.id : '';
       if (id) { e.preventDefault(); e.dataTransfer.dropEffect = 'link'; }
@@ -721,6 +724,7 @@
     });
     s.addEventListener('dragleave', e => { if (!s.contains(e.relatedTarget)) { st.dropDesk = ''; $$('#seatDeskLayer .drop-target').forEach(x => x.classList.remove('drop-target')); } });
     s.addEventListener('drop', e => {
+      if (!positionDrag(e)) return;
       e.preventDefault();
       const id = st.dropDesk, positionId = e.dataTransfer.getData('text/x-orgflow-position');
       st.dropDesk = '';

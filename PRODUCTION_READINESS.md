@@ -1,6 +1,6 @@
-# Production readiness — 2.5.0
+# Production readiness — 2.6.0
 
-2.5.0 is a stable release shipped **without code signing**, at the owner's decision, while signing certificates are not yet available. The code and automated release gates are hardened; the pipeline signs and verifies automatically as soon as the signing secrets are configured. Until then Windows SmartScreen and macOS Gatekeeper warn on first open, and macOS builds cannot self-update.
+2.6.0 is a stable release shipped **without code signing**, at the owner's decision, while signing certificates are not yet available. The code and automated release gates are hardened; the pipeline signs and verifies automatically as soon as the signing secrets are configured. Until then Windows SmartScreen and macOS Gatekeeper warn on first open, and macOS builds cannot self-update.
 
 ## Review findings and resolutions
 

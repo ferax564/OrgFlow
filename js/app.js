@@ -60,6 +60,8 @@ function setupFilterChips(host,values,active,onToggle){
     host.appendChild(b);
   });
 }
+let knownTypes=null;
+function sameList(a,b){return Array.isArray(a)&&Array.isArray(b)&&a.length===b.length&&a.every((value,index)=>value===b[index]);}
 function setupChips(){
   const types=allPositionTypes();
   setupFilterChips($('#roleChips'),types,activeRoles);
@@ -69,11 +71,16 @@ function setupChips(){
   activeSites=new Set(mergeChipSelection(activeSites,sites,knownSites));
   knownGroups=groups.slice();
   knownSites=sites.slice();
+  knownTypes=types.slice();
   setupFilterChips($('#groupChips'),groups,activeGroups);
   setupFilterChips($('#siteChips'),sites,activeSites);
   setupHiringChips();
   renderNamedViews();
   syncBulkBar();
+}
+function refreshChipsForData(){
+  if(sameList(knownGroups,allGroups())&&sameList(knownSites,allSites())&&sameList(knownTypes,allPositionTypes()))return;
+  setupChips();
 }
 function dateOk(p){if(!$('#dateFilter').checked)return true;const d=$('#asOf').value;if(!d)return true;return(!p.startDate||p.startDate<=d)&&(!p.endDate||p.endDate>=d)}
 function buildFilteredForest(){
@@ -1346,7 +1353,7 @@ function scheduleChartViewport(){if(chartViewportFrame)return;chartViewportFrame
 wrap.addEventListener('scroll',scheduleChartViewport,{passive:true});
 function render(){
   if(!workspace)return;
-  syncProjection();renderPlanningHeader();syncChartDisplayUi();
+  syncProjection();refreshChipsForData();renderPlanningHeader();syncChartDisplayUi();
   const t=totals({positions:people},p=>baseVisible(p));
   $('#countVisible').textContent=t.positions;$('#countTotal').textContent=t.filled;$('#countApproved').textContent=t.open;$('#countOpen').textContent=t.recruiting;$('#countFte').textContent=fteText(t.fte);$('#countApprovedFte').textContent=fteText(t.approvedFte);
   syncDateFilterUi();$('#zoomLabel').textContent=Math.round(zoom*100)+'%';renderFilterStrip();renderSideBadges();syncBulkBar();renderSaveStatus();

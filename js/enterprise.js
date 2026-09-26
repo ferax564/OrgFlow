@@ -7,6 +7,13 @@
   let timer=null,chain=Promise.resolve(),baseline=null,dirty=false,conflict=null;
   const fingerprint=doc=>JSON.stringify({planning:{...doc.planning,activeScenarioId:undefined},branding:doc.branding,palette:doc.palette,theme:doc.theme});
   function status(text){api.saveState=text;document.body.classList.toggle('enterprise-busy',api.busy);renderSaveStatus();const b=document.getElementById('serverSaveRetry');if(b){b.hidden=!['Save failed','Conflict'].includes(text);b.textContent=text==='Conflict'?'Resolve save conflict':'Retry server save';}}
+  // The snapshot applied while writes were blocked paints seating controls as
+  // disabled. Repaint only after both gates are open again.
+  function releaseEnterpriseUi(){
+    document.body.classList.remove('enterprise-busy');
+    if(typeof renderSaveStatus==='function')renderSaveStatus();
+    if(!api.applying&&!api.busy&&typeof render==='function')render();
+  }
   async function jsonFetch(url,options={}){const res=await fetch(url,{credentials:'same-origin',...options});const body=await res.json().catch(()=>({}));return{res,body};}
   async function takeOver(){
     const ctrl=new AbortController(),timeout=setTimeout(()=>ctrl.abort(),2000);
@@ -36,7 +43,7 @@
       // Mark the host ready only after the workspace is in memory. Callers
       // that wait on enabled+version otherwise edit a still-null workspace.
       api.enabled=true;api.session=body.session;api.version=version;api.canWrite=Boolean(body.session?.canWrite);api.canExport=Boolean(body.session?.canExport);api.isAdmin=Boolean(body.session?.isAdmin);
-      baseline=structuredClone(window.enterpriseWorkspacePayload());applyChrome(body.session);status('Saved');
+      baseline=structuredClone(window.enterpriseWorkspacePayload());applyChrome(body.session);status('Saved');releaseEnterpriseUi();
     }catch(error){api.applying=false;api.enabled=true;api.canWrite=false;api.canExport=false;const el=document.getElementById('loadError');el.classList.remove('hidden');el.textContent=error.message;}
   }
   function applyChrome(session){
@@ -66,7 +73,7 @@
       if(!res.ok)throw new Error(body.error||'Save failed.');
       accept(body);dirty=false;status('Saved');
     }catch(error){if(api.saveState!=='Conflict'){status('Save failed');await persistPending(payload,'error');}throw error;}
-    finally{api.busy=false;document.body.classList.remove('enterprise-busy');renderSaveStatus();}
+    finally{api.busy=false;releaseEnterpriseUi();}
   }
   function accept(body,{preserveView=true}={}){
     api.version=body.version;api.applying=true;
@@ -87,7 +94,7 @@
       if(!res.ok){if(res.status===409){conflict={base:structuredClone(baseline),local:structuredClone(window.enterpriseWorkspacePayload()),remote:null,resolutions:{},page:0};dirty=true;status('Conflict');}throw new Error(body.error||'Decision was not saved.');}
       accept(body,{preserveView:action!=='rollback'});dirty=false;undoStack=[];redoStack=[];updateUndoButtons();status('Saved');
     }catch(error){if(api.saveState!=='Conflict')status(dirty?'Save failed':'Saved');throw error;}
-    finally{api.busy=false;document.body.classList.remove('enterprise-busy');renderSaveStatus();}
+    finally{api.busy=false;releaseEnterpriseUi();}
   }
   async function openConflict(){
     if(!conflict)return;
@@ -111,7 +118,7 @@
       if(res.status===409){await openConflict();throw new Error('The server changed again. Review the refreshed conflict list.');}
       if(!res.ok)throw new Error(body.error||'Reconciled save failed.');
       accept(body);dirty=false;conflict=null;undoStack=[];redoStack=[];updateUndoButtons();status('Saved');closeDialog('serverConflictModal',true);toast('Independent edits combined and saved.');
-    }finally{api.busy=false;document.body.classList.remove('enterprise-busy');renderSaveStatus();}
+    }finally{api.busy=false;releaseEnterpriseUi();}
   }
   async function recordExport(kind){
     if(!api.enabled)return true;if(!api.canExport){toast('You are not allowed to export this organization.');return false;}

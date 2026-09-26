@@ -153,6 +153,13 @@ test('mergeChipSelection keeps a partial group filter instead of turning every c
   );
 });
 
+test('a group that leaves and returns stays selected when every remaining chip was on', () => {
+  const both = ['Leadership', 'No group'];
+  const afterUndo = OrgFlow.mergeChipSelection(both, ['Leadership'], both);
+  assert.deepEqual(afterUndo, ['Leadership']);
+  assert.deepEqual(OrgFlow.mergeChipSelection(afterUndo, both, ['Leadership']), both);
+});
+
 test('sanitizeChipFilters keeps new role types when every legacy type was selected', () => {
   const all = OrgFlow.ROLE_TYPES;
   const legacy = OrgFlow.LEGACY_ROLE_TYPES;

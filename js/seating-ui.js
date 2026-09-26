@@ -234,7 +234,11 @@
     $('#seatingCreateFirst').disabled = $('#seatingFromPlan').disabled = !editable();
     if (st.plan && !r?.background) st.plan = null;
     $('#seatingCsvBtn').disabled = $('#seatingPngBtn').disabled = !list.length;
-    if (!editable() && st.tool !== 'select') setTool('select', false);
+    // A save round-trip briefly blocks writes. Keep the active tool; only a real
+    // read-only session (viewer, scoped member, failed load) falls back to Select.
+    const gate = window.OrgFlowEnterprise;
+    const transientLock = Boolean(gate?.enabled && gate.canWrite && (gate.busy || gate.applying));
+    if (!editable() && !transientLock && st.tool !== 'select') setTool('select', false);
     if (r && st.fitted !== r.id && canvas().clientWidth) fit(); else paint();
     toolHint();
     renderLegend(r, byId);

@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="color-scheme" content="light" />
+  <meta name="theme-color" content="#4338ca" />
+  <meta name="description" content="OrgFlow is a private, in-browser organization chart and workforce-planning app. Positions stay separate from people. Drag reporting lines, compare scenarios, and export board-pack PDFs or shareable HTML. The public site never uploads your roster. An optional Node host can share one org among signed-in members." />
+  <meta property="og:title" content="OrgFlow — Private org charts, in the browser" />
+  <meta property="og:description" content="Plan headcount, compare scenarios and export branded charts. On the public site, data stays in this browser until you export." />
+  <meta property="og:type" content="website" />
+  <meta property="og:image" content="examples/harbor-and-co/chart.png" />
+  <title>OrgFlow — Private org charts, in the browser</title>
+  <link rel="canonical" href="./" />
+  <link rel="icon" href="assets/favicon.svg" type="image/svg+xml" />
+  <link rel="apple-touch-icon" href="assets/apple-touch-icon.svg" />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="stylesheet" href="css/site.css" />
+</head>
+<body>
+  <a class="skip" href="#how">Skip to content</a>
+  <div class="wrap">
+    <nav class="site-nav sans">
+      <a class="mark" href="./"><span aria-hidden="true">▦</span>OrgFlow</a>
+      <div class="nav-links">
+        <a href="#how">How it works</a>
+        <a href="#features">Features</a>
+        <a href="#examples">Examples</a>
+        <a href="#run">Run it</a>
+        <a href="app.html">Open app</a>
+      </div>
+    </nav>
+
+    <header class="hero">
+      <div>
+        <p class="kicker">Private org charts · positions stay seats</p>
+        <h1>See the company.<br>Keep the names on this device.</h1>
+        <p class="lede">OrgFlow is an interactive org chart for positions, people and scenarios. Drag a card onto a new manager or a sibling, filter by group and site, save a named view, then export a board pack, A3 pages or a shareable HTML snapshot — all in the browser you already have open.</p>
+        <div class="hero-actions">
+          <a class="btn primary" href="app.html">Open the planner</a>
+          <a class="btn" href="#examples">Look at the samples</a>
+        </div>
+        <p class="hero-note">No account on the public site. Harbor &amp; Co loads as a local sample. Clearing site data removes the workspace, so export a JSON backup first.</p>
+        <p class="live-row sans">
+          <a class="live-chip" href="https://ferax564.github.io/OrgFlow/">GitHub Pages</a>
+          <a class="live-chip" href="https://github.com/ferax564/OrgFlow">Source</a>
+          <a class="live-chip" href="#run">Downloads</a>
+        </p>
+      </div>
+      <figure class="frame">
+        <img src="examples/harbor-and-co/chart.png" alt="Harbor &amp; Co organization chart with product, engineering and design teams" />
+        <figcaption>Harbor &amp; Co — a fictional product company used as the default sample.</figcaption>
+      </figure>
+    </header>
+
+    <section id="how">
+      <h2 class="section-title">How a planning session goes</h2>
+      <p class="section-copy">This page is the product documentation. The planner is <a href="app.html">app.html</a>. On GitHub Pages the app is static: nothing is posted unless you download a file. A separate Node host can share one org among signed-in members.</p>
+      <div class="steps">
+        <article class="step">
+          <h3>1. Load a shape</h3>
+          <p>First visit opens a tour: Harbor &amp; Co, Northstar Commerce, or a smaller starter (startup, agency, nonprofit). Or start blank.</p>
+        </article>
+        <article class="step">
+          <h3>2. Edit Current or a scenario</h3>
+          <p>Drag a card onto a new manager, or onto a sibling to reorder. ⌘/Ctrl-click to bulk-edit. Vacant seats stay on the tree. Create a scenario so Current is untouched.</p>
+        </article>
+        <article class="step">
+          <h3>3. Export what you need</h3>
+          <p>PNG or per-group ZIP for slides. Board-pack or Print / A3 PDF for a pack. Shareable HTML that opens without OrgFlow. File → Save keeps a JSON file up to date.</p>
+        </article>
+      </div>
+    </section>
+
+    <section id="features">
+      <h2 class="section-title">Built for the messy middle of planning</h2>
+      <p class="section-copy">Positions are not people. Vacant seats stay on the chart. Scenarios copy Current instead of overwriting it.</p>
+      <div class="grid">
+        <article class="card">
+          <h3>Drag reporting and order</h3>
+          <p>Drop a card onto another manager to re-parent. Drop onto a sibling to reorder. Cycles are blocked. Undo puts it back.</p>
+        </article>
+        <article class="card">
+          <h3>Faces and richer cards</h3>
+          <p>Optional local photos, location, cost center and job family on the card and in the position drawer.</p>
+        </article>
+        <article class="card">
+          <h3>Undo and local history</h3>
+          <p>⌘Z or Ctrl+Z for this session. Earlier versions stay in this browser without photos or logos, so storage stays small.</p>
+        </article>
+        <article class="card">
+          <h3>Board-pack and A3 PDF</h3>
+          <p>A cover sheet plus the current chart, or tiled A3 landscape pages of the visible view — generated as a JPEG PDF with no extra library.</p>
+        </article>
+        <article class="card">
+          <h3>Shareable HTML</h3>
+          <p>A self-contained snapshot that opens as a file. The workspace JSON is inside, ready to restore in OrgFlow.</p>
+        </article>
+        <article class="card">
+          <h3>Dotted lines</h3>
+          <p>Matrix reporting is a second manager on the position. It draws dashed; it does not change the tree layout.</p>
+        </article>
+        <article class="card">
+          <h3>Tour and templates</h3>
+          <p>First Light, Lumen Studio and Cedar &amp; Kind sit beside Harbor &amp; Co and Northstar Commerce.</p>
+        </article>
+        <article class="card">
+          <h3>Stacked teams</h3>
+          <p>Last-level managers stack reports in a column under the manager, with a left-side trunk from the card’s middle. Move siblings up or down. Spacing and the dotted canvas are yours to change.</p>
+        </article>
+        <article class="card">
+          <h3>Card display</h3>
+          <p>Long names wrap and the card grows with them. Hide FTE, site, group, type, approval or hiring. Create a tag like Engineer, Graduate or Intern. Heads can show people, span and vacancy counts.</p>
+        </article>
+        <article class="card">
+          <h3>Group and site chips</h3>
+          <p>Turn a group or location off to take it off the chart and the register. Blank values sit under No group / No site. Filters persist with the current view.</p>
+        </article>
+        <article class="card">
+          <h3>Bulk edit</h3>
+          <p>⌘/Ctrl-click or Shift-click cards, or use checkboxes on Positions, then apply type, group, site or approval to the selection.</p>
+        </article>
+        <article class="card">
+          <h3>Named views</h3>
+          <p>Save filter, zoom and card-display presets on the workspace. They restore with the JSON backup.</p>
+        </article>
+        <article class="card">
+          <h3>Path to the top</h3>
+          <p>Hover a card or search a name to highlight the reporting chain to the root. The rest of the chart dims.</p>
+        </article>
+        <article class="card">
+          <h3>One File menu</h3>
+          <p>New, Open, Save and Save as… live together, with ⌘S / ⌘O shortcuts, recent files and drag-and-drop to open. A status chip shows whether your work is in a file or only in this browser. The public site never uploads your roster.</p>
+        </article>
+        <article class="card">
+          <h3>Private by default</h3>
+          <p>Logos and photos are resized locally. The public site hosts the program only — not your roster.</p>
+        </article>
+      </div>
+    </section>
+
+    <section id="using">
+      <h2 class="section-title">In the planner</h2>
+      <p class="section-copy">Filters on the chart do not change Compare. Loading a sample resets chips so a leftover filter cannot hide the new tree. Named views remember the chips you want.</p>
+      <ul class="use-list">
+        <li><strong>Reporting</strong><span>Solid line = manager on the position. Dashed line = optional dotted-line manager. Drag onto a card to change the solid line; drop on a sibling to reorder.</span></li>
+        <li><strong>People</strong><span>A filled seat has a person. Recruiting and vacant seats have no person record. Unassigning keeps the person in the directory.</span></li>
+        <li><strong>Scenarios</strong><span>Create a named copy of Current (or of another scenario). Compare is ID-matched, full snapshots, all dates.</span></li>
+        <li><strong>Filters and views</strong><span>A tidy, collapsible filters panel shows what is active at a glance. Type, hiring, approval, group and site chips apply to the chart and the Positions register. Search and hover highlight the path to the top. Save a named view for a board pack or a team slice.</span></li>
+        <li><strong>Filter bar</strong><span>Active search, chips and the date filter stay pinned above the chart, the register and Compare — with a one-click “clear all”.</span></li>
+        <li><strong>Dates</strong><span>The date filter is off until you turn it on. Future-dated roles stay visible otherwise.</span></li>
+        <li><strong>Backup</strong><span>Workspace JSON is the portable copy: every scenario, branding, palette, named views and the current view. File → Save overwrites the linked file when the browser allows it. CSV is the active scenario only.</span></li>
+      </ul>
+    </section>
+
+    <section id="examples">
+      <h2 class="section-title">Two full companies, plus smaller starters</h2>
+      <p class="section-copy">Open the app and pick a sample or template on the Start page. Harbor &amp; Co is 17 seats with an FY27 growth scenario. Northstar Commerce is 14 seats with Peak season.</p>
+      <div class="shots">
+        <figure class="frame">
+          <img src="examples/harbor-and-co/positions.png" alt="Harbor &amp; Co position register" />
+          <figcaption>Harbor &amp; Co position register — seats stay visible before someone joins.</figcaption>
+        </figure>
+        <figure class="frame">
+          <img src="examples/northstar-commerce/compare.png" alt="Northstar Commerce scenario comparison" />
+          <figcaption>Northstar Commerce — Peak season compared with Current.</figcaption>
+        </figure>
+      </div>
+      <div class="grid" style="margin-top:16px">
+        <article class="card">
+          <h3>First Light</h3>
+          <p>Startup · 8 seats. Product Manager dotted-line to Head of Engineering. One recruiting engineer.</p>
+        </article>
+        <article class="card">
+          <h3>Lumen Studio</h3>
+          <p>Agency · 9 seats. Producer dotted-line to Creative Director.</p>
+        </article>
+        <article class="card">
+          <h3>Cedar &amp; Kind</h3>
+          <p>Nonprofit · 7 seats. Partnerships dotted-line to the Executive Director.</p>
+        </article>
+      </div>
+    </section>
+
+    <section id="run">
+      <h2 class="section-title">Ways to run OrgFlow</h2>
+      <p class="section-copy">The public site never sees your roster. The desktop build is a double-click app with no installer. The Node host is optional, and it is a different process — not GitHub Pages.</p>
+      <div class="modes">
+        <article class="mode">
+          <p class="tag">This site</p>
+          <h3>In the browser</h3>
+          <p>Open <a href="app.html">app.html</a> on this site. Names, photos and reporting lines stay in <span class="sans">localStorage</span> on this device. No login. No backend.</p>
+          <p class="mode-cmd sans">python3 -m http.server 4173</p>
+        </article>
+        <article class="mode">
+          <p class="tag">This device</p>
+          <h3>Desktop app</h3>
+          <p>A Windows <span class="sans">.exe</span>, macOS <span class="sans">.app</span>, or Linux AppImage. Double-click to open — no installer, no Program Files. The workspace stays on this computer.</p>
+          <div class="hero-actions">
+            <a class="btn" href="https://github.com/ferax564/OrgFlow/releases/download/v2.6.0/OrgFlow-2.6.0-windows.exe" aria-label="Download OrgFlow 2.6.0 for Windows">Windows <span class="dl-version">v2.6.0</span></a>
+            <a class="btn" href="https://github.com/ferax564/OrgFlow/releases/download/v2.6.0/OrgFlow-2.6.0-mac.zip" aria-label="Download OrgFlow 2.6.0 for macOS">macOS <span class="dl-version">v2.6.0</span></a>
+            <a class="btn" href="https://github.com/ferax564/OrgFlow/releases/download/v2.6.0/OrgFlow-2.6.0-linux.AppImage" aria-label="Download OrgFlow 2.6.0 for Linux">Linux <span class="dl-version">v2.6.0</span></a>
+          </div>
+          <p class="mode-cmd sans"><a href="https://github.com/ferax564/OrgFlow/releases">GitHub → Releases</a></p>
+        </article>
+        <article class="mode">
+          <p class="tag">Optional</p>
+          <h3>Enterprise host</h3>
+          <p>One shared workspace on your machine or in a VPC. Sign-in, admin / editor / viewer, optional subtree scope, audit log, and MCP read tools. Keycloak is not required locally.</p>
+          <p class="mode-cmd sans">npm run start:enterprise</p>
+        </article>
+      </div>
+    </section>
+
+    <aside class="privacy">
+      <h2>Your roster does not need to leave the laptop.</h2>
+      <p>On this public site, OrgFlow is static HTML, CSS and JavaScript. GitHub Pages hosts the program only. People names, photos and reporting lines stay in <span class="sans">localStorage</span> until you export CSV, JSON, PNG, PDF or HTML. The optional enterprise host is separate: after sign-in it stores one shared workspace on that machine.</p>
+    </aside>
+
+    <div class="cta-band">
+      <div>
+        <h2>Open the planner in this origin.</h2>
+        <p>Same folder as this page. On the public site, data stays in this browser. Use File → Save or Download backup before you clear site data.</p>
+      </div>
+      <a class="btn primary" href="app.html">Open the planner</a>
+    </div>
+
+    <footer>
+      <span>OrgFlow · MIT license · <a href="https://github.com/ferax564/OrgFlow">Source and README</a></span>
+      <span><a href="app.html">Planner</a> · <a href="https://ferax564.github.io/OrgFlow/">GitHub Pages</a></span>
+    </footer>
+  </div>
+  <script src="js/site-enterprise.js"></script>
+</body>
+</html>

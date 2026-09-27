@@ -24,18 +24,5 @@ try{
       run('spctl',['--assess','--type','execute','--verbose=2',app]);
     }finally{fs.rmSync(temp,{recursive:true,force:true});}
     console.log('PASS: shipped macOS ZIP has the expected Developer ID, a valid notarization ticket, and passes Gatekeeper.');
-  }else if(process.platform==='win32'){
-    if(!process.env.WIN_PUBLISHER_NAME)throw new Error('WIN_PUBLISHER_NAME is required to verify the release identity.');
-    const files=['windows-setup.exe','windows.exe'].map(s=>path.join(dist,`OrgFlow-${version}-${s}`));
-    execFileSync('powershell.exe',['-NoProfile','-NonInteractive','-Command',`
-      $ErrorActionPreference='Stop'
-      foreach ($file in ($env:ORGFLOW_VERIFY_FILES | ConvertFrom-Json)) {
-        $signature=Get-AuthenticodeSignature -LiteralPath $file
-        if ($signature.Status -ne 'Valid') { throw 'Release signature is invalid or untrusted.' }
-        if (-not $signature.TimeStamperCertificate) { throw 'Release signature has no trusted timestamp.' }
-        if ($signature.SignerCertificate.GetNameInfo('SimpleName',$false) -cne $env:WIN_PUBLISHER_NAME) { throw 'Release publisher does not match WIN_PUBLISHER_NAME.' }
-      }
-    `],{env:{...process.env,ORGFLOW_VERIFY_FILES:JSON.stringify(files)},stdio:'inherit'});
-    console.log('PASS: shipped Windows installer and portable EXE have valid timestamped signatures from the expected publisher.');
-  }else throw new Error('Run signing verification on a macOS or Windows build host.');
+  }else throw new Error('Run signing verification on a macOS build host.');
 }catch(error){console.error('Release verification failed:',error.message);if(error.stderr)console.error(String(error.stderr));process.exitCode=1;}

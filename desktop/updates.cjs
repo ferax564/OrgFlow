@@ -1,7 +1,7 @@
 'use strict';
 
 function createUpdates({ updater, supported, version }) {
-  let state = { phase: supported ? 'idle' : 'unsupported', version, message: supported ? 'Check for a newer version.' : 'Use an installed Windows build, signed Mac build, or Linux AppImage to update automatically.' };
+  let state = { phase: supported ? 'idle' : 'unsupported', version, message: supported ? 'Check for a newer version.' : 'Use a signed Mac build or the Linux AppImage to update automatically.' };
   let busy = false;
   updater.autoDownload = false;
   updater.autoInstallOnAppQuit = false;

@@ -9,15 +9,20 @@ const output=path.join(root,'test-results','desktop');fs.mkdirSync(output,{recur
 (async()=>{
   const temp=fs.mkdtempSync(path.join(os.tmpdir(),'orgflow-desktop-'));
   const boot=path.join(temp,'boot.cjs'),profile=path.join(temp,'profile'),file=path.join(temp,'chart.orgflow');
-  fs.writeFileSync(boot,`const {app}=require('electron');app.setPath('userData',${JSON.stringify(profile)});require(${JSON.stringify(path.join(root,'desktop/main.cjs'))});`);
+  // Point execPath at a fake binary inside a per-launch folder that holds a
+  // sibling OrgFlow-data directory, so the app uses that folder as its
+  // data location and a relaunch from a new folder simulates moving the app.
+  fs.writeFileSync(boot,`const {app}=require('electron');process.execPath=process.env.ORGFLOW_TEST_EXEC_PATH;app.setPath('userData',${JSON.stringify(profile)});require(${JSON.stringify(path.join(root,'desktop/main.cjs'))});`);
   let app,expected;
   async function launch(folder){
-    const env={...process.env,PORTABLE_EXECUTABLE_DIR:path.join(temp,folder)};
-    delete env.ELECTRON_RUN_AS_NODE;
+    const appDir=path.join(temp,folder);fs.mkdirSync(path.join(appDir,'OrgFlow-data'),{recursive:true});
+    const env={...process.env,ORGFLOW_TEST_EXEC_PATH:path.join(appDir,'OrgFlow')};
+    delete env.ELECTRON_RUN_AS_NODE;delete env.APPIMAGE;
     app=await _electron.launch({executablePath:require('electron'),args:['--no-sandbox',boot],env,timeout:45000});
     const page=await app.firstWindow();page.on('dialog',d=>d.accept());
     const errors=[];page.on('pageerror',e=>errors.push(e.message));
     await page.waitForFunction(()=>typeof workspace!=='undefined'&&workspace?.scenarios?.length);
+    assert.ok((await page.evaluate(()=>orgflowDesktop.storagePath())).includes(path.join(temp,folder,'OrgFlow-data')),'The sibling OrgFlow-data folder must be a journal location');
     await page.evaluate(()=>OrgFlowStore.flush());
     return {page,errors};
   }
@@ -46,7 +51,7 @@ const output=path.join(root,'test-results','desktop');fs.mkdirSync(output,{recur
     assert.deepEqual(restarted.errors,[]);
     assert.equal(await restarted.page.locator('#welcomeModal.open').count(),0,'Recovered work must not offer a first-run sample replacement');
     await restarted.page.screenshot({path:path.join(output,'reopened.png')});
-    fs.writeFileSync(path.join(output,'results.json'),JSON.stringify({passed:true,checks:['startup','native-save','native-open','recent-files','external-modification','full-restart','moved-portable-profile','full-planning-and-branding','update-state']},null,2));
+    fs.writeFileSync(path.join(output,'results.json'),JSON.stringify({passed:true,checks:['startup','native-save','native-open','recent-files','external-modification','full-restart','moved-app-data-folder','full-planning-and-branding','update-state']},null,2));
     console.log('Desktop regressions passed: native files, external conflicts, restart, moved profile, updater state.');
   }finally{
     if(app)await app.close();fs.rmSync(temp,{recursive:true,force:true});

@@ -49,9 +49,6 @@ function allowedPath(root, urlPath) {
 }
 
 function portableUserData(env = process.env, execPath = process.execPath) {
-  if (env.PORTABLE_EXECUTABLE_DIR) {
-    return path.join(env.PORTABLE_EXECUTABLE_DIR, 'OrgFlow-data');
-  }
   const exeDir = path.dirname(execPath);
   let neighbor = exeDir;
   if (exeDir.endsWith(path.join('Contents', 'MacOS'))) {

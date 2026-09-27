@@ -21,9 +21,10 @@ test('landing keeps public CTAs and documents both hosts', () => {
   assert.match(html, /npm run start:enterprise/);
   assert.match(html, /Desktop app/);
   assert.match(html, /href="#run">Downloads/);
-  for (const file of [`OrgFlow-${version}-windows.exe`, `OrgFlow-${version}-mac.zip`, `OrgFlow-${version}-linux.AppImage`]) {
+  for (const file of [`OrgFlow-${version}-mac.zip`, `OrgFlow-${version}-linux.AppImage`]) {
     assert.match(html, new RegExp(`https://github\\.com/ferax564/OrgFlow/releases/download/v${escRe(version)}/${escRe(file)}`));
   }
+  assert.doesNotMatch(html, /windows\.exe|windows-setup\.exe/i);
   assert.match(html, /href="https:\/\/github.com\/ferax564\/OrgFlow\/releases"/);
   assert.match(html, /Named views/);
   assert.match(html, /Print \/ A3/);
@@ -36,9 +37,9 @@ test('README lists live hosts once and a single enterprise heading', () => {
   assert.match(md, /ferax564\.github\.io\/OrgFlow/);
   assert.match(md, /https:\/\/ferax564\.github\.io\/OrgFlow\/app\.html/);
   assert.doesNotMatch(md, /here\.now/i);
-  assert.match(md, new RegExp(escRe(`OrgFlow-${version}-windows.exe`)));
   assert.match(md, new RegExp(escRe(`OrgFlow-${version}-mac.zip`)));
   assert.match(md, new RegExp(escRe(`OrgFlow-${version}-linux.AppImage`)));
+  assert.doesNotMatch(md, /windows(?:-setup)?\.exe/i);
   const headings = md.match(/^## Enterprise host \(optional\)$/gm) || [];
   assert.equal(headings.length, 1);
 });

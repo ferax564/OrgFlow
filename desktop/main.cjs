@@ -19,9 +19,9 @@ protocol.registerSchemesAsPrivileged([
   }
 ]);
 
-// Capture the OS-default userData before the portable redirect so the
-// workspace journal can keep a recovery copy in a location that does not
-// move with the executable folder.
+// Capture the OS-default userData before the sibling OrgFlow-data redirect so
+// the workspace journal can keep a recovery copy in a location that does not
+// move with the app.
 const defaultUserData = app.getPath('userData');
 const dataDir = portableUserData();
 if (dataDir) app.setPath('userData', dataDir);
@@ -164,7 +164,7 @@ function registerDocumentsAndUpdates() {
   const updates = createUpdates({
     updater: require('electron-updater').autoUpdater,
     version: app.getVersion(),
-    supported: app.isPackaged && !process.env.PORTABLE_EXECUTABLE_DIR && (process.platform !== 'linux' || Boolean(process.env.APPIMAGE))
+    supported: app.isPackaged && (process.platform !== 'linux' || Boolean(process.env.APPIMAGE))
   });
   const handle = (channel, fn) => ipcMain.handle(channel, (event, ...args) => {
     if (!trustedRenderer(event)) throw new Error('Untrusted document.');

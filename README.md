@@ -28,11 +28,12 @@ Then open http://localhost:4173/ or http://localhost:4173/app.html. Opening the 
 
 ### Desktop app
 
-CI builds desktop binaries for each OS. **v2.6.0** is the current release. The Windows and macOS builds are not code-signed yet, so the first open shows a SmartScreen or Gatekeeper prompt (see each row below). Download it below, or browse [all GitHub Releases](https://github.com/ferax564/OrgFlow/releases) (or the **Desktop binaries** workflow artifacts). You do not install into Program Files or `/Applications`.
+CI builds desktop binaries for macOS and Linux. **v2.6.0** is the current release. The macOS build is not code-signed yet, so the first open shows a Gatekeeper prompt (see its row below). Download it below, or browse [all GitHub Releases](https://github.com/ferax564/OrgFlow/releases) (or the **Desktop binaries** workflow artifacts). You do not install into `/Applications`.
+
+Windows desktop builds are discontinued: 2.6.0 is the last release with Windows binaries. On Windows, use the planner in the browser. Existing Windows installs keep working with their data but receive no further updates.
 
 | OS | File | How to run |
 | --- | --- | --- |
-| Windows | [OrgFlow-2.6.0-windows.exe](https://github.com/ferax564/OrgFlow/releases/download/v2.6.0/OrgFlow-2.6.0-windows.exe) | Double-click the `.exe`. Windows may show SmartScreen on an unsigned build — More info → Run anyway. Workspace data is stored in `OrgFlow-data` next to the exe. |
 | macOS | [OrgFlow-2.6.0-mac.zip](https://github.com/ferax564/OrgFlow/releases/download/v2.6.0/OrgFlow-2.6.0-mac.zip) | Unzip and double-click `OrgFlow.app`. You can leave it in Downloads; you do not need to drag it to Applications. If Gatekeeper blocks it, right-click → Open. |
 | Linux | [OrgFlow-2.6.0-linux.AppImage](https://github.com/ferax564/OrgFlow/releases/download/v2.6.0/OrgFlow-2.6.0-linux.AppImage) | `chmod +x OrgFlow-*-linux.AppImage && ./OrgFlow-*-linux.AppImage` |
 
@@ -40,11 +41,10 @@ CI builds desktop binaries for each OS. **v2.6.0** is the current release. The W
 npm ci
 npm run desktop          # run from this repo
 npm run dist:linux       # AppImage (Linux host)
-npm run dist:win         # NSIS installer + portable exe (Windows host)
 npm run dist:mac         # .app zip (macOS host)
 ```
 
-Tagged builds publish the binaries plus update manifests and blockmaps. Windows also includes an NSIS installer for automatic updates; the existing portable EXE remains available.
+Tagged builds publish the binaries plus update manifests (`latest-mac.yml`, `latest-linux.yml`) and blockmaps.
 
 The desktop **⋯** menu has **Check for updates**, **Download update**, and **Save and restart to update**. Native **File → Open file…**, **Save**, **Save as…** and **Recent org charts** manage `.orgflow`/JSON documents. External file changes are detected before overwriting. Browser file autosave requires reconnection after restart.
 
@@ -52,11 +52,11 @@ See [signed release operations](RELEASE_OPERATIONS.md) for credential setup and 
 
 See [production readiness and release gates](PRODUCTION_READINESS.md) for signing setup, current limitations, review findings, and the prioritized next steps. Automatic update delivery requires a newly published compatible release; it is not enabled retroactively in older downloaded binaries.
 
-The desktop app loads the planner from a fixed `orgflow://` origin, so restarts and updates always find the same browser storage. Every commit is additionally journaled by the app itself into `OrgFlow-data` next to the executable **and** the OS-standard app-data folder — moving the exe to a new folder still finds the workspace, and each directory keeps the ten most recent backups of the file.
+The desktop app loads the planner from a fixed `orgflow://` origin, so restarts and updates always find the same browser storage. Every commit is additionally journaled by the app itself into the OS-standard app-data folder, and also into an `OrgFlow-data` folder next to `OrgFlow.app` or the AppImage when you create one there. Moving the app to a new folder still finds the workspace, and each directory keeps the ten most recent backups of the file.
 
 On this public site there is no backend. IndexedDB is the authoritative document store, with full recovery checkpoints and an atomic pending-change queue. `localStorage` is an optional cache and preference store; its quota failure does not prevent durable saves. Concurrent stale tabs are refused rather than overwriting newer commits. Clearing *all* site data still removes everything; export a JSON backup first. An optional Node host can share one org — see [Enterprise host](#enterprise-host-optional).
 
-Windows automatic updates require the [installer](https://github.com/ferax564/OrgFlow/releases/download/v2.6.0/OrgFlow-2.6.0-windows-setup.exe). The portable EXE uses manual replacement. See [release validation](RELEASE_VALIDATION.md), [changes](CHANGELOG.md), and [host operations](server/README.md).
+See [release validation](RELEASE_VALIDATION.md), [changes](CHANGELOG.md), and [host operations](server/README.md).
 
 ## Using the planner
 
@@ -164,7 +164,7 @@ Import can replace, append, or update by position ID, and defaults to a new Draf
 - Seating plans: draw rooms, fill them with desk blocks, and assign desks to positions by dragging or auto-seating by team
 - Company branding, light/dark modes, palettes (Indigo, Crimson, Graphite, Ocean, Emerald)
 - Start page with starter templates (startup, agency, nonprofit), recent files and open-from-file
-- Portable desktop app (Windows exe, macOS .app, Linux AppImage) with no installer
+- Portable desktop app (macOS .app, Linux AppImage) with no installer
 
 ## Example companies and templates
 

@@ -16,7 +16,6 @@
     "icon": "python3 scripts/make-icon.py",
     "desktop": "electron .",
     "dist": "electron-builder --publish never",
-    "dist:win": "electron-builder --win nsis portable --x64 --publish never",
     "dist:mac": "electron-builder --mac zip --universal --publish never",
     "dist:linux": "electron-builder --linux AppImage --x64 --publish never",
     "check": "node scripts/check.cjs",

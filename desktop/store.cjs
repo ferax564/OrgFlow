@@ -3,7 +3,7 @@
  * Journaled workspace storage owned by the Electron main process. The renderer
  * writes through on every commit, so the document survives even when the
  * browser profile (localStorage/IndexedDB) is lost, moved or reset. Writes go
- * to every configured directory — the portable OrgFlow-data folder when
+ * to every configured directory — the sibling OrgFlow-data folder when
  * present and the OS-standard userData location — and the newest revision
  * wins on load.
  */

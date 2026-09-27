@@ -62,7 +62,7 @@ Browser results, screenshots and downloads land in `test-results/browser/`; CI u
 3. `-rc.n` versions publish as pre-releases, which the desktop updater ignores. Other versions become the latest release and reach installed apps through automatic updates.
 4. Pushing a `v*` tag by hand still works, but the tag must equal the `package.json` version. Pushes that do not change the version never release.
 
-::callout{id="org-ops-release-warning" type="warning"}
+::callout{id="org-ops-release-warning" tone="warning"}
 A stable version merged to `main` is delivered to installed desktop apps automatically. Use an `-rc.n` version when a change needs testing on real machines first.
 ::
 

@@ -158,4 +158,4 @@ There is no web build step: the static site is the repository root copied as-is.
 2. `pages.yml`: after CI, copies `index.html`, `app.html`, `404.html`, `robots.txt`, `manifest.webmanifest`, `LICENSE`, `README.md`, `css/`, `js/`, `assets/`, `examples/` into a fresh `gh-pages` branch and force-pushes it. `login.html` and `admin.html` are deliberately excluded.
 3. `desktop.yml`: after CI, plans the release (tag vs `package.json` version), builds on Windows, macOS and Linux runners with lifecycle tests, signs when credentials exist, verifies signatures on releases, uploads artifacts, and publishes a GitHub Release with notes cut from `CHANGELOG.md`.
 
-Details of each gate are on the [Operations](operations.noma) page.
+Details of each gate are on the [[org-ops-root|Operations]] page.

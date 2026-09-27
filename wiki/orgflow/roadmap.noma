@@ -8,7 +8,7 @@ title: OrgFlow Roadmap
 Plans and open problems after the 2.6.0 release (2026-09-25). The code and automated gates are hardened; what remains is mostly release trust (code signing, real signed-update drills) and deployment-specific validation of the enterprise host. There were no open GitHub issues on 2026-09-27, so every item below is sourced from the repository documents or git history. Each item names its source.
 ::
 
-::callout{id="org-road-scope-note" type="note"}
+::callout{id="org-road-scope-note" tone="note"}
 No dated roadmap or milestone plan exists in the repository. The Now / Next / Later grouping below is an ordering derived from `PRODUCTION_READINESS.md` ("recovery and trustworthy sharing come before new planning features") and the listed deployment gates, not a committed schedule.
 ::
 

@@ -17,7 +17,7 @@ It is organizational planning, not payroll or an HR system of record. `MANAGEMEN
 
 ## Privacy model {id="org-home-privacy"}
 
-::callout{id="org-home-privacy-callout" type="note"}
+::callout{id="org-home-privacy-callout" tone="note"}
 On the public static site there is no backend. Names, reporting lines, photos and logos stay on the device that opened the page until the user exports a file. The host only serves the program, not the roster.
 ::
 
@@ -57,7 +57,7 @@ Optional Node 22.16+ server (`server/`). `npm run start:enterprise` binds 127.0.
 | Enterprise production deployment | None supplied; unverified | `RELEASE_OPERATIONS.md` |
 | License | MIT | `LICENSE` |
 
-::callout{id="org-home-status-warning" type="warning"}
+::callout{id="org-home-status-warning" tone="warning"}
 No signed build, notarization, Windows or macOS update drill, or enterprise production deployment has been verified. The only real update drill recorded is Linux 2.5.0-rc.1 to 2.5.0. See the roadmap page for the remaining release gates.
 ::
 
@@ -65,9 +65,9 @@ No signed build, notarization, Windows or macOS update drill, or enterprise prod
 
 | Page | What you find there |
 | --- | --- |
-| [Architecture](orgflow/architecture.noma) | Frontend modules, data model, storage and export, desktop packaging, enterprise server, build pipeline |
-| [Roadmap](orgflow/roadmap.noma) | Now / Next / Later, open problems, risks, decisions and agent follow-ups |
-| [Operations](orgflow/operations.noma) | Dev setup, tests and CI gates, release process, desktop binaries, Docker and enterprise deploy, release validation |
+| [[org-arch-root|Architecture]] | Frontend modules, data model, storage and export, desktop packaging, enterprise server, build pipeline |
+| [[org-road-root|Roadmap]] | Now / Next / Later, open problems, risks, decisions and agent follow-ups |
+| [[org-ops-root|Operations]] | Dev setup, tests and CI gates, release process, desktop binaries, Docker and enterprise deploy, release validation |
 
 ## Repository documents {id="org-home-docs"}
 

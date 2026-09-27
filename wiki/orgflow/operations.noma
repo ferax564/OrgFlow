@@ -31,7 +31,7 @@ npm run mcp                    # stdio MCP bridge; needs ORGFLOW_API_URL and ORG
 | `npm run lint` | ESLint 9.39.1 with `eslint.config.cjs` (correctness rules plus `no-undef` for Node-side and core modules) |
 | `npm test` | `node --test tests/*.test.cjs`: domain model, migration, management, governance, REST/MCP, OIDC, subtree, stress, desktop store and documents, updater state, recovery, seating (131 tests at 2.6.0) |
 | `npm run test:browser` | `tests/browser-regressions.py` with Playwright 1.57.0: 38 real-navigation regressions. Flags: `--browser chromium\|firefox\|webkit`, `--output`, `--executable`, `--dom` (restricted fallback, mocks storage and skips native-file checks; not a substitute) |
-| `npm run test:desktop` | `scripts/desktop-regressions.cjs`: Electron lifecycle (native open/save, recent files, external modification refusal, restart, moved portable folder, updater status). On Linux use `xvfb-run -a` |
+| `npm run test:desktop` | `scripts/desktop-regressions.cjs`: Electron lifecycle (native open/save, recent files, external modification refusal, restart, moved app with its `OrgFlow-data` folder, updater status). On Linux use `xvfb-run -a` |
 | `npm audit --audit-level=high` | Dependency audit, gated in CI |
 | `node scripts/browser-qa.cjs`, `node scripts/smoke.cjs` | Optional local UI passes with Chrome and `puppeteer-core` |
 
@@ -43,7 +43,7 @@ Browser results, screenshots and downloads land in `test-results/browser/`; CI u
 | --- | --- | --- |
 | `ci.yml` | push to `main`, PRs, `workflow_call` | `domain-and-server` (install, audit, check, lint, test) and `browser` matrix (chromium, firefox, webkit) |
 | `pages.yml` | push to `main`, manual | reuses CI, then force-pushes the assembled static site to `gh-pages` |
-| `desktop.yml` | push to `main`, `v*` tags, PRs, manual | reuses CI, plans the release, builds and lifecycle-tests on Windows, macOS and Linux, verifies signatures when signed, publishes a GitHub Release |
+| `desktop.yml` | push to `main`, `v*` tags, PRs, manual | reuses CI, plans the release, builds and lifecycle-tests on macOS and Linux, verifies signatures when signed, publishes a GitHub Release |
 
 ## Release process {id="org-ops-release"}
 
@@ -68,25 +68,25 @@ A stable version merged to `main` is delivered to installed desktop apps automat
 
 ### Signing {id="org-ops-signing"}
 
-Signing credentials are **not configured**; releases currently ship unsigned and the release notes say so. The workflow signs each platform when all of its credentials are present and fails a release when they are only partly present. That check counts `CSC_LINK`, `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD` and `APPLE_TEAM_ID` on macOS and `WIN_CSC_LINK` and `WIN_PUBLISHER_NAME` on Windows (`.github/workflows/desktop.yml`, "Detect signing credentials"). The certificate passwords `CSC_KEY_PASSWORD` and `WIN_CSC_KEY_PASSWORD` are not counted, so a password set on its own still builds and releases unsigned.
+Signing credentials are **not configured**; releases currently ship unsigned and the release notes say so. Only macOS is signed; Windows is not built ([[org-dec-windows-discontinued]]) and Linux AppImages are not signed. The workflow signs the macOS build when all of its credentials are present and fails a release when they are only partly present. That check counts `CSC_LINK`, `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD` and `APPLE_TEAM_ID` (`.github/workflows/desktop.yml`, "Detect signing credentials"). The certificate password `CSC_KEY_PASSWORD` is not counted, so a password set on its own still builds and releases unsigned.
 
 | Platform | Required | Verification on release |
 | --- | --- | --- |
 | macOS | secrets `CSC_LINK`, `CSC_KEY_PASSWORD`, `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID` | Developer ID and team, nested signatures, stapled notarization, Gatekeeper on the extracted ZIP |
-| Windows | secrets `WIN_CSC_LINK`, `WIN_CSC_KEY_PASSWORD`; variable `WIN_PUBLISHER_NAME` | Authenticode on installer and portable EXE, timestamp required, publisher matches |
 | Linux | none | none |
 
-Run `npm run verify:release -- dist` on the matching OS to check built artifacts. Only PKCS#12 certificates are supported; HSM or cloud signing needs a different builder integration.
+Run `npm run verify:release -- dist` on a macOS host to check the built ZIP; the script refuses to run elsewhere.
 
 ## Desktop binaries {id="org-ops-desktop"}
 
 | OS | Artifact | Updates |
 | --- | --- | --- |
-| Windows | `OrgFlow-<v>-windows.exe` (portable), `OrgFlow-<v>-windows-setup.exe` (NSIS) | Automatic only for the NSIS install; portable is replaced by hand. Portable data lives in `OrgFlow-data` next to the exe |
 | macOS | `OrgFlow-<v>-mac.zip` (universal) | Unsigned builds cannot self-update |
 | Linux | `OrgFlow-<v>-linux.AppImage` (x64) | Automatic via AppImage |
 
-Each release also carries `latest*.yml` / `rc*.yml` channel manifests and `.blockmap` files. Local builds: `npm run dist:linux`, `npm run dist:win`, `npm run dist:mac` on the matching host; output goes to `dist/`. The in-app flow is Check for updates, Download update, Save and restart; installation is blocked until document, pending server work, linked file and journal saves succeed.
+Windows is not built from 2026-09-27; 2.6.0 was the last release with Windows binaries, and existing Windows installs receive no further updates ([[org-dec-windows-discontinued]]).
+
+Each release also carries `latest-mac.yml` / `latest-linux.yml` (and `rc-*.yml` for pre-releases) channel manifests and `.blockmap` files. Local builds: `npm run dist:linux`, `npm run dist:mac` on the matching host; output goes to `dist/`. The in-app flow is Check for updates, Download update, Save and restart; installation is blocked until document, pending server work, linked file and journal saves succeed.
 
 ## Enterprise deploy {id="org-ops-enterprise"}
 
@@ -153,4 +153,4 @@ Enterprise mode also checks readiness, OIDC mode, and that unauthenticated data 
 | Signed builds only: signature and notarization reports from clean machines | `verify:release` output |
 | `RELEASE_VALIDATION.md` updated with what was and was not run | Commit |
 
-Last recorded evidence: the static deployment check passed on 2026-09-20; CI passed all three browser engines on the 2.6.0 PR commit `bd43e73`. No signed build, Windows/macOS drill or enterprise deployment check has been recorded.
+Last recorded evidence: the static deployment check passed on 2026-09-20; CI passed all three browser engines on the 2.6.0 PR commit `bd43e73`. No signed build, macOS update drill or enterprise deployment check has been recorded.

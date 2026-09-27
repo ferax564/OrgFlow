@@ -1,5 +1,7 @@
 # Release validation — 2.6.0
 
+> Windows desktop builds are discontinued from the next release (decided 2026-09-27). The 2.6.0 evidence below, including its Windows results, is kept as recorded; later releases build, test and publish macOS and Linux only.
+
 ## Local verification
 
 - 131 Node tests passed: domain model, validation/migration, staffing/budgets/capacity, decision workflow, permissions, REST/MCP, native documents, updater state, journal recovery, consistent live backup/restore, scoped tokens and OIDC, plus 19 seating tests (room outlines including crossing and touching walls, rotated-desk overlap, desk blocks, 45° wall snapping, shape presets and resizing, assignment and auto-seat, floor-plan validation and calibration, undo image packing, history stripping, subtree redaction and conflict merge).
@@ -31,6 +33,6 @@ Browser results/screenshots/downloads are saved under `test-results`; CI uploads
 
 ## Limits and publication gates
 
-CI reruns the suites on Linux and native lifecycle/build jobs on Windows, macOS and Linux. A passing local suite does not imply those remote jobs passed; use the release's linked Actions run as evidence. Release artifacts include Windows portable and NSIS installer, universal macOS ZIP, Linux AppImage and channel metadata/blockmaps.
+CI reruns the suites on Linux and native lifecycle/build jobs on macOS and Linux. A passing local suite does not imply those remote jobs passed; use the release's linked Actions run as evidence. Release artifacts are the universal macOS ZIP, the Linux AppImage and their channel metadata (`latest-mac.yml`, `latest-linux.yml`) and blockmaps. 2.6.0 also shipped Windows portable and NSIS builds; no later release does.
 
 2.6.0 ships unsigned by the owner's decision. Signing/notarization checks on clean machines apply once certificates are configured. Real provider configuration, backup scheduling, representative load and production operations require deployment-specific validation. The HTTP MCP subset is not certified for arbitrary remote clients.

@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- **Windows desktop builds are discontinued; existing Windows installs keep working but receive no updates.** Desktop releases are now macOS (universal ZIP) and Linux (AppImage) only, and 2.6.0 is the last release with Windows binaries. Installed Windows apps keep opening and keep their local workspace, journal and backups. They cannot update: the installed (NSIS) build's **Check for updates** reads `latest.yml` from the newest GitHub release, and releases no longer publish it, so once a newer release exists the check ends in a "Cannot find latest.yml" error and never downloads anything. The portable EXE never had an in-app updater. On Windows, use the planner in the browser, or export a `.orgflow` backup and open it there or in the macOS or Linux app.
+- The desktop workflow no longer builds or signs Windows and no longer reads `WIN_CSC_LINK`, `WIN_CSC_KEY_PASSWORD` or `WIN_PUBLISHER_NAME`. Release verification (`npm run verify:release`) is macOS-only. The `dist:win` script and the NSIS/portable targets are removed, as is the portable-EXE `OrgFlow-data` redirect. An `OrgFlow-data` folder next to `OrgFlow.app` or the AppImage still works as before.
+
 ## 2.6.0
 
 Seating plans: draw the office, trace an existing floor plan, lay out desks and seat people by position. Workspace data format is unchanged (document version 3); the seating plan is an optional new field and 2.5 files open as-is.

@@ -1,6 +1,8 @@
 # Production readiness — 2.6.0
 
-2.6.0 is a stable release shipped **without code signing**, at the owner's decision, while signing certificates are not yet available. The code and automated release gates are hardened; the pipeline signs and verifies automatically as soon as the signing secrets are configured. Until then Windows SmartScreen and macOS Gatekeeper warn on first open, and macOS builds cannot self-update.
+2.6.0 is a stable release shipped **without code signing**, at the owner's decision, while signing certificates are not yet available. The code and automated release gates are hardened; the pipeline signs and verifies automatically as soon as the signing secrets are configured. Until then macOS Gatekeeper warns on first open, and macOS builds cannot self-update.
+
+From the next release, desktop builds are **macOS and Linux only**; Windows builds are discontinued (2026-09-27). 2.6.0 is the last release with Windows binaries. Existing Windows installs keep working on their local data but receive no further updates.
 
 ## Review findings and resolutions
 
@@ -15,7 +17,7 @@
 | Server security | Static denylist, unlimited tokens, bearer administrative powers | Public asset allowlist with realpath checks; expiring scoped tokens; proposal-only integration writes; same-origin browser mutations; reject unsafe production configuration |
 | Governance | Reviewers were arbitrary labels; retries could create duplicate proposals | Resolve reviewers to actual administrator memberships, enforce assigned approval, expose review queue, and store transactional idempotency receipts |
 | Operations | No verified live backup/restore path, readiness or retention | Consistent SQLite snapshots and validated restore-to-new-destination; database readiness; graceful shutdown; bounded retention; non-root container |
-| Release | Old Electron vulnerabilities, incomplete update artifacts, weak release checks | Electron 44.4.3; audited lockfile; native lifecycle and three-browser CI; Windows installer; universal Mac build; manifests/blockmaps; stable tags require signing secrets |
+| Release | Old Electron vulnerabilities, incomplete update artifacts, weak release checks | Electron 44.4.3; audited lockfile; native lifecycle and three-browser CI; Windows installer; universal Mac build; manifests/blockmaps; stable tags require signing secrets (2.6.0 also shipped a Windows installer; Windows is discontinued from the next release) |
 
 ## Assessment of the supplied recommendations
 
@@ -31,12 +33,12 @@ The OpenAPI contract covers the REST surface, authentication and core models. Th
 
 Open validates and checkpoints before replacing; canceling or rejecting a file preserves the current document and destination. Save overwrites the linked document, Save As chooses a new destination, and recent desktop documents persist in OS app data. Browser restarts require reconnection before file autosave resumes. Desktop journals and browser checkpoints are recovery copies, not independent off-device backups.
 
-Updates use Check → Download → Save and restart. Installation is blocked until document, pending server work, linked file and native journal saves succeed. Ordinary quit does not silently install. Windows automatic updating requires the NSIS-installed build; portable users replace the executable manually. Development builds explain the limitation. Stable users do not automatically receive prereleases.
+Updates use Check → Download → Save and restart. Installation is blocked until document, pending server work, linked file and native journal saves succeed. Ordinary quit does not silently install. Automatic updating covers the signed macOS build and the Linux AppImage. Development builds explain the limitation. Windows builds are discontinued: releases after 2.6.0 carry no `latest.yml`, so a 2.6.0 NSIS install's update check ends in an error and never installs anything, and the 2.6.0 portable EXE never had an in-app updater. Stable users do not automatically receive prereleases.
 
 ## Remaining deployment gates
 
-1. Configure `CSC_LINK`/`CSC_KEY_PASSWORD` (Developer ID), `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID`, and `WIN_CSC_LINK`/`WIN_CSC_KEY_PASSWORD` in GitHub. Verify signatures/notarization on clean target machines. Stable-tag CI fails when required signing credentials are absent.
-2. Exercise signed N → N+1 updates on installed Windows, macOS and Linux builds, including interrupted downloads, restart/save failures and byte-for-byte workspace recovery. Mocked updater tests do not certify delivery.
+1. Configure `CSC_LINK`/`CSC_KEY_PASSWORD` (Developer ID), `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, and `APPLE_TEAM_ID` in GitHub. macOS is the only signing gate; Windows is not built and Linux AppImages are not signed. Verify signatures/notarization on clean target machines. Stable-tag CI fails when required signing credentials are absent.
+2. Exercise signed N → N+1 updates on macOS and Linux builds, including interrupted downloads, restart/save failures and byte-for-byte workspace recovery. Mocked updater tests do not certify delivery.
 3. Configure the deployment's real HTTPS OIDC provider, bootstrap administrator, persistent volume and encrypted external backups. Run a restore drill and provider login/logout smoke test in that environment; the automated OIDC suite uses a real locally signed test provider, not customer credentials.
 4. Choose operational capacity/SLOs and exercise representative organization sizes on the intended host. Existing large-chart tests validate bounded rendering, not an unlimited scale guarantee.
 
@@ -45,6 +47,6 @@ See [release validation](RELEASE_VALIDATION.md), [host operations](server/README
 
 ## Follow-up release controls
 
-Stable builds now verify the **shipped artifacts**, not only credential presence: Developer ID/team, nested signatures, stapled notarization and Gatekeeper for the macOS ZIP; timestamped trusted Authenticode and expected publisher for both Windows executables. See [credential setup and the actual update/deployment drill](RELEASE_OPERATIONS.md).
+Stable builds now verify the **shipped artifacts**, not only credential presence: Developer ID/team, nested signatures, stapled notarization and Gatekeeper for the macOS ZIP. See [credential setup and the actual update/deployment drill](RELEASE_OPERATIONS.md).
 
 The public static deployment's HTTPS planner and all ten script assets were verified against source. Enterprise deployment validation is separate and needs the intended host/test account. Signing credentials remain absent; no signed update or successful notarization is claimed.

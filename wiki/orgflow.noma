@@ -35,7 +35,7 @@ The repository root is the site. GitHub Pages serves it from the `gh-pages` bran
 :::
 
 :::card{id="org-home-card-desktop" title="Desktop app"}
-Electron 44.4.3 wrapper (`desktop/`). Windows portable EXE and NSIS installer, universal macOS ZIP, Linux AppImage. Built by the **Desktop binaries** workflow; updates via `electron-updater` from GitHub Releases. Builds are currently unsigned.
+Electron 44.4.3 wrapper (`desktop/`). Universal macOS ZIP and Linux AppImage; Windows builds were discontinued on 2026-09-27 (2.6.0 was the last), and existing Windows installs receive no updates. Built by the **Desktop binaries** workflow; updates via `electron-updater` from GitHub Releases. Builds are currently unsigned.
 :::
 
 :::card{id="org-home-card-enterprise" title="Enterprise host"}
@@ -50,7 +50,7 @@ Optional Node 22.16+ server (`server/`). `npm run start:enterprise` binds 127.0.
 | Version | 2.6.0 (stable) | `package.json`, `CHANGELOG.md` |
 | Latest commit on `main` | 2026-09-26, "Keep seating tools and group filters usable after a shared save." | git log |
 | Document format | `orgflow.workspace` document version 3 (reads v2) | `js/orgflow-core.js` |
-| Code signing | Not configured; Windows SmartScreen and macOS Gatekeeper warn on first open | `PRODUCTION_READINESS.md` |
+| Code signing | Not configured; macOS Gatekeeper warns on first open (macOS is the only signed platform; Windows is no longer built) | `PRODUCTION_READINESS.md` |
 | Node tests | 131 passing at release (includes 19 seating tests) | `RELEASE_VALIDATION.md` |
 | Browser regressions | 38, run in CI on Chromium, Firefox and WebKit | `RELEASE_VALIDATION.md` |
 | Open GitHub issues | 0 at time of writing (2026-09-27) | GitHub issue list |
@@ -58,7 +58,7 @@ Optional Node 22.16+ server (`server/`). `npm run start:enterprise` binds 127.0.
 | License | MIT | `LICENSE` |
 
 ::callout{id="org-home-status-warning" tone="warning"}
-No signed build, notarization, Windows or macOS update drill, or enterprise production deployment has been verified. The only real update drill recorded is Linux 2.5.0-rc.1 to 2.5.0. See the roadmap page for the remaining release gates.
+No signed build, notarization, macOS update drill, or enterprise production deployment has been verified. The only real update drill recorded is Linux 2.5.0-rc.1 to 2.5.0. See the roadmap page for the remaining release gates.
 ::
 
 ## Page map {id="org-home-map"}

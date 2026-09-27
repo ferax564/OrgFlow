@@ -9,9 +9,10 @@ GitHub repository signing secrets are absent. The local keychain contains Apple 
 ## Release procedure
 
 1. On a branch, bump `version` in `package.json` (`npm version <x.y.z[-rc.n]> --no-git-tag-version`), add a matching `## <version>` section to `CHANGELOG.md`, and update the download links in `README.md` and `index.html`.
-2. Merge to `main`. The **Desktop binaries** workflow sees that `v<version>` does not exist yet, runs the full quality gate, builds Windows, macOS and Linux, then creates the tag at the merge commit and publishes the GitHub Release with the changelog section as notes.
+2. Merge to `main`. The **Desktop binaries** workflow sees that `v<version>` does not exist yet, runs the full quality gate, builds macOS and Linux, then creates the tag at the merge commit and publishes the GitHub Release with the changelog section as notes.
 3. Versions with a pre-release suffix (`-rc.n`) publish as pre-releases, which the desktop updater ignores. Other versions publish as the latest release and reach installed apps through automatic updates.
-4. Each platform is signed when its credentials are configured (see below), and the shipped files are then verified. With no credentials the build ships unsigned and the release notes say so; partly configured credentials fail the build.
+4. The macOS build is signed when its credentials are configured (see below), and the shipped ZIP is then verified. Linux AppImages are not signed. With no credentials the build ships unsigned and the release notes say so; partly configured credentials fail the build.
+5. Windows is not built. Desktop releases are macOS and Linux only (decided 2026-09-27); 2.6.0 was the last release with Windows binaries.
 
 Pushing a `v*` tag by hand still works; the tag must equal the `package.json` version. Pushes to `main` that do not change the version never release. GitHub Pages redeploys the web app on every push to `main`.
 
@@ -26,23 +27,20 @@ Configure these in [repository Actions secrets](https://github.com/ferax564/OrgF
 | `APPLE_ID` | Secret | Apple account authorized to notarize for the certificate team |
 | `APPLE_APP_SPECIFIC_PASSWORD` | Secret | Notarization app-specific password |
 | `APPLE_TEAM_ID` | Secret | Developer ID certificate's team |
-| `WIN_CSC_LINK` | Secret | Supported Windows code-signing certificate with private key, in the builder's PKCS#12 format |
-| `WIN_CSC_KEY_PASSWORD` | Secret | Its export password |
-| `WIN_PUBLISHER_NAME` | Repository variable | Exact Windows certificate simple publisher name, used to verify uploaded executables |
 
-If the Windows certificate uses a hardware token or a cloud signing service, configure that provider's builder signing integration instead of attempting to export its non-exportable key. The current workflow expects PKCS#12; it does not claim cloud/HSM support.
+The workflow no longer reads `WIN_CSC_LINK`, `WIN_CSC_KEY_PASSWORD` or the `WIN_PUBLISHER_NAME` variable; delete them from the repository settings if they were ever created.
 
-When credentials are configured, the workflow verifies the actual distributables before upload. macOS verification extracts the final ZIP, checks the Developer ID/team and nested signatures, validates the stapled notarization ticket, and checks Gatekeeper. Windows verifies both the installer and portable executable with Authenticode, requires a timestamp and checks the configured publisher. Unsigned/invalid artifacts fail. These commands cannot create certificates or establish the publisher's legal identity.
+When credentials are configured, the workflow verifies the actual distributable before upload. Verification extracts the final ZIP, checks the Developer ID/team and nested signatures, validates the stapled notarization ticket, and checks Gatekeeper. Unsigned/invalid artifacts fail. These commands cannot create certificates or establish the publisher's legal identity.
 
 ```bash
 npm run verify:release -- dist
 ```
 
-Run on each respective build OS with the expected identity environment variables. Windows verification and successful notarization still require a credentialed build; checking that an unsigned artifact is rejected is only a negative test.
+Run on a macOS build host with `APPLE_TEAM_ID` set. Successful notarization still requires a credentialed build; checking that an unsigned artifact is rejected is only a negative test.
 
 ## Actual signed-update drill
 
-Use an approved staging release feed and disposable Windows/macOS/Linux machines. Build and sign two successive versions with the same publisher identity, production fuses, updater and document code. Do not alter a published production tag or replace its assets to simulate an upgrade. Windows must use the installed NSIS edition; Linux must run its AppImage. On macOS verify both Intel and Apple Silicon target support.
+Use an approved staging release feed and disposable macOS and Linux machines. Build and sign two successive versions with the same publisher identity, production fuses, updater and document code. Do not alter a published production tag or replace its assets to simulate an upgrade. Linux must run its AppImage. On macOS verify both Intel and Apple Silicon target support.
 
 1. Install version N and create a non-sensitive fixture containing multiple scenarios, photos, branding, saved views, budgets, dated staffing, a recovery checkpoint and a linked `.orgflow` document. Export a baseline bundle. Preserve the app-data directory.
 2. Publish N+1 to the staging feed with matching update manifests/blockmaps. Through the installed UI, check, download, and save/restart. Verify the running version changed and compare planning, branding, views and checkpoints against the baseline. Test edits and reopening the linked file after restart.

@@ -16,7 +16,7 @@ No dated roadmap or milestone plan exists in the repository. The Now / Next / La
 
 | # | Item | Why now | Source |
 | --- | --- | --- | --- |
-| 1 | Obtain and configure signing credentials: macOS Developer ID Application (`CSC_LINK`, `CSC_KEY_PASSWORD`, `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID`) and Windows (`WIN_CSC_LINK`, `WIN_CSC_KEY_PASSWORD`, `WIN_PUBLISHER_NAME` variable) | Releases ship unsigned; SmartScreen/Gatekeeper warn and unsigned macOS builds cannot self-update | `PRODUCTION_READINESS.md` gate 1, `RELEASE_OPERATIONS.md` |
+| 1 | Obtain and configure macOS signing credentials: Developer ID Application (`CSC_LINK`, `CSC_KEY_PASSWORD`, `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID`). macOS is the only signing gate; Windows is no longer built ([[org-dec-windows-discontinued]]) | Releases ship unsigned; Gatekeeper warns and unsigned macOS builds cannot self-update | `PRODUCTION_READINESS.md` gate 1, `RELEASE_OPERATIONS.md` |
 | 2 | Run a 2.6.x N to N+1 update drill, at least on Linux, and record it | No 2.6.0 drill has been run; only Linux 2.5.0-rc.1 to 2.5.0 is recorded | `RELEASE_VALIDATION.md` |
 | 3 | Stabilize the seating feature after its first release | 2.6.0 is the first release with Seating; the only post-release commit fixes seating tools and group filters after a shared save | git log `cb66cb3` (2026-09-26), `CHANGELOG.md` 2.6.0 |
 | 4 | Keep enterprise hosts upgraded before seating is used | 2.5 servers do not withhold the seating plan from subtree-scoped members | `CHANGELOG.md` 2.6.0 upgrade notes |
@@ -26,7 +26,7 @@ No dated roadmap or milestone plan exists in the repository. The Now / Next / La
 
 | # | Item | Source |
 | --- | --- | --- |
-| 1 | Signed N to N+1 update drill on installed Windows (NSIS), macOS (Intel and Apple Silicon) and Linux, including interrupted downloads, revoked file access, externally modified files and unwritable recovery storage | `PRODUCTION_READINESS.md` gate 2, `RELEASE_OPERATIONS.md` "Actual signed-update drill" |
+| 1 | Signed N to N+1 update drill on macOS (Intel and Apple Silicon) and Linux, including interrupted downloads, revoked file access, externally modified files and unwritable recovery storage | `PRODUCTION_READINESS.md` gate 2, `RELEASE_OPERATIONS.md` "Actual signed-update drill" |
 | 2 | Verify signatures and notarization on clean target machines once credentials exist | `PRODUCTION_READINESS.md` gate 1 |
 | 3 | First real enterprise deployment: HTTPS OIDC provider, bootstrap administrator, persistent volume, encrypted external backups, restore drill, login/logout smoke test | `PRODUCTION_READINESS.md` gate 3 |
 | 4 | Choose capacity targets and SLOs; load-test representative organization sizes on the intended host | `PRODUCTION_READINESS.md` gate 4 |
@@ -41,7 +41,6 @@ Listed in `PRODUCTION_READINESS.md` as optional product roadmap items, not commi
 - ATS connectors; no vendor HRIS connector (Workday, SAP or other) exists (`MANAGEMENT.md`).
 - A multi-workspace library; the UI is a single active document plus recent files.
 - Full Streamable HTTP/SSE MCP transport instead of the request/response subset.
-- Cloud/HSM Windows signing integration; the workflow only supports PKCS#12 today (`RELEASE_OPERATIONS.md`).
 
 ## Open problems {id="org-road-open"}
 
@@ -58,11 +57,11 @@ Listed in `PRODUCTION_READINESS.md` as optional product roadmap items, not commi
 ## Risks {id="org-road-risks"}
 
 ::risk{id="org-risk-unsigned" severity="medium" owner="maintainer"}
-Unsigned desktop builds train users to click through SmartScreen and Gatekeeper warnings, and unsigned macOS builds cannot self-update, so Mac users can fall behind on fixes. Mitigation: configure Developer ID and Windows signing secrets (see [[org-road-now]]). Source: `PRODUCTION_READINESS.md`.
+Unsigned desktop builds train users to click through Gatekeeper warnings, and unsigned macOS builds cannot self-update, so Mac users can fall behind on fixes. Mitigation: configure the Developer ID signing secrets (see [[org-road-now]]). Source: `PRODUCTION_READINESS.md`.
 ::
 
 ::risk{id="org-risk-update-drill" severity="high" owner="maintainer"}
-Automatic updates reach installed apps as soon as a stable version merges to `main`, but Windows and macOS update paths have never been drilled for real. A broken update could strand users or, worse, fail to preserve a workspace. Mitigation: the save-before-restart guard blocks installation on failed saves; run the signed drill before relying on it. Source: `RELEASE_VALIDATION.md`, `RELEASE_OPERATIONS.md`.
+Automatic updates reach installed apps as soon as a stable version merges to `main`, but the macOS update path has never been drilled for real. A broken update could strand users or, worse, fail to preserve a workspace. Mitigation: the save-before-restart guard blocks installation on failed saves; run the signed drill before relying on it. Source: `RELEASE_VALIDATION.md`, `RELEASE_OPERATIONS.md`.
 ::
 
 ::risk{id="org-risk-seating-leak" severity="medium" owner="host operator"}
@@ -85,6 +84,10 @@ Floor-plan images count toward the 12 MB workspace limit (about 1.9 MB per plan,
 
 ::decision{id="org-dec-unsigned-stable" status="accepted" owner="maintainer"}
 Publish stable releases unsigned until certificates are available (from 2.5.0). The pipeline signs and verifies automatically once secrets are configured; partly configured credentials fail a release. Source: `RELEASE_OPERATIONS.md`, `PRODUCTION_READINESS.md`.
+::
+
+::decision{id="org-dec-windows-discontinued" status="accepted" owner="maintainer"}
+Windows builds discontinued (2026-09-27). Desktop builds are macOS and Linux only; the Desktop binaries workflow has no Windows leg, no Windows signing secrets and no `latest.yml`. 2.6.0 is the last release with Windows binaries. Existing Windows installs keep working on their local data but receive no updates: once a newer release exists, the installed build's update check fails with "Cannot find latest.yml", and the portable EXE never had an in-app updater. Windows users are pointed to the browser planner. Source: `CHANGELOG.md` Unreleased, `.github/workflows/desktop.yml`.
 ::
 
 ::decision{id="org-dec-release-on-merge" status="accepted" owner="maintainer"}
@@ -130,7 +133,7 @@ Re-list open GitHub issues for ferax564/OrgFlow and add any new ones to the Now 
 ::
 
 ::agent_task{id="org-task-signing-passwords" scope="release"}
-Add `CSC_KEY_PASSWORD` (macOS) and `WIN_CSC_KEY_PASSWORD` (Windows) to the `required` arrays in the "Detect signing credentials" step of `.github/workflows/desktop.yml`, so a password configured without its certificate counts as partial signing and fails a release. Found in review of the wiki PR; see the Signing section of the operations page.
+Add `CSC_KEY_PASSWORD` to the macOS `required` array in the "Detect signing credentials" step of `.github/workflows/desktop.yml`, so a password configured without its certificate counts as partial signing and fails a release. Found in review of the wiki PR; see the Signing section of the operations page.
 ::
 
 ::agent_task{id="org-task-env-file" scope="dx"}

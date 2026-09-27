@@ -102,14 +102,14 @@ Every workspace carries a document version (3; version 2 is still read and rewri
 | File | Role |
 | --- | --- |
 | `desktop/main.cjs` | Electron main: registers the privileged `orgflow://` scheme so storage keeps a fixed origin, single-instance lock, menus, IPC (`workspace:load` and friends), native dialogs |
-| `desktop/serve.cjs` | Allowed-path resolution for app files, MIME table, `portableUserData()` (the `OrgFlow-data` folder beside the executable) |
-| `desktop/store.cjs` | Journaled workspace store: atomic writes, writes to portable and OS app-data directories, keeps 10 backups, newest revision wins |
+| `desktop/serve.cjs` | Allowed-path resolution for app files, MIME table, `portableUserData()` (an existing `OrgFlow-data` folder beside `OrgFlow.app` or the AppImage) |
+| `desktop/store.cjs` | Journaled workspace store: atomic writes, writes to the sibling `OrgFlow-data` folder (when present) and the OS app-data directory, keeps 10 backups, newest revision wins |
 | `desktop/documents.cjs` | Native open/save and recent documents; only native dialogs and the recent list grant file access |
 | `desktop/recover.cjs` | Scans leftover `http://127.0.0.1:<port>` profiles from pre-`orgflow://` builds |
 | `desktop/updates.cjs` | Update state machine over `electron-updater`: no auto-download, no install on quit, prereleases ignored |
 | `desktop/preload.cjs` | Renderer bridge |
 
-`electron-builder.yml` packages with `asar`, disables the `runAsNode`, Node CLI inspect and `NODE_OPTIONS` fuses, and targets NSIS + portable (Windows x64), universal ZIP (macOS) and AppImage (Linux x64). Publishing goes to GitHub Releases. Windows auto-update needs the NSIS installer; the portable EXE is replaced manually. Unsigned macOS builds cannot self-update.
+`electron-builder.yml` packages with `asar`, disables the `runAsNode`, Node CLI inspect and `NODE_OPTIONS` fuses, and targets a universal ZIP (macOS) and AppImage (Linux x64); Windows targets were removed on 2026-09-27. Publishing goes to GitHub Releases. Unsigned macOS builds cannot self-update.
 
 ## Enterprise server {id="org-arch-server"}
 
@@ -156,6 +156,6 @@ There is no web build step: the static site is the repository root copied as-is.
 
 1. `ci.yml` (push to `main`, PRs, and called by the other workflows): `npm ci`, `npm audit --audit-level=high`, `npm run check`, `npm run lint`, `npm test`, then Playwright browser regressions on Chromium, Firefox and WebKit.
 2. `pages.yml`: after CI, copies `index.html`, `app.html`, `404.html`, `robots.txt`, `manifest.webmanifest`, `LICENSE`, `README.md`, `css/`, `js/`, `assets/`, `examples/` into a fresh `gh-pages` branch and force-pushes it. `login.html` and `admin.html` are deliberately excluded.
-3. `desktop.yml`: after CI, plans the release (tag vs `package.json` version), builds on Windows, macOS and Linux runners with lifecycle tests, signs when credentials exist, verifies signatures on releases, uploads artifacts, and publishes a GitHub Release with notes cut from `CHANGELOG.md`.
+3. `desktop.yml`: after CI, plans the release (tag vs `package.json` version), builds on macOS and Linux runners with lifecycle tests, signs when credentials exist, verifies signatures on releases, uploads artifacts, and publishes a GitHub Release with notes cut from `CHANGELOG.md`.
 
 Details of each gate are on the [[org-ops-root|Operations]] page.

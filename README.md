@@ -16,6 +16,7 @@ The repository root is a static site:
 | `app.html` | The planner |
 | `login.html` / `admin.html` | Enterprise sign-in and members (not on GitHub Pages) |
 | `css/`, `js/`, `assets/`, `examples/` | Styles, logic, icons and samples |
+| `wiki/` | Project wiki in [Noma](https://github.com/ferax564/noma) format: overview, architecture, roadmap, operations |
 
 Serve the root over HTTP (GitHub Pages does this in production):
 

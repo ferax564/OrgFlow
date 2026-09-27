@@ -146,7 +146,7 @@ Enterprise mode also checks readiness, OIDC mode, and that unauthenticated data 
 
 | Step | Evidence to keep |
 | --- | --- |
-| CI green on the merge commit (all three browsers, all three desktop OSes) | Actions run link |
+| CI green on the merge commit (all three browsers, and the macOS and Linux desktop jobs) | Actions run link |
 | GitHub Release has all artifacts, manifests and blockmaps | Release page |
 | Static deployment check passes | Command output |
 | Update drill N to N+1 on at least one OS, using a non-sensitive fixture | OS versions, artifact hashes, before/after documents, updater logs |

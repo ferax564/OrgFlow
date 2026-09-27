@@ -1,0 +1,161 @@
+---
+title: OrgFlow Architecture
+---
+
+# OrgFlow Architecture {id="org-arch-root"}
+
+::summary{id="org-arch-summary"}
+OrgFlow is a dependency-free static web app (plain HTML, CSS and browser JavaScript, no bundler) whose domain logic is written as UMD modules shared by the browser, the Electron desktop shell, the optional Node enterprise host and the Node test suite. One document format, `orgflow.workspace` (document version 3), flows through all three runtimes.
+::
+
+## System overview {id="org-arch-overview"}
+
+```text
+                      +-----------------------------------------------+
+                      |  Planner (app.html + js/*.js, runs in browser) |
+                      |  orgflow-core  management-core  seating-core   |
+                      |  app / planning-ui / seating-ui / share-export |
+                      +-------+------------------+-------------+-------+
+                              |                  |             |
+               IndexedDB      |   orgflow://app  |   /api/*    |  (only when a
+         (authoritative,      |   + IPC bridge   |   session   |   shared host
+          outbox, checkpoints)|                  |   cookie    |   is present)
+                              v                  v             v
+      +-------------------+  +-----------------------+  +---------------------------+
+      | Static site       |  | Desktop (Electron 44) |  | Enterprise host (Node 22) |
+      | GitHub Pages      |  | desktop/main.cjs      |  | server/index.js           |
+      | no backend        |  | journal: OrgFlow-data |  | server/lib/app.js         |
+      |                   |  | + OS app-data folder  |  | SQLite via node:sqlite    |
+      +-------------------+  | electron-updater      |  | OIDC (openid-client)      |
+                             +-----------------------+  | MCP: stdio + /api/mcp     |
+                                                        +---------------------------+
+```
+
+The server `require`s the same `js/orgflow-core.js`, `js/management-core.js` and `js/share-export.js` the browser loads, so validation, redaction and merge rules cannot drift between client and host.
+
+## Frontend modules {id="org-arch-frontend"}
+
+`app.html` loads plain `<script>` tags in this order; `scripts/check.cjs` verifies every referenced script exists and that no HTML uses inline event handlers (CSP).
+
+| Module | Lines | Responsibility |
+| --- | --- | --- |
+| `js/management-core.js` | 445 | Effective-dated workforce planning and decision workflow; collections for positions, employees, assignments, reporting lines, costs, allocations, commitments. No DOM. |
+| `js/persistence.js` | 120 | `FilePersistence`: serialized, revision-aware writes to a linked file (File System Access API). No DOM. |
+| `js/seating-core.js` | 394 | Seating data rules: room polygons (up to 64 corners), desks, overlap and wall checks, auto-seat, redaction. Units are centimetres. |
+| `js/orgflow-core.js` | 1134 | Domain logic: document/schema versions, validation, migration, CSV, layout, comparison, bundles. Exposed as `OrgFlow`. |
+| `js/storage.js` | 199 | IndexedDB store `orgflow.store`: authoritative documents, atomic outbox, per-account checkpoints (max 25) and file links. |
+| `js/share-export.js` | 136 | Builds the self-contained interactive HTML export (redacted dataset, domain script, viewer, static SVG fallback). |
+| `js/share-viewer.js` | 256 | Standalone read-only viewer embedded in interactive HTML exports. |
+| `js/examples.js`, `js/templates.js` | 1, 97 | Harbor & Co / Northstar samples and three starter templates. |
+| `js/app.js` | 2267 | Main UI: chart, register, compare, filters, files menu, undo/redo, exports. |
+| `js/planning-ui.js` | 189 | Planning tab: overview, forecast, timeline, decisions, imports. |
+| `js/seating-ui.js` | 782 | Seating tab: drawing rooms and walls, desk blocks, floor-plan images, assignment. |
+| `js/enterprise.js` | 132 | Optional shared-host adapter (`OrgFlowEnterprise`); server versions and decision records are authoritative. |
+| `js/site-enterprise.js` | 40 | Loaded by `index.html`; rewrites Open-app links to `login.html` when a host is running. |
+
+Line counts are from the 2.6.0 checkout and will drift.
+
+## Data model {id="org-arch-data"}
+
+### Positions versus people {id="org-arch-positions-people"}
+
+- A **position** is a seat: id, title, type (Head, Team Leader, Engineer, Specialist, Graduate, Intern, plus custom tags), group, site, cost center, job family, FTE, approval, hiring state, manager, optional dotted-line manager, sort order and stacking.
+- A **person** (employee) has a name, employee number, optional photo, declared capacity FTE, declared skills and optional external ID.
+- FTE on a position is authorized capacity, not salary. Staffing FTE and project allocation are separate quantities (`MANAGEMENT.md`).
+- Snapshot assignments (a person in a seat) still exist. Adding the first dated assignment or reporting line switches that seat into **timeline mode**. Intervals use ISO dates with inclusive end dates; overlaps, reporting cycles and over-capacity allocations are rejected atomically.
+
+### Scenarios and decisions {id="org-arch-scenarios"}
+
+- `planning.activeScenarioId` selects a scenario; Current is the baseline and other scenarios are copies.
+- Decision lifecycle: Draft, In review, Approved, Scheduled, Applied. Application merges proposal, baseline and latest Current field by field; overlapping edits force reconciliation. Applied proposals are immutable; rollback is a new proposal.
+- Scheduling records an effective date only; nothing applies in the background.
+- In local mode these are planning records, not authenticated approvals.
+
+### Document envelope {id="org-arch-envelope"}
+
+| Format tag | Use |
+| --- | --- |
+| `orgflow.workspace` | Workspace JSON: every scenario, people, branding, palette, saved views, seating, current view |
+| `orgflow.bundle` | `.orgflow` file: workspace plus recovery checkpoints |
+| `orgflow.share` | Redacted dataset embedded in interactive HTML exports |
+
+Every workspace carries a document version (3; version 2 is still read and rewritten as 3), a schema number, identity, revision and commit timestamp. Newer schemas are refused (`SCHEMA_TOO_NEW`). Unknown fields are preserved through round-trips. When several stored copies disagree, the newest revision wins. The server caps a workspace at 12 MB (`server/lib/document.js`); floor-plan images count toward it.
+
+## Storage and export {id="org-arch-storage"}
+
+```text
+ edit --> in-memory state --> IndexedDB transaction (document + outbox, CAS on revision)
+                                   |            |                 |
+                                   |            |                 +--> shared host PUT /api/workspace
+                                   |            |                      (only when enterprise mode is on)
+                                   |            +--> linked file (FilePersistence, if autosave on)
+                                   +--> desktop journal via IPC (desktop only)
+```
+
+- Stale tabs are refused by compare-and-swap rather than overwriting newer commits.
+- Checkpoints (full envelopes including photos, branding and view) are taken before every restore, import or sample load; failed checkpoints block replacement.
+- Caches, checkpoints and file links are partitioned by tenant, user, role, subtree and export permission when signed in to a shared host.
+- Exports: PNG (view or per-group ZIP), board-pack PDF, A3 tiled PDF, interactive HTML, chart-only HTML, HTML snapshot, positions CSV, people CSV, workspace JSON, `.orgflow` bundle, seating CSV and room PNG. CSV cells that look like spreadsheet formulas are prefixed so they stay text.
+
+## Desktop packaging {id="org-arch-desktop"}
+
+| File | Role |
+| --- | --- |
+| `desktop/main.cjs` | Electron main: registers the privileged `orgflow://` scheme so storage keeps a fixed origin, single-instance lock, menus, IPC (`workspace:load` and friends), native dialogs |
+| `desktop/serve.cjs` | Allowed-path resolution for app files, MIME table, `portableUserData()` (the `OrgFlow-data` folder beside the executable) |
+| `desktop/store.cjs` | Journaled workspace store: atomic writes, writes to portable and OS app-data directories, keeps 10 backups, newest revision wins |
+| `desktop/documents.cjs` | Native open/save and recent documents; only native dialogs and the recent list grant file access |
+| `desktop/recover.cjs` | Scans leftover `http://127.0.0.1:<port>` profiles from pre-`orgflow://` builds |
+| `desktop/updates.cjs` | Update state machine over `electron-updater`: no auto-download, no install on quit, prereleases ignored |
+| `desktop/preload.cjs` | Renderer bridge |
+
+`electron-builder.yml` packages with `asar`, disables the `runAsNode`, Node CLI inspect and `NODE_OPTIONS` fuses, and targets NSIS + portable (Windows x64), universal ZIP (macOS) and AppImage (Linux x64). Publishing goes to GitHub Releases. Windows auto-update needs the NSIS installer; the portable EXE is replaced manually. Unsigned macOS builds cannot self-update.
+
+## Enterprise server {id="org-arch-server"}
+
+Entry point `server/index.js` creates the app, runs `assertProductionConfig` (refuses dev auth on non-loopback hosts and insecure OIDC in production), prunes expired records hourly, and closes the listener and database on SIGINT/SIGTERM.
+
+| Module | Responsibility |
+| --- | --- |
+| `server/lib/app.js` | HTTP routing, static allowlist with realpath checks, sessions, REST, MCP tool definitions |
+| `server/lib/auth.js` | Session and token crypto |
+| `server/lib/db.js` | SQLite via `node:sqlite`: tables `tenants`, `users`, `memberships`, `sessions`, `oauth_states`, `api_tokens`, `workspaces`, `workspace_revisions`, `audit_log`, `command_receipts` |
+| `server/lib/document.js` | Document validation and size limit |
+| `server/lib/governance.js` | Decision actions, reviewer checks, proposals |
+| `server/lib/subtree.js` | Subtree filtering and scoped merge-back |
+| `server/lib/org-query.js` | Read queries: summary, vacancies, span of control, forecast |
+| `server/lib/openapi.js` | `/api/openapi.json` contract |
+| `server/mcp-stdio.js` | Newline-delimited JSON-RPC MCP bridge that calls the REST API with a member token |
+| `server/backup.js` | Consistent SQLite snapshot backup and validated restore to a new destination |
+
+### Authentication and members {id="org-arch-auth"}
+
+- `AUTH_MODE=dev` (default): local email sign-in on 127.0.0.1; first user is admin. Never deploy it publicly.
+- `AUTH_MODE=oidc`: `openid-client` validates signatures, issuer, audience, expiry, nonce, state, PKCE and verified email; login state is bound to the browser. Only `BOOTSTRAP_ADMIN_EMAIL` can initialize an empty tenant; everyone else needs an invitation.
+- Roles: admin, editor, viewer; a separate **export** flag; optional **subtree scope** (a position id).
+- API tokens expire (max 90 days), default to `read`, and may add `export` and `propose`. Tokens cannot administer members, overwrite the workspace or approve decisions.
+- Browser mutations must be same-origin. Writes carry the expected `version` (or `If-Match`); stale writes get 409. `Idempotency-Key` protects proposal retries.
+
+### Main routes {id="org-arch-routes"}
+
+| Area | Routes |
+| --- | --- |
+| Health | `/healthz`, `/readyz` (both check the database) |
+| Auth | `/auth/login`, `/auth/callback`, `/auth/logout`, `/auth/dev/login` (dev only), `/api/session` |
+| Workspace | `/api/workspace`, `/api/meta`, `/api/exports`, `/api/audit` |
+| Org reads | `/api/org/summary`, `/positions`, `/vacancies`, `/dotted-lines`, `/span/…`, `/people/…`, `/diff`, `/forecast`, `/capacity-gap`, `/changes`, `/status` |
+| Proposals | `/api/proposals`, `/api/org/validate-proposal`, `/api/org/preview-proposal`, `/api/scenarios/:id/decision`, `/api/reviews` |
+| Admin | `/api/members`, `/api/tokens` |
+| Integration | `/api/openapi.json`, `/api/mcp` (JSON-RPC request/response subset, not full Streamable HTTP/SSE) |
+
+MCP tools defined in `server/lib/app.js` include `get_org`, `search_positions`, `get_person`, `span_of_control`, `dotted_lines`, `list_vacancies`, `diff_scenarios`, `workforce_forecast`, `explain_capacity_gap`, `get_changes_since`, `get_workspace_status`, `validate_proposal`, `preview_proposal`, `create_share_snapshot`, and the opt-in `propose_changes`.
+
+## Build pipeline {id="org-arch-build"}
+
+There is no web build step: the static site is the repository root copied as-is. The pipeline is:
+
+1. `ci.yml` (push to `main`, PRs, and called by the other workflows): `npm ci`, `npm audit --audit-level=high`, `npm run check`, `npm run lint`, `npm test`, then Playwright browser regressions on Chromium, Firefox and WebKit.
+2. `pages.yml`: after CI, copies `index.html`, `app.html`, `404.html`, `robots.txt`, `manifest.webmanifest`, `LICENSE`, `README.md`, `css/`, `js/`, `assets/`, `examples/` into a fresh `gh-pages` branch and force-pushes it. `login.html` and `admin.html` are deliberately excluded.
+3. `desktop.yml`: after CI, plans the release (tag vs `package.json` version), builds on Windows, macOS and Linux runners with lifecycle tests, signs when credentials exist, verifies signatures on releases, uploads artifacts, and publishes a GitHub Release with notes cut from `CHANGELOG.md`.
+
+Details of each gate are on the [Operations](operations.noma) page.

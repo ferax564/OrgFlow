@@ -1,0 +1,98 @@
+---
+title: OrgFlow
+aliases: [org-home]
+---
+
+# OrgFlow {id="org-home-root"}
+
+::summary{id="org-home-summary"}
+OrgFlow is a private org-chart and workforce-planning app. It runs entirely in the browser, ships as a portable desktop app, and has an optional Node "enterprise" host for one shared organization per tenant. Positions are kept separate from people, and scenarios copy Current instead of overwriting it. The current stable release is **2.6.0** (seating plans), published unsigned by owner decision.
+::
+
+## What it is {id="org-home-what"}
+
+OrgFlow draws an organization as a tree of **positions** (seats with a title, type, group, site, FTE, approval and hiring state) and staffs them with **people**. Planners copy Current into named **scenarios**, compare before/after, and move proposals through a decision workflow (Draft, In review, Approved, Scheduled, Applied). Since 2.1 it also covers dated staffing and reporting, position budgets, monthly forecasts, project allocations and commitments. Since 2.6 it adds a **Seating** tab for drawing rooms and assigning desks to positions.
+
+It is organizational planning, not payroll or an HR system of record. `MANAGEMENT.md` states this explicitly: no HRIS connectors, no FX engine, no automatic resource optimizer.
+
+## Privacy model {id="org-home-privacy"}
+
+::callout{id="org-home-privacy-callout" type="note"}
+On the public static site there is no backend. Names, reporting lines, photos and logos stay on the device that opened the page until the user exports a file. The host only serves the program, not the roster.
+::
+
+- **Browser storage.** IndexedDB (`orgflow.store`) is the authoritative document store, with recovery checkpoints (up to 25) and an atomic pending-change queue. `localStorage` is only a cache and preference store. Clearing all site data removes everything, so users should export a JSON backup or `.orgflow` bundle first.
+- **Local processing.** Photos and logos are resized and rasterized locally; SVG uploads are sanitized before conversion to PNG.
+- **Desktop.** The Electron app loads the planner from a fixed `orgflow://app` origin and additionally journals every commit to an `OrgFlow-data` folder next to the executable and to the OS app-data folder.
+- **Enterprise host (opt-in).** Stores one workspace per tenant in SQLite on that machine. Roles (admin, editor, viewer), a separate export flag and optional subtree scope decide what each member can load, save or export. Subtree-scoped members never receive seats outside their branch.
+- **Exports are the only way data leaves.** Interactive HTML exports embed only the selected records and fields; offline exports cannot be revoked. A workspace JSON backup contains everything and should be treated as sensitive.
+
+## Three ways to run {id="org-home-run"}
+
+::grid{id="org-home-run-grid" columns=3}
+:::card{id="org-home-card-static" title="Static site"}
+The repository root is the site. GitHub Pages serves it from the `gh-pages` branch, published by `.github/workflows/pages.yml` on every push to `main`. Locally: `npm start` (Python `http.server` on port 4173), then open `app.html`.
+:::
+
+:::card{id="org-home-card-desktop" title="Desktop app"}
+Electron 44.4.3 wrapper (`desktop/`). Windows portable EXE and NSIS installer, universal macOS ZIP, Linux AppImage. Built by the **Desktop binaries** workflow; updates via `electron-updater` from GitHub Releases. Builds are currently unsigned.
+:::
+
+:::card{id="org-home-card-enterprise" title="Enterprise host"}
+Optional Node 22.16+ server (`server/`). `npm run start:enterprise` binds 127.0.0.1:8787 with local dev sign-in. Production uses `AUTH_MODE=oidc` (Keycloak or another OIDC provider), SQLite in `DATA_DIR`, and the `Dockerfile` image.
+:::
+::
+
+## Status {id="org-home-status"}
+
+| Item | Value | Source |
+| --- | --- | --- |
+| Version | 2.6.0 (stable) | `package.json`, `CHANGELOG.md` |
+| Latest commit on `main` | 2026-09-26, "Keep seating tools and group filters usable after a shared save." | git log |
+| Document format | `orgflow.workspace` document version 3 (reads v2) | `js/orgflow-core.js` |
+| Code signing | Not configured; Windows SmartScreen and macOS Gatekeeper warn on first open | `PRODUCTION_READINESS.md` |
+| Node tests | 131 passing at release (includes 19 seating tests) | `RELEASE_VALIDATION.md` |
+| Browser regressions | 38, run in CI on Chromium, Firefox and WebKit | `RELEASE_VALIDATION.md` |
+| Open GitHub issues | 0 at time of writing (2026-09-27) | GitHub issue list |
+| Enterprise production deployment | None supplied; unverified | `RELEASE_OPERATIONS.md` |
+| License | MIT | `LICENSE` |
+
+::callout{id="org-home-status-warning" type="warning"}
+No signed build, notarization, Windows or macOS update drill, or enterprise production deployment has been verified. The only real update drill recorded is Linux 2.5.0-rc.1 to 2.5.0. See the roadmap page for the remaining release gates.
+::
+
+## Page map {id="org-home-map"}
+
+| Page | What you find there |
+| --- | --- |
+| [Architecture](orgflow/architecture.noma) | Frontend modules, data model, storage and export, desktop packaging, enterprise server, build pipeline |
+| [Roadmap](orgflow/roadmap.noma) | Now / Next / Later, open problems, risks, decisions and agent follow-ups |
+| [Operations](orgflow/operations.noma) | Dev setup, tests and CI gates, release process, desktop binaries, Docker and enterprise deploy, release validation |
+
+## Repository documents {id="org-home-docs"}
+
+The wiki summarizes these files; they remain the source of truth.
+
+| File | Purpose |
+| --- | --- |
+| `README.md` | User guide: planner features, files, exports, shortcuts, desktop downloads |
+| `MANAGEMENT.md` | 2.1+ planning model: decisions, dates, capacity, forecasts, imports, REST and MCP |
+| `PRODUCTION_READINESS.md` | Review findings, resolutions and remaining deployment gates |
+| `RELEASE_OPERATIONS.md` | Release procedure, signing secrets, update drill, deployment checks |
+| `RELEASE_VALIDATION.md` | What was verified for 2.6.0 and how to reproduce it |
+| `CHANGELOG.md` | Per-version changes and upgrade notes |
+| `server/README.md` | Enterprise host: auth modes, roles, MCP, backups, integration contract |
+| `examples/README.md` | Sample companies (Harbor & Co, Northstar Commerce) and starter templates |
+
+## Key links {id="org-home-links"}
+
+- Repository: [github.com/ferax564/OrgFlow](https://github.com/ferax564/OrgFlow)
+- Public site: [ferax564.github.io/OrgFlow](https://ferax564.github.io/OrgFlow/) and the planner at [app.html](https://ferax564.github.io/OrgFlow/app.html)
+- Releases: [GitHub Releases](https://github.com/ferax564/OrgFlow/releases)
+- Enterprise API contract: `GET /api/openapi.json` on a running host
+
+## For agents working on this space {id="org-home-agents"}
+
+- Treat `package.json` `version` and `CHANGELOG.md` as the version source; the README download links and `index.html` must match.
+- Never put real employee data into fixtures, drills or wiki pages. Samples are fictional.
+- The MCP bridge (`npm run mcp`) is read-only by default; `ORGFLOW_ALLOW_PROPOSALS=true` only enables Draft proposals. No tool approves or applies changes.

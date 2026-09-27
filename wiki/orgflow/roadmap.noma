@@ -1,0 +1,130 @@
+---
+title: OrgFlow Roadmap
+---
+
+# OrgFlow Roadmap {id="org-road-root"}
+
+::summary{id="org-road-summary"}
+Plans and open problems after the 2.6.0 release (2026-09-25). The code and automated gates are hardened; what remains is mostly release trust (code signing, real signed-update drills) and deployment-specific validation of the enterprise host. There were no open GitHub issues on 2026-09-27, so every item below is sourced from the repository documents or git history. Each item names its source.
+::
+
+::callout{id="org-road-scope-note" type="note"}
+No dated roadmap or milestone plan exists in the repository. The Now / Next / Later grouping below is an ordering derived from `PRODUCTION_READINESS.md` ("recovery and trustworthy sharing come before new planning features") and the listed deployment gates, not a committed schedule.
+::
+
+## Now {id="org-road-now"}
+
+| # | Item | Why now | Source |
+| --- | --- | --- | --- |
+| 1 | Obtain and configure signing credentials: macOS Developer ID Application (`CSC_LINK`, `CSC_KEY_PASSWORD`, `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID`) and Windows (`WIN_CSC_LINK`, `WIN_CSC_KEY_PASSWORD`, `WIN_PUBLISHER_NAME` variable) | Releases ship unsigned; SmartScreen/Gatekeeper warn and unsigned macOS builds cannot self-update | `PRODUCTION_READINESS.md` gate 1, `RELEASE_OPERATIONS.md` |
+| 2 | Run a 2.6.x N to N+1 update drill, at least on Linux, and record it | No 2.6.0 drill has been run; only Linux 2.5.0-rc.1 to 2.5.0 is recorded | `RELEASE_VALIDATION.md` |
+| 3 | Stabilize the seating feature after its first release | 2.6.0 is the first release with Seating; the only post-release commit fixes seating tools and group filters after a shared save | git log `cb66cb3` (2026-09-26), `CHANGELOG.md` 2.6.0 |
+| 4 | Keep enterprise hosts upgraded before seating is used | 2.5 servers do not withhold the seating plan from subtree-scoped members | `CHANGELOG.md` 2.6.0 upgrade notes |
+| 5 | Ship the post-2.6.0 fix in a tagged release | Commit `cb66cb3` is on `main` but `package.json` is still 2.6.0; releases only happen on a version bump | git log, `RELEASE_OPERATIONS.md` release procedure |
+
+## Next {id="org-road-next"}
+
+| # | Item | Source |
+| --- | --- | --- |
+| 1 | Signed N to N+1 update drill on installed Windows (NSIS), macOS (Intel and Apple Silicon) and Linux, including interrupted downloads, revoked file access, externally modified files and unwritable recovery storage | `PRODUCTION_READINESS.md` gate 2, `RELEASE_OPERATIONS.md` "Actual signed-update drill" |
+| 2 | Verify signatures and notarization on clean target machines once credentials exist | `PRODUCTION_READINESS.md` gate 1 |
+| 3 | First real enterprise deployment: HTTPS OIDC provider, bootstrap administrator, persistent volume, encrypted external backups, restore drill, login/logout smoke test | `PRODUCTION_READINESS.md` gate 3 |
+| 4 | Choose capacity targets and SLOs; load-test representative organization sizes on the intended host | `PRODUCTION_READINESS.md` gate 4 |
+| 5 | Verify target MCP clients against the HTTP `/api/mcp` subset before promising remote interoperability | `PRODUCTION_READINESS.md`, `server/README.md` |
+
+## Later {id="org-road-later"}
+
+Listed in `PRODUCTION_READINESS.md` as optional product roadmap items, not commitments:
+
+- Hosted, expiring share links (offline HTML exports cannot be revoked today).
+- Notification delivery (named reviewers are metadata, not invitations).
+- ATS connectors; no vendor HRIS connector (Workday, SAP or other) exists (`MANAGEMENT.md`).
+- A multi-workspace library; the UI is a single active document plus recent files.
+- Full Streamable HTTP/SSE MCP transport instead of the request/response subset.
+- Cloud/HSM Windows signing integration; the workflow only supports PKCS#12 today (`RELEASE_OPERATIONS.md`).
+
+## Open problems {id="org-road-open"}
+
+| Problem | Current state | Source |
+| --- | --- | --- |
+| Unsigned binaries | Owner decision since 2.5.0; pipeline signs automatically once secrets exist, partial secrets fail a release | `PRODUCTION_READINESS.md`, `.github/workflows/desktop.yml` |
+| Update delivery not certified | Mocked updater tests only, plus one real Linux drill for 2.5.0 | `RELEASE_VALIDATION.md` |
+| No enterprise production evidence | No production URL or approved test account supplied | `RELEASE_OPERATIONS.md` |
+| Local validation gaps | Firefox, WebKit and the Electron binary could not be downloaded in the validation environment; results rely on CI | `RELEASE_VALIDATION.md` |
+| Scale | Large-chart tests show bounded rendering, not an unlimited scale guarantee | `PRODUCTION_READINESS.md` |
+| Local approvals are unauthenticated | Anyone with the file can edit decision records; only the shared host authorizes workflow actions | `MANAGEMENT.md` |
+| Browser file autosave | Requires explicit reconnection after a browser restart | `README.md`, `PRODUCTION_READINESS.md` |
+
+## Risks {id="org-road-risks"}
+
+::risk{id="org-risk-unsigned" severity="medium" owner="maintainer"}
+Unsigned desktop builds train users to click through SmartScreen and Gatekeeper warnings, and unsigned macOS builds cannot self-update, so Mac users can fall behind on fixes. Mitigation: configure Developer ID and Windows signing secrets (see [[org-road-now]]). Source: `PRODUCTION_READINESS.md`.
+::
+
+::risk{id="org-risk-update-drill" severity="high" owner="maintainer"}
+Automatic updates reach installed apps as soon as a stable version merges to `main`, but Windows and macOS update paths have never been drilled for real. A broken update could strand users or, worse, fail to preserve a workspace. Mitigation: the save-before-restart guard blocks installation on failed saves; run the signed drill before relying on it. Source: `RELEASE_VALIDATION.md`, `RELEASE_OPERATIONS.md`.
+::
+
+::risk{id="org-risk-seating-leak" severity="medium" owner="host operator"}
+A 2.5 enterprise server does not withhold the seating plan from subtree-scoped members. Mixing a 2.6 planner with a 2.5 host can expose the full floor plan. Mitigation: upgrade the server first. Source: `CHANGELOG.md` 2.6.0 upgrade notes.
+::
+
+::risk{id="org-risk-dev-auth" severity="high" owner="host operator"}
+`AUTH_MODE=dev` lets anyone who reaches `/auth/dev/login` create a session. Startup refuses non-loopback dev auth, but a misconfigured reverse proxy in front of a loopback bind could still expose it. Mitigation: always run `AUTH_MODE=oidc` for shared deployments (the `Dockerfile` defaults to it). Source: `server/README.md`, `Dockerfile`.
+::
+
+::risk{id="org-risk-browser-data-loss" severity="medium" owner="maintainer"}
+On the static site, clearing all site data deletes every workspace. Checkpoints and journals are recovery copies on the same device, not off-device backups. Mitigation: the save-status chip stays amber until a file is linked; users should export `.orgflow` bundles. Source: `README.md`, `PRODUCTION_READINESS.md`.
+::
+
+::risk{id="org-risk-workspace-size" severity="low" owner="maintainer"}
+Floor-plan images count toward the 12 MB workspace limit (about 1.9 MB per plan, 6 MB in total), so image-heavy workspaces can hit the server cap. Source: `CHANGELOG.md` 2.6.0.
+::
+
+## Decisions {id="org-road-decisions"}
+
+::decision{id="org-dec-unsigned-stable" status="accepted" owner="maintainer"}
+Publish stable releases unsigned until certificates are available (from 2.5.0). The pipeline signs and verifies automatically once secrets are configured; partly configured credentials fail a release. Source: `RELEASE_OPERATIONS.md`, `PRODUCTION_READINESS.md`.
+::
+
+::decision{id="org-dec-release-on-merge" status="accepted" owner="maintainer"}
+Merging a `package.json` version bump to `main` is the release: the Desktop binaries workflow tags, builds and publishes it. `-rc.n` versions publish as pre-releases, which the desktop updater ignores. Source: `RELEASE_OPERATIONS.md`, `.github/workflows/desktop.yml`, commit `5b6bddf`.
+::
+
+::decision{id="org-dec-indexeddb" status="accepted" owner="maintainer"}
+IndexedDB is the authoritative browser store, with the outbox committed in the same transaction; `localStorage` is only a cache. Source: `CHANGELOG.md` 2.4.0-rc.2, `js/storage.js`.
+::
+
+::decision{id="org-dec-fixed-origin" status="accepted" owner="maintainer"}
+The desktop app serves the planner from a fixed `orgflow://app` origin instead of a random localhost port, so browser storage survives restarts and updates. Source: `desktop/main.cjs`, `PRODUCTION_READINESS.md`.
+::
+
+::decision{id="org-dec-proposal-only-ai" status="accepted" owner="maintainer"}
+Integrations and MCP tools may only create Draft proposals; no token or tool can approve, apply or overwrite Current. Proposal writes are opt-in via `ORGFLOW_ALLOW_PROPOSALS=true`. Source: `MANAGEMENT.md`, `server/README.md`.
+::
+
+::decision{id="org-dec-stdio-mcp" status="accepted" owner="maintainer"}
+The stdio MCP bridge is the supported integration route; the HTTP endpoint stays a JSON-RPC subset and is not advertised for generic remote clients. Source: `PRODUCTION_READINESS.md`.
+::
+
+::decision{id="org-dec-next-release" status="open" owner="maintainer"}
+Whether the post-2.6.0 seating fix ships as 2.6.1 or waits for a larger release is not recorded anywhere. Unknown.
+::
+
+## Agent follow-ups {id="org-road-agent"}
+
+::agent_task{id="org-task-drill-record" scope="release-validation"}
+After the next release, update `RELEASE_VALIDATION.md` with the actual CI run links and any update drill performed, and refresh the Status table on the space home page. Do not claim drills that were not run.
+::
+
+::agent_task{id="org-task-signing-watch" scope="release-operations"}
+When signing secrets are configured, confirm the Desktop binaries workflow ran "Verify shipped signatures and notarization" on a release, then move [[org-risk-unsigned]] to resolved and set [[org-dec-unsigned-stable]] to superseded.
+::
+
+::agent_task{id="org-task-doc-drift" scope="docs"}
+On each version bump, check that `package.json`, the `CHANGELOG.md` heading, README download links, `index.html` links and the `PRODUCTION_READINESS.md` / `RELEASE_VALIDATION.md` titles all carry the same version.
+::
+
+::agent_task{id="org-task-issues-sync" scope="triage"}
+Re-list open GitHub issues for ferax564/OrgFlow and add any new ones to the Now / Next tables with their issue numbers. On 2026-09-27 there were none.
+::

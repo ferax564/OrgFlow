@@ -1,0 +1,156 @@
+---
+title: OrgFlow Operations
+---
+
+# OrgFlow Operations {id="org-ops-root"}
+
+::summary{id="org-ops-summary"}
+How to develop, test, release and deploy OrgFlow. Everything here comes from `package.json`, the workflows under `.github/workflows/`, `RELEASE_OPERATIONS.md`, `RELEASE_VALIDATION.md` and `server/README.md`. Node 22.16 or newer is required (`engines` in `package.json`; `node:sqlite` for the host and its tests).
+::
+
+## Dev setup {id="org-ops-dev"}
+
+```bash
+npm ci                         # electron, electron-builder, eslint, playwright + openid-client, electron-updater
+npm start                      # python3 -m http.server 4173 → http://localhost:4173/app.html
+npm run desktop                # run the Electron shell from the checkout
+npm run start:enterprise       # Node host on http://127.0.0.1:8787/login.html (AUTH_MODE=dev)
+npm run mcp                    # stdio MCP bridge; needs ORGFLOW_API_URL and ORGFLOW_API_TOKEN
+```
+
+- Serve over HTTP; opening files as `file://` can block image processing and some exports.
+- Enterprise dev data lives in `data/orgflow.sqlite` (gitignored). The first email to sign in becomes admin.
+- Copy `.env.example` for host settings (`AUTH_MODE`, `HOST`, `PORT`, `PUBLIC_URL`, `SESSION_SECRET`, `TENANT_NAME`, `TENANT_SLUG`, `DATA_DIR`).
+- For local OIDC testing, `docker compose up` starts Keycloak 26.3 on port 8080 with the `orgflow` realm imported from `server/keycloak/`. The demo passwords and client secret in that realm are for local use only.
+
+## Tests, lint and gates {id="org-ops-tests"}
+
+| Command | What it checks |
+| --- | --- |
+| `npm run check` | `scripts/check.cjs`: `node --check` on every script in `js/`, `server/`, `desktop/`, `scripts/`, `tests/`; duplicate DOM ids; missing `<script src>`; inline event handlers (CSP) |
+| `npm run lint` | ESLint 9.39.1 with `eslint.config.cjs` (correctness rules plus `no-undef` for Node-side and core modules) |
+| `npm test` | `node --test tests/*.test.cjs`: domain model, migration, management, governance, REST/MCP, OIDC, subtree, stress, desktop store and documents, updater state, recovery, seating (131 tests at 2.6.0) |
+| `npm run test:browser` | `tests/browser-regressions.py` with Playwright 1.57.0: 38 real-navigation regressions. Flags: `--browser chromium\|firefox\|webkit`, `--output`, `--executable`, `--dom` (restricted fallback, mocks storage and skips native-file checks; not a substitute) |
+| `npm run test:desktop` | `scripts/desktop-regressions.cjs`: Electron lifecycle (native open/save, recent files, external modification refusal, restart, moved portable folder, updater status). On Linux use `xvfb-run -a` |
+| `npm audit --audit-level=high` | Dependency audit, gated in CI |
+| `node scripts/browser-qa.cjs`, `node scripts/smoke.cjs` | Optional local UI passes with Chrome and `puppeteer-core` |
+
+Browser results, screenshots and downloads land in `test-results/browser/`; CI uploads them even on failure (7-day retention).
+
+### CI workflows {id="org-ops-ci"}
+
+| Workflow | Trigger | Jobs |
+| --- | --- | --- |
+| `ci.yml` | push to `main`, PRs, `workflow_call` | `domain-and-server` (install, audit, check, lint, test) and `browser` matrix (chromium, firefox, webkit) |
+| `pages.yml` | push to `main`, manual | reuses CI, then force-pushes the assembled static site to `gh-pages` |
+| `desktop.yml` | push to `main`, `v*` tags, PRs, manual | reuses CI, plans the release, builds and lifecycle-tests on Windows, macOS and Linux, verifies signatures when signed, publishes a GitHub Release |
+
+## Release process {id="org-ops-release"}
+
+```text
+ branch: bump version ──► merge to main ──► desktop.yml
+   package.json               │               ├─ quality (ci.yml)
+   CHANGELOG "## x.y.z"       │               ├─ version: tag v<x.y.z> exists? no → release=true
+   README + index.html links  │               ├─ desktop matrix: test, lifecycle test, detect signing,
+                              │               │    build, verify signatures (signed releases only), upload
+                              │               └─ release: notes from CHANGELOG section → GitHub Release
+                              └──► pages.yml redeploys the web app on every push to main
+```
+
+1. On a branch: `npm version <x.y.z[-rc.n]> --no-git-tag-version`, add a matching `## <version>` section to `CHANGELOG.md`, and update the download links in `README.md` and `index.html`.
+2. Merge to `main`. The Desktop binaries workflow creates the tag at the merge commit and publishes the release. It fails if `CHANGELOG.md` has no matching section.
+3. `-rc.n` versions publish as pre-releases, which the desktop updater ignores. Other versions become the latest release and reach installed apps through automatic updates.
+4. Pushing a `v*` tag by hand still works, but the tag must equal the `package.json` version. Pushes that do not change the version never release.
+
+::callout{id="org-ops-release-warning" type="warning"}
+A stable version merged to `main` is delivered to installed desktop apps automatically. Use an `-rc.n` version when a change needs testing on real machines first.
+::
+
+### Signing {id="org-ops-signing"}
+
+Signing credentials are **not configured**; releases currently ship unsigned and the release notes say so. The workflow signs each platform when all of its credentials are present and fails a release when they are only partly present.
+
+| Platform | Required | Verification on release |
+| --- | --- | --- |
+| macOS | secrets `CSC_LINK`, `CSC_KEY_PASSWORD`, `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID` | Developer ID and team, nested signatures, stapled notarization, Gatekeeper on the extracted ZIP |
+| Windows | secrets `WIN_CSC_LINK`, `WIN_CSC_KEY_PASSWORD`; variable `WIN_PUBLISHER_NAME` | Authenticode on installer and portable EXE, timestamp required, publisher matches |
+| Linux | none | none |
+
+Run `npm run verify:release -- dist` on the matching OS to check built artifacts. Only PKCS#12 certificates are supported; HSM or cloud signing needs a different builder integration.
+
+## Desktop binaries {id="org-ops-desktop"}
+
+| OS | Artifact | Updates |
+| --- | --- | --- |
+| Windows | `OrgFlow-<v>-windows.exe` (portable), `OrgFlow-<v>-windows-setup.exe` (NSIS) | Automatic only for the NSIS install; portable is replaced by hand. Portable data lives in `OrgFlow-data` next to the exe |
+| macOS | `OrgFlow-<v>-mac.zip` (universal) | Unsigned builds cannot self-update |
+| Linux | `OrgFlow-<v>-linux.AppImage` (x64) | Automatic via AppImage |
+
+Each release also carries `latest*.yml` / `rc*.yml` channel manifests and `.blockmap` files. Local builds: `npm run dist:linux`, `npm run dist:win`, `npm run dist:mac` on the matching host; output goes to `dist/`. The in-app flow is Check for updates, Download update, Save and restart; installation is blocked until document, pending server work, linked file and journal saves succeed.
+
+## Enterprise deploy {id="org-ops-enterprise"}
+
+The `Dockerfile` builds a `node:22-bookworm-slim` image, installs production dependencies only, runs as the `node` user, defaults to `AUTH_MODE=oidc` on port 8787 and health-checks `/readyz`.
+
+Production settings (`server/README.md`):
+
+- HTTPS reverse proxy in front; `PUBLIC_URL` and `KEYCLOAK_REDIRECT_URI` on HTTPS; an HTTPS issuer in `KEYCLOAK_ISSUER`; `KEYCLOAK_CLIENT_ID` and `KEYCLOAK_CLIENT_SECRET`.
+- `SECURE_COOKIES=1`, `HOST=0.0.0.0` inside the container, random `SESSION_SECRET` of at least 32 characters.
+- `BOOTSTRAP_ADMIN_EMAIL` to initialize an empty tenant; all others by invitation.
+- Persistent volume on `/app/data` writable by `node`, kept outside disposable containers.
+- Never `AUTH_MODE=dev` or `ALLOW_INSECURE_OIDC=true` in production; startup refuses unsafe combinations.
+
+Retention runs hourly: audit history 365 days, idempotency receipts 90 days. Export audit evidence first if longer retention is needed.
+
+### Backup and restore {id="org-ops-backup"}
+
+```bash
+npm run backup -- backup data/orgflow.sqlite /secure-backups/orgflow.sqlite
+npm run backup -- restore /secure-backups/orgflow.sqlite /new-data/orgflow.sqlite
+```
+
+The destination must not exist. Both commands validate database integrity and workspace schemas. To recover: stop the host, point `DATA_DIR` at the new directory, restart. Backups include authentication records; keep them encrypted and off-host, and rotate sessions and tokens after an incident. Never restore over the live database.
+
+When upgrading a shared host to 2.6, update the server before anyone uses Seating (see the roadmap risk `org-risk-seating-leak`).
+
+## How to validate a release {id="org-ops-validate"}
+
+Reproduce the automated evidence locally (`RELEASE_VALIDATION.md`):
+
+```bash
+npm ci
+npm run check
+npm run lint
+npm test
+npm audit --audit-level=high
+python3 -m pip install playwright==1.57.0
+python3 -m playwright install --with-deps
+python3 tests/browser-regressions.py --browser chromium
+python3 tests/browser-regressions.py --browser firefox
+python3 tests/browser-regressions.py --browser webkit
+npm run test:desktop            # Linux: xvfb-run -a npm run test:desktop
+```
+
+A passing local run does not prove the remote jobs passed; cite the release's Actions run as evidence.
+
+Check the deployed site matches the tested checkout (read-only, HTTPS only):
+
+```bash
+npm run check:deployment -- https://ferax564.github.io/OrgFlow/ static
+npm run check:deployment -- https://<enterprise-host>/ enterprise
+```
+
+Enterprise mode also checks readiness, OIDC mode, and that unauthenticated data access and private files are denied. It cannot test logins, roles, restores or load; those need an approved test account and a separate restore target.
+
+### Release checklist {id="org-ops-checklist"}
+
+| Step | Evidence to keep |
+| --- | --- |
+| CI green on the merge commit (all three browsers, all three desktop OSes) | Actions run link |
+| GitHub Release has all artifacts, manifests and blockmaps | Release page |
+| Static deployment check passes | Command output |
+| Update drill N to N+1 on at least one OS, using a non-sensitive fixture | OS versions, artifact hashes, before/after documents, updater logs |
+| Signed builds only: signature and notarization reports from clean machines | `verify:release` output |
+| `RELEASE_VALIDATION.md` updated with what was and was not run | Commit |
+
+Last recorded evidence: the static deployment check passed on 2026-09-20; CI passed all three browser engines on the 2.6.0 PR commit `bd43e73`. No signed build, Windows/macOS drill or enterprise deployment check has been recorded.

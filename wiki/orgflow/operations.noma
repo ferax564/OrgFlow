@@ -20,7 +20,7 @@ npm run mcp                    # stdio MCP bridge; needs ORGFLOW_API_URL and ORG
 
 - Serve over HTTP; opening files as `file://` can block image processing and some exports.
 - Enterprise dev data lives in `data/orgflow.sqlite` (gitignored). The first email to sign in becomes admin.
-- Copy `.env.example` for host settings (`AUTH_MODE`, `HOST`, `PORT`, `PUBLIC_URL`, `SESSION_SECRET`, `TENANT_NAME`, `TENANT_SLUG`, `DATA_DIR`).
+- Copy `.env.example` to `.env` for host settings (`AUTH_MODE`, `HOST`, `PORT`, `PUBLIC_URL`, `SESSION_SECRET`, `TENANT_NAME`, `TENANT_SLUG`, `DATA_DIR`). The server reads only `process.env` and nothing loads `.env` for it (`npm run start:enterprise` is plain `node server/index.js`), so start it with `node --env-file=.env server/index.js` (Node ≥ 22.16, as `engines` requires) or export the variables first. Otherwise it silently runs with the development defaults.
 - For local OIDC testing, `docker compose up` starts Keycloak 26.3 on port 8080 with the `orgflow` realm imported from `server/keycloak/`. The demo passwords and client secret in that realm are for local use only.
 
 ## Tests, lint and gates {id="org-ops-tests"}
@@ -68,7 +68,7 @@ A stable version merged to `main` is delivered to installed desktop apps automat
 
 ### Signing {id="org-ops-signing"}
 
-Signing credentials are **not configured**; releases currently ship unsigned and the release notes say so. The workflow signs each platform when all of its credentials are present and fails a release when they are only partly present.
+Signing credentials are **not configured**; releases currently ship unsigned and the release notes say so. The workflow signs each platform when all of its credentials are present and fails a release when they are only partly present. That check counts `CSC_LINK`, `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD` and `APPLE_TEAM_ID` on macOS and `WIN_CSC_LINK` and `WIN_PUBLISHER_NAME` on Windows (`.github/workflows/desktop.yml`, "Detect signing credentials"). The certificate passwords `CSC_KEY_PASSWORD` and `WIN_CSC_KEY_PASSWORD` are not counted, so a password set on its own still builds and releases unsigned.
 
 | Platform | Required | Verification on release |
 | --- | --- | --- |

@@ -128,3 +128,11 @@ On each version bump, check that `package.json`, the `CHANGELOG.md` heading, REA
 ::agent_task{id="org-task-issues-sync" scope="triage"}
 Re-list open GitHub issues for ferax564/OrgFlow and add any new ones to the Now / Next tables with their issue numbers. On 2026-09-27 there were none.
 ::
+
+::agent_task{id="org-task-signing-passwords" scope="release"}
+Add `CSC_KEY_PASSWORD` (macOS) and `WIN_CSC_KEY_PASSWORD` (Windows) to the `required` arrays in the "Detect signing credentials" step of `.github/workflows/desktop.yml`, so a password configured without its certificate counts as partial signing and fails a release. Found in review of the wiki PR; see the Signing section of the operations page.
+::
+
+::agent_task{id="org-task-env-file" scope="dx"}
+Make `npm run start:enterprise` load `.env` when it exists (for example `node --env-file-if-exists=.env server/index.js`, Node ≥ 22.9), so following the setup docs cannot silently start the server with development defaults.
+::

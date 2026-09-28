@@ -3,7 +3,7 @@ root.ORGFLOW_TEMPLATES = {
   'first-light': {
     label: 'Startup · 8 people',
     blurb: 'A seed-stage product company with one vacant engineer.',
-    palette: 'indigo',
+    palette: 'mono',
     branding: { companyName: 'First Light', chartTitle: 'Company org', logo: null, darkLogo: null, includeExports: true, footer: 'Confidential' },
     planning: {
       version: 2, activeScenarioId: 'current',

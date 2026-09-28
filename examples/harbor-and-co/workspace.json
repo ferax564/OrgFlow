@@ -917,7 +917,7 @@
     "footer": "Confidential \u00b7 Internal planning only"
   },
   "theme": "light",
-  "palette": "ocean",
+  "palette": "mono",
   "view": {
     "roles": [
       "Head",

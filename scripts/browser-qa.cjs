@@ -27,8 +27,18 @@ function ok(title) { findings.push({ type: 'ok', title }); console.log('OK:', ti
     const m = new DOMMatrixReadOnly(getComputedStyle(d).transform);
     return d.classList.contains('open') && Math.abs(m.e) < 50;
   });
+  // Sidebar filters and options sit in collapsible sections that start closed.
+  const openSideSection = async key => {
+    const sel = `details.side-section[data-section="${key}"]`;
+    if (!await page.$eval(sel, d => d.open)) await page.click(`${sel} > summary`);
+  };
   page.on('pageerror', err => pageErrors.push(String(err)));
-  page.on('console', msg => { if (msg.type() === 'error') consoleErrors.push(msg.text()); });
+  page.on('console', msg => {
+    if (msg.type() !== 'error') return;
+    // On a static server the enterprise probe is expected to 404.
+    if (/\/api\/meta$/.test(msg.location()?.url || '')) return;
+    consoleErrors.push(msg.text());
+  });
   page.on('dialog', async dialog => { await dialog.accept(); });
   await page.goto('http://127.0.0.1:4173/app.html', { waitUntil: 'networkidle0' });
   await page.evaluate(() => localStorage.clear());
@@ -70,6 +80,7 @@ function ok(title) { findings.push({ type: 'ok', title }); console.log('OK:', ti
   await page.click('#depthSeg [data-depth="99"]');
 
   // Date filter hides future Tom Becker
+  await openSideSection('date');
   await page.click('#dateFilter');
   await page.waitForFunction(() => document.querySelector('#countVisible').textContent !== '17');
   const dated = await page.$eval('#countVisible', el => el.textContent);
@@ -127,7 +138,8 @@ function ok(title) { findings.push({ type: 'ok', title }); console.log('OK:', ti
     node?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
   });
   await page.waitForSelector('#drawer.open');await drawerSettled();
-  await page.click('#fFte', { clickCount: 3 });
+  // Clear first: a triple-click can land before the field is ready and leave "1" in place.
+  await page.$eval('#fFte', el => { el.value = ''; });
   await page.type('#fFte', '2');
   await page.click('#saveBtn');
   const fteErr = await page.$eval('#formValidation', el => el.classList.contains('show') && el.textContent);

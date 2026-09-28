@@ -1,10 +1,10 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="light" data-palette="indigo">
+<html lang="en" data-theme="light" data-palette="mono">
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
 <meta name="color-scheme" content="light dark" />
-<meta name="theme-color" content="#4f46e5" />
+<meta name="theme-color" content="#111111" />
 <meta name="description" content="OrgFlow planner: private in-browser org charts. Drag reporting lines, compare scenarios, export PDF and HTML. Data stays in this browser." />
 <meta name="application-name" content="OrgFlow" />
 <meta property="og:title" content="OrgFlow — Planner" />
@@ -83,6 +83,7 @@
       <button class="iconbtn" id="paletteBtn" title="Choose colour palette" aria-label="Choose colour palette" aria-haspopup="menu" aria-expanded="false"><span class="palette-icon" aria-hidden="true"><i></i><i></i><i></i></span></button>
       <div class="menu palette-menu" id="paletteMenu">
         <div class="palette-menu-head"><strong>Colour palette</strong><span>Independent from light / dark mode</span></div>
+        <button class="palette-option" data-palette="mono"><span class="palette-name"><span class="palette-swatches"><i style="background:#111111"></i><i style="background:#8f8f8a"></i><i style="background:#f2f2f0"></i></span><span><b>Mono</b><small>Black, white and soft grey</small></span></span></button>
         <button class="palette-option" data-palette="indigo"><span class="palette-name"><span class="palette-swatches"><i style="background:#4f46e5"></i><i style="background:#7c3aed"></i><i style="background:#eef2ff"></i></span><span><b>OrgFlow Indigo</b><small>Original palette</small></span></span></button>
         <button class="palette-option" data-palette="crimson"><span class="palette-name"><span class="palette-swatches"><i style="background:#f50537"></i><i style="background:#1a1a1a"></i><i style="background:#b3b3b3"></i></span><span><b>Crimson</b><small>Red · black · functional grey</small></span></span></button>
         <button class="palette-option" data-palette="graphite"><span class="palette-name"><span class="palette-swatches"><i style="background:#20252b"></i><i style="background:#7d8793"></i><i style="background:#d9dde2"></i></span><span><b>Graphite</b><small>Neutral engineering workspace</small></span></span></button>
@@ -97,7 +98,7 @@
         <div class="menu-label">Workspace</div>
         <button id="brandingBtn" role="menuitem"><span class="mi">◧</span>Company branding…</button>
         <div class="sep"></div>
-        <div class="mobile-only"><button id="morePeopleBtn" role="menuitem"><span class="mi">☺</span>People directory…</button><div class="menu-label">Colour palette</div><div class="menu-palettes"><button data-palette="indigo" aria-label="OrgFlow Indigo palette" style="--sw:#4f46e5"></button><button data-palette="crimson" aria-label="Crimson palette" style="--sw:#f50537"></button><button data-palette="graphite" aria-label="Graphite palette" style="--sw:#20252b"></button><button data-palette="ocean" aria-label="Ocean palette" style="--sw:#0284c7"></button><button data-palette="emerald" aria-label="Emerald palette" style="--sw:#059669"></button></div></div>
+        <div class="mobile-only"><button id="morePeopleBtn" role="menuitem"><span class="mi">☺</span>People directory…</button><div class="menu-label">Colour palette</div><div class="menu-palettes"><button data-palette="mono" aria-label="Mono palette" style="--sw:#111111"></button><button data-palette="indigo" aria-label="OrgFlow Indigo palette" style="--sw:#4f46e5"></button><button data-palette="crimson" aria-label="Crimson palette" style="--sw:#f50537"></button><button data-palette="graphite" aria-label="Graphite palette" style="--sw:#20252b"></button><button data-palette="ocean" aria-label="Ocean palette" style="--sw:#0284c7"></button><button data-palette="emerald" aria-label="Emerald palette" style="--sw:#059669"></button></div></div>
         <div class="sep"></div>
         <div class="menu-label">Help</div>
         <button id="shortcutsBtn" role="menuitem"><span class="mi">⌨</span>Keyboard shortcuts<kbd>?</kbd></button>
@@ -113,14 +114,45 @@
   </div>
 </header>
 <div class="layout">
-<aside id="sidebar" aria-label="Filters and chart display">
+<aside id="sidebar" aria-label="View options and filters">
   <div class="side-top">
-    <div class="side-top-row"><h2 class="side-heading">View</h2><button class="small-link" id="resetFilters" type="button">Reset view</button><button class="iconbtn side-close" id="closeFilters" type="button" aria-label="Close panel" title="Close panel">×</button></div>
-    <div class="scenario-note" id="scenarioNote"></div><div class="comparison-help">Compare uses the complete scenarios, including all dates and levels. Chart filters do not apply.</div>
+    <div class="side-top-row"><div class="side-heading-wrap"><span class="side-kicker">Workspace</span><h2 class="side-heading">View options</h2></div><button class="small-link side-reset" id="resetFilters" type="button">Reset</button><button class="iconbtn side-close" id="closeFilters" type="button" aria-label="Close panel" title="Close panel">×</button></div>
     <div class="search"><svg viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="6" stroke="currentColor" stroke-width="2"/><path d="m16 16 4 4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg><input id="search" placeholder="Find a person or position…" aria-label="Find a person or position" autocomplete="off"/><span class="kbd">⌘K</span></div>
-    <div class="section always-available side-summary" aria-label="Matching position capacity"><div class="stats"><div class="stat"><b id="countVisible">0</b><span>Positions</span></div><div class="stat"><b id="countTotal">0</b><span>Filled</span></div><div class="stat"><b id="countApproved">0</b><span>Open</span></div><div class="stat"><b id="countOpen">0</b><span>Recruiting</span></div><div class="stat"><b id="countFte">0</b><span>FTE</span></div><div class="stat"><b id="countApprovedFte">0</b><span>Appr. FTE</span></div></div><p class="hint" id="visibleCardsHint"></p></div>
+    <div class="comparison-help">Compare uses the complete scenarios, including all dates and levels. Chart filters do not apply.</div>
   </div>
-  <div class="side-group-label">Filter</div>
+  <div class="side-group" role="group" aria-labelledby="sideOptionsLabel">
+  <div class="side-group-label" id="sideOptionsLabel"><span>Options</span></div>
+  <div class="side-option" data-option="depth">
+    <div class="side-option-head"><span class="side-title">Levels shown</span><span class="side-badge" id="badgeDepth">All</span></div>
+    <div class="seg" id="depthSeg"><button data-depth="1">Heads</button><button data-depth="2">Leads</button><button data-depth="3">Team</button><button data-depth="99" class="active">All</button></div>
+  </div>
+  <details class="side-section" data-section="cards">
+    <summary><span class="side-title">Card details</span><span class="side-badge" id="badgeCards">All</span></summary>
+    <div class="side-body">
+      <label class="check"><input type="checkbox" id="showGroup" checked /> Group / team</label>
+      <label class="check"><input type="checkbox" id="showSite" checked /> Site</label>
+      <label class="check"><input type="checkbox" id="showType" checked /> Position type</label>
+      <label class="check"><input type="checkbox" id="showApproval" checked /> Approval label</label>
+      <label class="check"><input type="checkbox" id="showHiring" checked /> Hiring state</label>
+      <label class="check"><input type="checkbox" id="showFte" checked /> FTE</label>
+      <label class="check"><input type="checkbox" id="showSpan" checked /> Direct reports and vacancies</label>
+      <label class="check"><input type="checkbox" id="showCumulative" /> Total people under Heads and Team Leaders</label>
+      <div class="field gap-field"><label for="groupGap">Space between groups</label><input id="groupGap" type="range" min="16" max="96" step="4" value="32" /><div class="hint" id="groupGapValue">32 px</div></div>
+      <label class="check"><input type="checkbox" id="chartDots" checked /> Dotted canvas background</label>
+    </div>
+  </details>
+  <details class="side-section" data-section="views">
+    <summary><span class="side-title">Saved views</span><span class="side-badge" id="badgeViews">All</span></summary>
+    <div class="side-body">
+      <p class="hint side-lead">Store filters, zoom and card settings under a name. Views travel with saved files.</p>
+      <div class="field"><label for="namedViewSelect">Apply a view</label><select id="namedViewSelect" aria-label="Saved views"><option value="">— Current view —</option></select></div>
+      <div class="level-add"><input id="namedViewName" maxlength="40" placeholder="e.g. Board pack" aria-label="Name for this view" /><button class="btn" id="saveViewBtn" type="button">Save view</button></div>
+      <button class="small-link" id="deleteViewBtn" type="button">Delete selected view</button>
+    </div>
+  </details>
+  </div>
+  <div class="side-group" role="group" aria-labelledby="sideFiltersLabel">
+  <div class="side-group-label" id="sideFiltersLabel"><span>Filters</span><span class="side-group-count" id="badgeFilters" hidden></span></div>
   <details class="side-section" data-section="type">
     <summary><span class="side-title">Position type</span><span class="side-badge" id="badgeType">All</span></summary>
     <div class="side-body">
@@ -169,37 +201,11 @@
       <p class="hint" id="asOfHint">All dates — positions show regardless of start or end.</p>
     </div>
   </details>
-  <div class="side-group-label">Display</div>
-  <details class="side-section" data-section="depth" open>
-    <summary><span class="side-title">Levels shown</span><span class="side-badge" id="badgeDepth">All</span></summary>
-    <div class="side-body">
-      <div class="seg" id="depthSeg"><button data-depth="1">Heads</button><button data-depth="2">Leads</button><button data-depth="3">Team</button><button data-depth="99" class="active">All</button></div>
-    </div>
-  </details>
-  <details class="side-section" data-section="cards">
-    <summary><span class="side-title">Card details</span><span class="side-badge" id="badgeCards">All</span></summary>
-    <div class="side-body">
-      <label class="check"><input type="checkbox" id="showGroup" checked /> Group / team</label>
-      <label class="check"><input type="checkbox" id="showSite" checked /> Site</label>
-      <label class="check"><input type="checkbox" id="showType" checked /> Position type</label>
-      <label class="check"><input type="checkbox" id="showApproval" checked /> Approval label</label>
-      <label class="check"><input type="checkbox" id="showHiring" checked /> Hiring state</label>
-      <label class="check"><input type="checkbox" id="showFte" checked /> FTE</label>
-      <label class="check"><input type="checkbox" id="showSpan" checked /> Direct reports and vacancies</label>
-      <label class="check"><input type="checkbox" id="showCumulative" /> Total people under Heads and Team Leaders</label>
-      <div class="field gap-field"><label for="groupGap">Space between groups</label><input id="groupGap" type="range" min="16" max="96" step="4" value="32" /><div class="hint" id="groupGapValue">32 px</div></div>
-      <label class="check"><input type="checkbox" id="chartDots" checked /> Dotted canvas background</label>
-    </div>
-  </details>
-  <details class="side-section" data-section="views">
-    <summary><span class="side-title">Saved views</span><span class="side-badge" id="badgeViews">All</span></summary>
-    <div class="side-body">
-      <p class="hint side-lead">Store filters, zoom and card settings under a name. Views travel with saved files.</p>
-      <div class="field"><label for="namedViewSelect">Apply a view</label><select id="namedViewSelect" aria-label="Saved views"><option value="">— Current view —</option></select></div>
-      <div class="level-add"><input id="namedViewName" maxlength="40" placeholder="e.g. Board pack" aria-label="Name for this view" /><button class="btn" id="saveViewBtn" type="button">Save view</button></div>
-      <button class="small-link" id="deleteViewBtn" type="button">Delete selected view</button>
-    </div>
-  </details>
+  </div>
+  <div class="side-foot">
+    <div class="scenario-note" id="scenarioNote"></div>
+    <div class="section always-available side-summary" aria-label="Matching position capacity"><div class="side-foot-label">Summary · matching positions</div><div class="stats"><div class="stat"><b id="countVisible">0</b><span>Positions</span></div><div class="stat"><b id="countTotal">0</b><span>Filled</span></div><div class="stat"><b id="countApproved">0</b><span>Open</span></div><div class="stat"><b id="countOpen">0</b><span>Recruiting</span></div><div class="stat"><b id="countFte">0</b><span>FTE</span></div><div class="stat"><b id="countApprovedFte">0</b><span>Appr. FTE</span></div></div><p class="hint" id="visibleCardsHint"></p></div>
+  </div>
 </aside>
 <main>
 <div class="planning-bar">

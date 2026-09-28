@@ -39,11 +39,11 @@ $('#asOf').value=today;
 
 function toast(msg){const t=$('#toast');t.textContent=msg;t.classList.add('show');clearTimeout(window.__toast);window.__toast=setTimeout(()=>t.classList.remove('show'),2100)}
 function uid(){return 'p-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,7)}
-const PALETTES=['indigo','crimson','graphite','ocean','emerald'];
-function setupTheme(){const saved=safeGet('orgflow.theme');const dark=saved?saved==='dark':window.matchMedia?.('(prefers-color-scheme: dark)').matches;let palette=safeGet('orgflow.palette');if(palette==='audi')palette='crimson';setPalette(PALETTES.includes(palette)?palette:'indigo',false);setTheme(dark?'dark':'light',false);updateThemeControls();render()}
-function updateThemeControls(){const theme=document.documentElement.dataset.theme||'light',palette=document.documentElement.dataset.palette||'indigo';$('#themeBtn').innerHTML=theme==='dark'?'<svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="4" stroke="currentColor" stroke-width="2"/><path d="M12 2v2m0 16v2M4.9 4.9l1.4 1.4m11.4 11.4 1.4 1.4M2 12h2m16 0h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>':'<svg viewBox="0 0 24 24" fill="none"><path d="M20 15.2A8 8 0 0 1 8.8 4 8 8 0 1 0 20 15.2Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>';$('#themeBtn').title=theme==='dark'?'Switch to light mode':'Switch to dark mode';$$('#paletteMenu [data-palette]').forEach(b=>b.classList.toggle('active',b.dataset.palette===palette))}
+const PALETTES=['mono','indigo','crimson','graphite','ocean','emerald'];
+function setupTheme(){const saved=safeGet('orgflow.theme');const dark=saved?saved==='dark':window.matchMedia?.('(prefers-color-scheme: dark)').matches;let palette=safeGet('orgflow.palette');if(palette==='audi')palette='crimson';setPalette(PALETTES.includes(palette)?palette:'mono',false);setTheme(dark?'dark':'light',false);updateThemeControls();render()}
+function updateThemeControls(){const theme=document.documentElement.dataset.theme||'light',palette=document.documentElement.dataset.palette||'mono';$('#themeBtn').innerHTML=theme==='dark'?'<svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="4" stroke="currentColor" stroke-width="2"/><path d="M12 2v2m0 16v2M4.9 4.9l1.4 1.4m11.4 11.4 1.4 1.4M2 12h2m16 0h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>':'<svg viewBox="0 0 24 24" fill="none"><path d="M20 15.2A8 8 0 0 1 8.8 4 8 8 0 1 0 20 15.2Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>';$('#themeBtn').title=theme==='dark'?'Switch to light mode':'Switch to dark mode';$$('#paletteMenu [data-palette]').forEach(b=>b.classList.toggle('active',b.dataset.palette===palette))}
 function setTheme(theme,rerender=true){document.documentElement.dataset.theme=theme;safePreference('orgflow.theme',theme);updateThemeControls();applyBranding();if(rerender)render()}
-function setPalette(palette,rerender=true){if(palette==='audi')palette='crimson';if(!PALETTES.includes(palette))palette='indigo';document.documentElement.dataset.palette=palette;safePreference('orgflow.palette',palette);updateThemeControls();if(rerender)render()}
+function setPalette(palette,rerender=true){if(palette==='audi')palette='crimson';if(!PALETTES.includes(palette))palette='mono';document.documentElement.dataset.palette=palette;safePreference('orgflow.palette',palette);updateThemeControls();if(rerender)render()}
 let cssValueCache=null;
 function cssVar(name){if(cssValueCache&&Object.hasOwn(cssValueCache,name))return cssValueCache[name];const value=getComputedStyle(document.documentElement).getPropertyValue(name).trim();if(cssValueCache)cssValueCache[name]=value;return value;}
 function allPositionTypes(){return positionTypes(workspace?.positionLevels);}
@@ -1038,6 +1038,7 @@ function renderSideBadges(){
   const depth=$('#badgeDepth');if(depth){depth.textContent={1:'Heads',2:'Leads',3:'Team'}[maxDepth]||'All';depth.classList.toggle('on',maxDepth!==99);}
   const cards=$('#badgeCards');if(cards){const keys=['group','site','type','approval','hiring','fte','span'];const n=keys.filter(k=>cardDisplay[k]).length;cards.textContent=`${n} of ${keys.length}`;}
   const views=$('#badgeViews');if(views){const n=(workspace?.namedViews||[]).length;views.textContent=n?String(n):'None';}
+  const filters=$('#badgeFilters');if(filters){const n=['badgeType','badgeGroup','badgeSite','badgeHiring','badgeApproval','badgeDate'].filter(id=>$('#'+id)?.classList.contains('on')).length;filters.hidden=!n;filters.textContent=`${n} active`;}
 }
 function applyDefaultFilters(){
   knownGroups=null;knownSites=null;
@@ -1601,7 +1602,7 @@ async function validateWorkspace(input){
     const original=envelope.branding?.[key];if(original&&!validStoredLogo(original))throw new Error('Workspace contains an invalid logo.');
     if(b[key]){const encoded=b[key],raw=atob(encoded.data.split(',')[1]),bytes=Uint8Array.from(raw,c=>c.charCodeAt(0));const checked=await normalizeLogoFile(new File([bytes],encoded.name,{type:'image/png'}));checked.surface=encoded.surface;b[key]=checked;}
   }
-  return {planning,branding:b,theme:envelope.theme==='dark'?'dark':'light',palette:PALETTES.includes(envelope.palette)?envelope.palette:(envelope.palette==='audi'?'crimson':'indigo'),view:sanitizeView(envelope.view||{},planning),checkpoints:parsed.checkpoints,kind:parsed.kind};
+  return {planning,branding:b,theme:envelope.theme==='dark'?'dark':'light',palette:PALETTES.includes(envelope.palette)?envelope.palette:(envelope.palette==='audi'?'crimson':'mono'),view:sanitizeView(envelope.view||{},planning),checkpoints:parsed.checkpoints,kind:parsed.kind};
 }
 function restoreView(input){
   knownGroups=null;knownSites=null;
@@ -1808,7 +1809,7 @@ function applySampleChrome(sampleId, persist=true){
   }
   branding=nextBrand; applyBranding(); setPalette(sample.palette,false); setTheme(sample.theme,false);
 }
-function replaceWorkspace(next,{brandingNext=null,palette='indigo',theme='light',view=null,sampleId='',message=''}={}){
+function replaceWorkspace(next,{brandingNext=null,palette='mono',theme='light',view=null,sampleId='',message=''}={}){
   if(enterpriseBlocksWrite())throw new Error('You can view this organization but you cannot replace it.');
   if(window.OrgFlowEnterprise?.enabled)throw new Error('Examples and full replacements belong in a local workspace. Import a Draft proposal to preserve the shared organization and its decision history.');
   const previous=lastSavedPlanningText,checked=validatePlanning(touchWorkspace(next)),serialized=JSON.stringify(checked);
@@ -1835,7 +1836,7 @@ async function loadSampleWorkspace(sampleId,{empty=false,skipConfirm=false}={}){
   try{
     await checkpointWorkspace(`Before loading ${empty?'a blank organization':'an example'}`);
     if(empty){
-      replaceWorkspace(emptyWorkspace(today),{brandingNext:BRANDING_DEFAULTS,palette:'indigo',theme:window.matchMedia?.('(prefers-color-scheme: dark)').matches?'dark':'light',message:'Blank organization'});
+      replaceWorkspace(emptyWorkspace(today),{brandingNext:BRANDING_DEFAULTS,palette:'mono',theme:window.matchMedia?.('(prefers-color-scheme: dark)').matches?'dark':'light',message:'Blank organization'});
       try{appStorage.removeItem('orgflow.sampleId');}catch{}
       toast('Started from a blank organization');
     }else{
@@ -1852,7 +1853,7 @@ async function loadStarterTemplate(id,{skipConfirm=false}={}){
   if(!skipConfirm&&!confirm(`Replace the current workspace with ${t.branding.companyName}?\n\nThis overwrites scenarios, people and branding in this browser. The current workspace is checkpointed first.`))return;
   try{
     await checkpointWorkspace('Before loading a template');
-    replaceWorkspace(t.planning,{brandingNext:t.branding,palette:t.palette||'indigo',theme:'light',message:`Loaded ${t.branding.companyName}`});
+    replaceWorkspace(t.planning,{brandingNext:t.branding,palette:t.palette||'mono',theme:'light',message:`Loaded ${t.branding.companyName}`});
     toast(`Loaded ${t.branding.companyName}${activeDateNote()}`);
   }catch(error){toast(error.message||'Could not load the template.');}
 }
@@ -2103,7 +2104,7 @@ async function applyEnterpriseWorkspace(doc){
   branding=cleanBranding(doc.branding);try{appStorage.setItem(BRANDING_KEY,JSON.stringify(branding));}catch{}
   writeDurable(next,lastSavedPlanningText);
   undoStack=[];redoStack=[];syncProjection();hidePositionEditor();
-  setPalette(doc.palette||'indigo',false);setTheme(doc.theme==='dark'?'dark':'light',false);
+  setPalette(doc.palette||'mono',false);setTheme(doc.theme==='dark'?'dark':'light',false);
   applyBranding();paintPlanner();
   if(doc.view)restoreView(doc.view);
   render();setTimeout(centerChart,0);

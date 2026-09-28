@@ -284,3 +284,134 @@ footer {
   .site-nav { flex-wrap: wrap; }
   h1 { font-size: 42px; }
 }
+
+/* ==========================================================================
+   Portfolite-inspired finish: one sans family, light-grey canvas, white
+   borderless cards with large radii, black pill buttons and a floating
+   pill navigation. Loaded last so it refines the base rules above.
+   ========================================================================== */
+:root {
+  --bg: #f2f2f0;
+  --ink: #0d0d0d;
+  --muted: #5f5f5c;
+  --soft: #8f8f8a;
+  --line: #e6e6e3;
+  --panel: #ffffff;
+  --accent: #111111;
+  --accent-2: #111111;
+  --accent-soft: #ededeb;
+  --shadow: 0 1px 2px rgba(0, 0, 0, .04), 0 18px 48px rgba(0, 0, 0, .07);
+  --sans: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+body {
+  background: var(--bg);
+  font: 16px/1.6 var(--sans);
+  letter-spacing: -.011em;
+  -webkit-font-smoothing: antialiased;
+}
+a { color: var(--ink); text-underline-offset: 3px; }
+.wrap { width: min(1160px, calc(100% - 40px)); }
+.site-nav {
+  position: sticky;
+  top: 14px;
+  z-index: 10;
+  margin: 16px 0 0;
+  padding: 8px 8px 8px 18px;
+  background: rgba(255, 255, 255, .82);
+  backdrop-filter: blur(18px) saturate(1.4);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, .04);
+}
+.mark { font-weight: 700; letter-spacing: -.04em; font-size: 17px; }
+.mark span { width: 30px; height: 30px; border-radius: 10px; background: var(--ink); font-size: 14px; }
+.nav-links { gap: 2px; font-weight: 500; font-size: 14px; }
+.nav-links a { padding: 8px 14px; border-radius: 999px; transition: background .15s, color .15s; }
+.nav-links a:hover { background: var(--accent-soft); }
+.nav-links a[href="app.html"] { background: var(--ink); color: #fff; }
+.nav-links a[href="app.html"]:hover { background: #2b2b2b; color: #fff; }
+.btn {
+  height: 46px;
+  padding: 0 22px;
+  font-family: var(--sans);
+  font-weight: 600;
+  font-size: 14.5px;
+  letter-spacing: -.01em;
+  border-color: var(--line);
+  transition: background .15s, border-color .15s, transform .15s;
+}
+.btn:hover { border-color: #cfcfcb; }
+.btn.primary { background: var(--ink); box-shadow: none; }
+.btn.primary:hover { background: #2b2b2b; }
+.btn .dl-version { font-weight: 500; }
+.hero { padding: 88px 0 40px; gap: 56px; }
+.kicker {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 14px 7px 12px;
+  border-radius: 999px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  color: var(--ink);
+  font-size: 12.5px;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+  margin-bottom: 22px;
+}
+.kicker::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: #22c55e; box-shadow: 0 0 0 4px rgba(34, 197, 94, .16); }
+h1 { font-weight: 600; letter-spacing: -.058em; line-height: .98; font-size: clamp(44px, 6.4vw, 76px); }
+.lede { font-size: 18px; line-height: 1.6; margin: 22px 0 30px; }
+.hero-note { font-size: 13px; }
+.live-chip { font-weight: 500; font-size: 12px; height: 30px; padding: 0 12px; }
+.live-chip:hover { border-color: var(--ink); color: var(--ink); }
+.frame { border: 0; border-radius: 28px; padding: 10px; box-shadow: var(--shadow); }
+.frame img { border-radius: 20px; }
+.frame figcaption { font-family: var(--sans); padding: 12px 10px 4px; font-size: 13px; }
+section { padding: 72px 0 8px; }
+.section-title { font-size: clamp(32px, 4.2vw, 48px); font-weight: 600; letter-spacing: -.05em; line-height: 1.05; margin-bottom: 12px; }
+.section-copy { font-size: 17px; margin-bottom: 30px; }
+.grid, .steps, .modes { gap: 16px; }
+.card, .step, .mode, .use-list li, .cta-band, .login-card {
+  border: 0;
+  border-radius: 24px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, .03);
+}
+.card, .step { padding: 26px 26px 24px; transition: transform .2s ease, box-shadow .2s ease; }
+.card:hover, .step:hover { transform: translateY(-2px); box-shadow: var(--shadow); }
+.card h3, .step h3, .mode h3 { font-size: 19px; font-weight: 600; letter-spacing: -.035em; margin-bottom: 8px; }
+.card p, .step p, .mode p { font-size: 15px; line-height: 1.6; }
+.use-list li { padding: 18px 22px; border-radius: 18px; }
+.use-list strong { font-family: var(--sans); font-size: 14px; font-weight: 600; }
+.mode { padding: 26px; }
+.mode .tag {
+  display: inline-block;
+  font-family: var(--sans);
+  font-size: 11.5px;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--ink);
+  background: var(--accent-soft);
+  padding: 4px 11px;
+  border-radius: 999px;
+  margin-bottom: 14px;
+}
+.mode-cmd { border-radius: 14px; background: #111; }
+.privacy { margin: 72px 0 16px; padding: 44px 44px 40px; border-radius: 28px; background: #111; }
+.privacy h2 { font-size: clamp(28px, 3.6vw, 40px); font-weight: 600; letter-spacing: -.05em; line-height: 1.1; margin-bottom: 12px; }
+.privacy p { color: #bdbdb8; }
+.cta-band { margin-top: 16px; padding: 36px 40px; }
+.cta-band h2 { font-size: clamp(26px, 3.2vw, 36px); font-weight: 600; letter-spacing: -.05em; }
+footer { font-family: var(--sans); font-size: 13px; padding: 32px 0 48px; }
+.login-card input, .login-card select { border-radius: 12px; }
+.admin-page button { border-radius: 999px; padding: 6px 12px; }
+.admin-page pre { background: #111; border-radius: 14px; }
+@media (max-width: 860px) {
+  .site-nav { border-radius: 24px; padding: 10px 12px; position: static; }
+  .nav-links a { padding: 6px 10px; }
+  .hero { padding-top: 48px; }
+  h1 { font-size: 44px; }
+  .privacy, .cta-band { padding: 28px 24px; }
+}

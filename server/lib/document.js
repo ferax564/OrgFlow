@@ -3,7 +3,7 @@
 const OrgFlow = require('../../js/orgflow-core.js');
 
 const MAX_BYTES = 12 * 1024 * 1024;
-const PALETTES = ['indigo', 'crimson', 'graphite', 'ocean', 'emerald'];
+const PALETTES = ['mono', 'indigo', 'crimson', 'graphite', 'ocean', 'emerald'];
 
 function sanitizeLogo(logo) {
   if (!logo) return null;
@@ -39,7 +39,7 @@ function validateDocument(input, rawBytes = 0) {
   }
   const planning = OrgFlow.validatePlanning(input.version === 1 ? OrgFlow.migrateLegacy(input.people) : input.planning);
   const branding = cleanBranding(input.branding);
-  const palette = PALETTES.includes(input.palette) ? input.palette : (input.palette === 'audi' ? 'crimson' : 'indigo');
+  const palette = PALETTES.includes(input.palette) ? input.palette : (input.palette === 'audi' ? 'crimson' : 'mono');
   return {
     format: 'orgflow.workspace',
     version: OrgFlow.DOCUMENT_VERSION,
@@ -67,7 +67,7 @@ function emptyDocument(today = new Date().toISOString().slice(0, 10)) {
       footer: ''
     },
     theme: 'light',
-    palette: 'indigo',
+    palette: 'mono',
     view: {}
   };
 }

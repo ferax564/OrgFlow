@@ -53,10 +53,10 @@ async function serve(root, port) {
     assert.match(await page.$eval('footer', el => el.textContent), /GitHub Pages/);
     const live = await page.$eval('a.live-chip', el => el.getAttribute('href'));
     assert.match(live, /ferax564\.github\.io\/OrgFlow/);
+    // The browser starts from a fresh profile, so the first visit is a first run.
+    // Clearing localStorage would not reset it: the start-page flag lives in IndexedDB.
     await page.goto(`http://127.0.0.1:${port}/app.html`, { waitUntil: 'networkidle0' });
-    await page.evaluate(() => localStorage.clear());
-    await page.reload({ waitUntil: 'networkidle0' });
-    await page.waitForSelector('#welcomeModal.open');
+    await page.waitForSelector('#welcomeModal.open #welcomeSkip', { visible: true });
     await page.click('#welcomeSkip');
     await page.waitForFunction(() => !document.querySelector('#welcomeModal.open'));
     await page.waitForSelector('#chart .node');

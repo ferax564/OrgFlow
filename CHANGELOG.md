@@ -5,7 +5,7 @@
 Visual refresh in the style of the Portfolite Framer template: neutral greys, pill controls, soft rounded cards and tight sans-serif type across the planner and the public site.
 
 - **New default palette, Mono**: black on light grey, white on near-black in dark mode. The other palettes stay available. Workspaces saved with a palette keep it; files without one, new charts, the First Light template and the Harbor & Co sample now use Mono.
-- Buttons, view tabs, segmented controls and menus are pills. The primary action is a solid accent pill, and a new `--on-accent` colour keeps its label readable on every palette in light and dark mode.
+- Buttons, view tabs, segmented controls and menus are pills. The primary action is a solid accent pill. New `--on-accent`, `--accent-strong` and `--accent-hover` colours keep its label, the active tab and filter badges at 4.5:1 contrast or better on every palette in light and dark mode, hover included; Crimson, and Ocean and Emerald in light mode, use a darker fill for this.
 - **Reorganized sidebar**: a *View options* header with search and **Reset** at the top, then **Options** (Levels shown as an always-visible control, Card details, Saved views), then **Filters**, whose heading shows how many filters are active. The scenario note and the matching-position summary sit in a footer that stays at the bottom of the panel.
 - Landing, login and admin pages use a single sans-serif font, a floating pill navigation and borderless white cards. Example screenshots are regenerated.
 

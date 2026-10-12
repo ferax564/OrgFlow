@@ -1,6 +1,38 @@
 # Changelog
 
-## Unreleased
+## 2.7.0
+
+Workplace planning on the shared enterprise host — work locations, vacation approval and desk sharing — available in the browser and as a Microsoft Teams app, plus a visual refresh. The workspace data format is unchanged (document version 3): 2.6 files, seating plans and backups open as-is.
+
+### Workplace planning and Microsoft Teams
+
+Employees plan where they work, request vacation and borrow desks in other offices on the shared enterprise host, in the browser or inside Microsoft Teams. See [WORKPLACE.md](WORKPLACE.md) and [TEAMS.md](TEAMS.md). Full days only in this release.
+
+- **My week**: office, remote or no plan for each day, a weekly pattern, and day-level overrides. Approved vacation wins over plans; missing plans keep the assigned desk protected. Dates follow each office's time zone.
+- **Vacation**: requests with a private note, manager approval inbox with the team's absences, a team absence calendar, and change or cancellation of approved vacation through a fresh decision (the approved dates stay in force meanwhile). Overlapping requests are rejected. Approvers come from Current, with administrator corrections.
+- **Desk sharing**: workplace administrators set up offices, assign seating rooms to them and enable sharing per desk or room, with equipment notes and closures. Assigned desks can be borrowed only while their owner is confirmed away; unassigned desks only when shared.
+- **Visitor reservations** on the existing room plans: one desk per person and per desk per day, enforced by the database, so simultaneous bookings yield one confirmation. Bookings set the visitor's location; cancelling asks to confirm it. Administrators book and cancel on behalf, with audit records.
+- **Confirmed bookings are protected**: an owner who returns, or whose vacation is cancelled, gets a visible seating conflict, notification and alternative desks; administrators can move the visitor. Workspace saves, scenario applications, room moves and closures that affect confirmed reservations list them and need confirmation.
+- **Wrong or late organization data never blocks anyone**: approvers come only from the org chart and corrections, never from Teams profiles. Employees report wrong approvers, desks, roles or account links; managers hand misrouted requests back with **Not my report**; requests without a valid approver go to an administrator routing queue instead of being refused; administrators route one request or save a correction for the future, and stale corrections are flagged.
+- **Planner**: the Seating view shows date-specific availability from live plans. A new scheduling-only **employee** role never receives the organization chart. Members can be linked to employee records on the Admin page. OrgFlow administrators are workplace administrators automatically; the **Workplace admin** tick grants the same to other members.
+- **Microsoft Teams**: a personal tab with Entra ID single sign-on validated on the server (pop-up sign-in as fallback; works without third-party cookies), Teams themes and deep links, and a notification-only bot. Messages carry a one-line summary and links; the in-app notification list stays authoritative, deliveries retry without duplicates. `npm run teams:package` builds the app package.
+- Records are kept beside the workspace, which keeps its format; older databases migrate on start, backups include the new tables, and retention is configurable.
+- Tests: 23 new unit, API and Teams tests covering the acceptance criteria, and `npm run test:workplace` for a browser run including the Teams tab.
+
+### Upgrade notes
+
+- **Enterprise hosts migrate their database on start**: the memberships table is rebuilt once to allow the new scheduling-only `employee` role, and new tables hold work locations, vacation requests, reservations, conflicts, reports and notifications. Back up first (`npm run backup`); the workspace document itself is untouched. To roll back, restore that backup into a 2.6 server rather than pointing 2.6 at the migrated database: 2.6 does not know the `employee` role and would let those members read the organization chart.
+- Nothing changes for existing members until you use it: link accounts to employee IDs on the Admin page, create offices in **Workplace admin**, assign rooms and enable sharing. OrgFlow administrators are workplace administrators automatically.
+- Teams is optional. Configure `TEAMS_*` and build the package with `npm run teams:package` (see TEAMS.md); without it the workplace screens run in the browser only.
+- The browser-only planner and desktop app gain the visual refresh; workplace planning needs the shared host.
+
+### Fixes
+
+- Seating tools and group filters stay usable after a shared save (the planner repaints once a server write finishes, and chip filters refresh when undo or redo changes which groups exist).
+- A browser regression test that only passed while the current month was September now commits the forecast month explicitly in Firefox and WebKit.
+- Dependency audit: `http-cache-semantics` and `fast-uri` updated within their ranges; `electron-builder` resolves to 26.17.0.
+
+### Visual refresh
 
 Visual refresh in the style of the Portfolite Framer template: neutral greys, pill controls, soft rounded cards and tight sans-serif type across the planner and the public site.
 

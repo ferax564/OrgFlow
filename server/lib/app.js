@@ -13,6 +13,9 @@ const governance = require('./governance');
 const Management = require('../../js/management-core');
 const OrgFlow = require('../../js/orgflow-core');
 const Share = require('../../js/share-export');
+const { createWorkplace } = require('./workplace');
+const workplaceRoutes = require('./workplace-routes');
+const { teamsConfig, createTeams } = require('./teams');
 
 const ROOT = path.resolve(__dirname, '../..');
 const APP_VERSION = require('../../package.json').version;
@@ -34,7 +37,7 @@ function send(res, status, body, headers = {}) {
   if (Buffer.isBuffer(body)) payload = body;
   else if (typeof body === 'string') payload = Buffer.from(body);
   else payload = Buffer.from(JSON.stringify(body));
-  res.writeHead(status, {
+  const all = {
     'content-type': headers['content-type'] || 'application/json; charset=utf-8',
     'content-length': payload.length,
     'cache-control': headers['cache-control'] || 'no-store',
@@ -42,7 +45,9 @@ function send(res, status, body, headers = {}) {
     'x-frame-options': 'DENY',
     'referrer-policy': 'no-referrer',
     ...headers
-  });
+  };
+  for (const key of Object.keys(all)) if (all[key] == null) delete all[key];
+  res.writeHead(status, all);
   res.end(payload);
 }
 
@@ -111,13 +116,27 @@ function safeStatic(urlPath) {
   const rel = decoded === '/' ? 'index.html' : decoded.replace(/^\/+/, '');
   if (rel.includes('\0') || rel.includes('\\') || rel.split('/').includes('..')) return null;
   const top = rel.split('/')[0];
-  const pages = new Set(['index.html','app.html','login.html','admin.html','404.html','manifest.webmanifest','robots.txt']);
+  const pages = new Set(['index.html','app.html','login.html','admin.html','workplace.html','404.html','manifest.webmanifest','robots.txt','teams/auth-start.html','teams/auth-end.html']);
   if (!pages.has(rel) && !['css','js','assets','examples'].includes(top)) return null;
   const abs = path.resolve(ROOT, rel);
   if (!abs.startsWith(ROOT + path.sep)) return null;
   try { if (!fs.realpathSync(abs).startsWith(ROOT + path.sep)) return null; } catch { return null; }
   return abs;
 }
+
+/** Pages Microsoft Teams may embed (the personal tab and its sign-in pop-up). Everything else stays unframeable. */
+const EMBEDDABLE = new Set(['workplace.html', 'teams/auth-start.html', 'teams/auth-end.html']);
+const TEAMS_FRAME_ANCESTORS = "frame-ancestors 'self' https://teams.microsoft.com https://*.teams.microsoft.com https://teams.cloud.microsoft https://*.cloud.microsoft https://*.office.com https://*.microsoft365.com https://*.skype.com";
+function frameHeaders(file) {
+  const rel = path.relative(ROOT, file).split(path.sep).join('/');
+  return EMBEDDABLE.has(rel) ? { 'x-frame-options': null, 'content-security-policy': TEAMS_FRAME_ANCESTORS } : {};
+}
+/** Where sign-in may send the browser afterwards: only our own planner, workplace and Teams pages. */
+function safeReturn(value) {
+  const v = String(value || '');
+  return /^\/(?:app\.html|workplace\.html|teams\/auth-end\.html)(?:[?#][^\s]*)?$/.test(v) && !v.includes('//') ? v : '';
+}
+function landingFor(membership) { return membership?.role === 'employee' ? '/workplace.html' : '/app.html'; }
 
 const INSECURE_SECRET = 'dev-insecure-orgflow-secret-change-me';
 
@@ -176,7 +195,10 @@ function identityFromReq(req, store, cfg) {
     return { user: { id: token.user_id, email: token.email, name: token.name }, membership:{...membership,can_export:membership.can_export&&scopes.includes('export')?1:0}, scopes, via: 'token' };
   }
   const cookies = auth.parseCookies(req.headers.cookie);
-  const sid = auth.unsignSid(cookies[auth.COOKIE], cfg.sessionSecret);
+  // Teams tabs run in a third-party frame where cookies are unreliable; they send the signed session in a header instead.
+  // An explicit header always decides, so an unrelated cookie in the same webview can never pick the account.
+  const header = typeof req.headers['x-orgflow-session'] === 'string' ? req.headers['x-orgflow-session'] : null;
+  const sid = auth.unsignSid(header ?? cookies[auth.COOKIE], cfg.sessionSecret);
   const session = store.getSession(sid);
   if (!session) return { error: 401, message: 'Sign in required.' };
   const membership = store.getMembership(session.user_id);
@@ -198,11 +220,12 @@ function setSessionCookie(res, store, userId, cfg) {
   return auth.cookieHeader(session.id, cfg.sessionSecret, { secure: cfg.secureCookies, maxAgeSec: 12 * 60 * 60 });
 }
 
-async function handleOidcLogin(req, res, store, cfg, oidc) {
+async function handleOidcLogin(req, res, store, cfg, oidc, requestUrl) {
   const { verifier, challenge, state, nonce } = auth.pkce();
   store.saveOauthState({
     state,
     nonce,
+    returnTo: safeReturn(requestUrl?.searchParams.get('return')),
     codeVerifier: verifier,
     expiresAt: new Date(Date.now() + 10 * 60 * 1000).toISOString()
   });
@@ -216,7 +239,7 @@ async function handleOidcLogin(req, res, store, cfg, oidc) {
   res.end();
 }
 
-async function handleOidcCallback(req, res, store, cfg, oidc, url) {
+async function handleOidcCallback(req, res, store, cfg, oidc, url, enroll = () => null) {
   const state = url.searchParams.get('state') || '';
   const code = url.searchParams.get('code') || '';
   const bound=auth.unsignSid(auth.parseCookies(req.headers.cookie).orgflow_oidc,cfg.sessionSecret);
@@ -239,7 +262,7 @@ async function handleOidcCallback(req, res, store, cfg, oidc, url) {
     email,
     name: profile.name || profile.preferred_username || email
   });
-  const membership = store.getMembership(user.id) || (email === cfg.bootstrapAdminEmail ? store.ensureMembership(user,{role:'admin'}) : null);
+  const membership = store.getMembership(user.id) || (email === cfg.bootstrapAdminEmail ? store.ensureMembership(user,{role:'admin'}) : enroll(user, email));
   if (!membership) {
     res.writeHead(302, { location: '/login.html?error=not_member', 'cache-control': 'no-store' });
     res.end();
@@ -247,7 +270,7 @@ async function handleOidcCallback(req, res, store, cfg, oidc, url) {
   }
   store.audit({ userId: user.id, action: 'login', detail: { via: 'oidc' } });
   res.writeHead(302, {
-    location: '/app.html',
+    location: safeReturn(saved.return_to) || landingFor(membership),
     'set-cookie': [setSessionCookie(res, store, user.id, cfg), 'orgflow_oidc=; HttpOnly; Path=/auth; SameSite=Lax; Max-Age=0'+(cfg.secureCookies?'; Secure':'')],
     'cache-control': 'no-store'
   });
@@ -259,6 +282,22 @@ function createApp(options = {}) {
   const db = options.db || openDatabase(options.databasePath || (options.memory ? ':memory:' : path.join(cfg.dataDir, 'orgflow.sqlite')));
   const store = options.store || createStore(db, { tenantName: cfg.tenantName, tenantSlug: cfg.tenantSlug });
   let oidcCache = null;
+  const workplace = createWorkplace(store, { env: options.env || process.env, now: options.now, channel: null });
+  store.workplace = workplace;
+  const teamsCfg = { ...teamsConfig(options.env || process.env), ...options.teams };
+  workplace.hooks.channel = teamsCfg.botEnabled ? 'teams' : null;
+  const teams = createTeams({ cfg: teamsCfg, store, workplace, publicUrl: cfg.publicUrl, fetchImpl: options.fetch, now: options.now ? () => options.now().getTime() : undefined });
+  const handleWorkplace = workplaceRoutes.routes(workplace);
+  /** Optional (WORKPLACE_AUTO_ENROLL=true): a verified directory account whose email matches exactly one
+   *  unlinked employee in Current gets a scheduling-only membership. Everyone else still needs an invitation. */
+  function enrollEmployee(user, email) {
+    if (!teamsCfg.autoEnroll) return null;
+    const matches = workplace.org().findByEmail(email).filter(e => !workplace.userForEmployee(e.id));
+    if (matches.length !== 1) return null;
+    const member = store.putMembership({ email, name: user.name, role: 'employee', employeeId: matches[0].id, issuerSub: user.issuer_sub });
+    store.audit({ userId: user.id, action: 'workplace.enroll', detail: { employeeId: matches[0].id, via: 'oidc' } });
+    return member;
+  }
 
   async function oidcConfig() {
     if (!cfg.issuer) throw new Error('KEYCLOAK_ISSUER is not set.');
@@ -282,23 +321,25 @@ function createApp(options = {}) {
           enterprise: true,
           auth: cfg.authMode,
           loginUrl: '/auth/login',
-          logoutUrl: '/auth/logout'
+          logoutUrl: '/auth/logout',
+          teams: { sso: teamsCfg.ssoEnabled, notifications: teamsCfg.botEnabled, appId: teamsCfg.appId || '' }
         });
         return;
       }
 
       if (p === '/auth/login' && method === 'GET') {
         if (cfg.authMode === 'dev') {
-          res.writeHead(302, { location: '/login.html', 'cache-control': 'no-store' });
+          const back = safeReturn(url.searchParams.get('return'));
+          res.writeHead(302, { location: '/login.html' + (back ? '?return=' + encodeURIComponent(back) : ''), 'cache-control': 'no-store' });
           res.end();
           return;
         }
-        await handleOidcLogin(req, res, store, cfg, await oidcConfig());
+        await handleOidcLogin(req, res, store, cfg, await oidcConfig(), url);
         return;
       }
 
       if (p === '/auth/callback' && method === 'GET') {
-        await handleOidcCallback(req, res, store, cfg, await oidcConfig(), url);
+        await handleOidcCallback(req, res, store, cfg, await oidcConfig(), url, enrollEmployee);
         return;
       }
 
@@ -312,6 +353,37 @@ function createApp(options = {}) {
           'cache-control': 'no-store'
         });
         res.end();
+        return;
+      }
+
+      if (p === '/auth/teams/sso' && method === 'POST') {
+        const body = await readJson(req, res, 32 * 1024);
+        if (!body) return;
+        try {
+          const { user, membership } = await teams.signIn(String(body.token || ''));
+          const session = store.createSession(user.id);
+          send(res, 200, { sessionToken: auth.signSid(session.id, cfg.sessionSecret), expiresAt: session.expiresAt, landing: landingFor(membership), session: auth.publicSession(user, membership, store.getTenant()) });
+        } catch (err) {
+          if (!err.status) throw err;
+          sendError(res, err.status, err.message, { code: err.code });
+        }
+        return;
+      }
+      // Hands a signed session to the Teams sign-in pop-up after a normal browser sign-in.
+      if (p === '/auth/session-token' && method === 'POST') {
+        const ident = requireMember(req, res, store, cfg);
+        if (!ident) return;
+        if (ident.via !== 'cookie') { sendError(res, 403, 'Browser session required.'); return; }
+        const session = store.createSession(ident.user.id);
+        store.audit({ userId: ident.user.id, action: 'login', detail: { via: 'teams-popup' } });
+        send(res, 200, { sessionToken: auth.signSid(session.id, cfg.sessionSecret), expiresAt: session.expiresAt });
+        return;
+      }
+      if (p === '/api/teams/messages' && method === 'POST') {
+        const body = await readJson(req, res, 256 * 1024);
+        if (!body) return;
+        try { send(res, 200, await teams.receiveActivity(req.headers.authorization, body)); }
+        catch (err) { if (!err.status) throw err; sendError(res, err.status, err.message); }
         return;
       }
 
@@ -350,8 +422,8 @@ function createApp(options = {}) {
               sendError(res, 403, 'The first local sign-in is admin. Later admin access is granted on the Admin page.');
               return;
             }
-            if (requested && !['editor', 'viewer'].includes(requested)) {
-              sendError(res, 400, 'Role must be editor or viewer.');
+            if (requested && !['editor', 'viewer', 'employee'].includes(requested)) {
+              sendError(res, 400, 'Role must be editor, viewer or employee.');
               return;
             }
             store.putMembership({
@@ -387,6 +459,15 @@ function createApp(options = {}) {
           send(res, 200, auth.publicSession(user, membership, tenant));
           return;
         }
+        if (p.startsWith('/api/workplace/')) {
+          await handleWorkplace(req, res, { ident, url, send, readJson });
+          return;
+        }
+        // Scheduling-only members never receive organization-chart data or tools.
+        if (membership.role === 'employee') {
+          sendError(res, 403, 'Your account can plan work locations, vacation and desks, but not open the organization chart.');
+          return;
+        }
 
         if (p === '/api/workspace' && method === 'GET') {
           const vis = visibleDocument(store, membership);
@@ -414,10 +495,10 @@ function createApp(options = {}) {
           catch (err) { sendError(res, 400, err.message); return; }
           const expected = parsed.workspace ? parsed.version ?? Number(String(req.headers['if-match'] || '').replace(/"/g, '')) : Number(String(req.headers['if-match'] || '').replace(/"/g, ''));
           try {
-            const saved = governance.atomicSave(store, incoming, membership, user, expected);
+            const saved = governance.atomicSave(store, incoming, membership, user, expected, { acknowledgeReservations: parsed.acknowledgeReservations === true });
             send(res, 200, { ok: true, ...saved, workspace: filterDocument(saved.workspace, membership.scope_position_id || '') });
           } catch (err) {
-            sendError(res, err.status || 400, err.message, { code: err.code, currentVersion: err.currentVersion });
+            sendError(res, err.status || 400, err.message, { code: err.code, currentVersion: err.currentVersion, ...err.extra });
           }
           return;
         }
@@ -436,7 +517,7 @@ function createApp(options = {}) {
             const saved = governance.decisionCommand(store, decodeURIComponent(decisionMatch[1]), body.action, body.input || {}, membership, user, body.version);
             send(res, 200, { ok: true, ...saved });
           } catch (err) {
-            sendError(res, err.status || 400, err.message, { code: err.code, currentVersion: err.currentVersion, conflicts: err.conflicts });
+            sendError(res, err.status || 400, err.message, { code: err.code, currentVersion: err.currentVersion, conflicts: err.conflicts, ...err.extra });
           }
           return;
         }
@@ -594,9 +675,11 @@ function createApp(options = {}) {
               name: body.name,
               role: body.role,
               canExport: body.canExport,
-              scopePositionId: body.scopePositionId || ''
+              scopePositionId: body.scopePositionId || '',
+              employeeId: body.employeeId,
+              workplaceAdmin: body.workplaceAdmin
             });
-            store.audit({ userId: user.id, action: 'member.update', detail: { email: member.email, role: member.role, canExport: member.can_export, scopePositionId: member.scope_position_id } });
+            store.audit({ userId: user.id, action: 'member.update', detail: { email: member.email, role: member.role, canExport: member.can_export, scopePositionId: member.scope_position_id, employeeId: member.employee_id, workplaceAdmin: Boolean(member.workplace_admin) } });
             send(res, 200, { member });
           } catch (err) { sendError(res, 400, err.message); }
           return;
@@ -664,18 +747,21 @@ function createApp(options = {}) {
       }
       const buf = fs.readFileSync(file);
       if (method === 'HEAD') {
-        res.writeHead(200, {
+        const head = {
           'content-type': mime(file),
           'content-length': buf.length,
           'cache-control': path.extname(file) === '.html' ? 'no-store' : 'public, max-age=300',
           'x-content-type-options': 'nosniff',
           'x-frame-options': 'DENY',
-          'referrer-policy': 'no-referrer'
-        });
+          'referrer-policy': 'no-referrer',
+          ...frameHeaders(file)
+        };
+        for (const key of Object.keys(head)) if (head[key] == null) delete head[key];
+        res.writeHead(200, head);
         res.end();
         return;
       }
-      send(res, 200, buf, { 'content-type': mime(file), 'cache-control': path.extname(file) === '.html' ? 'no-store' : 'public, max-age=300' });
+      send(res, 200, buf, { 'content-type': mime(file), 'cache-control': path.extname(file) === '.html' ? 'no-store' : 'public, max-age=300', ...frameHeaders(file) });
     } catch (err) {
       if (err.status) {
         sendError(res, err.status, err.message);
@@ -686,7 +772,7 @@ function createApp(options = {}) {
     }
   });
 
-  return { server, store, db, config: cfg };
+  return { server, store, db, config: cfg, workplace, teams };
 }
 
 function mcpTools({ allowProposals = false } = {}) {
@@ -785,4 +871,4 @@ function handleMcp(message, getVis, membership, store) {
 
 function openApiSpec() { return require('./openapi').spec(APP_VERSION); }
 
-module.exports = { createApp, loadConfig, assertProductionConfig, mcpTools, callMcpTool, handleMcp, emptyDocument, safeStatic, APP_VERSION, MCP_PROTOCOL };
+module.exports = { createApp, loadConfig, assertProductionConfig, mcpTools, callMcpTool, handleMcp, emptyDocument, safeStatic, safeReturn, APP_VERSION, MCP_PROTOCOL };

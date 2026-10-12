@@ -32,6 +32,7 @@
             <option value="admin">Admin</option>
             <option value="editor">Editor</option>
             <option value="viewer">Viewer</option>
+            <option value="employee">Employee (scheduling only)</option>
           </select>
         </label>
         <label>Subtree scope (optional position id) <input name="scopePositionId" placeholder="POS-003" /></label>
@@ -69,7 +70,8 @@
       });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) { err.hidden = false; err.textContent = body.error || 'Sign-in failed.'; return; }
-      location.href = 'app.html';
+      const back = params.get('return') || '';
+      location.href = /^\/(?:app|workplace)\.html(?:[?#][^\s]*)?$|^\/teams\/auth-end\.html$/.test(back) && !back.includes('//') ? back : (body.orgAccess === false ? 'workplace.html' : 'app.html');
     };
   </script>
 </body>

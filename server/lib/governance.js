@@ -38,12 +38,17 @@ function reconcileSave(stored, incoming, membership, user, now = new Date().toIS
   }
   return validateDocument(next);
 }
-function atomicSave(store, incoming, membership, user, expected) {
+// Seating and Current feed live desk reservations: a save that would remove a booked desk or change
+// its owner must be confirmed (acknowledgeReservations) after the affected bookings are shown.
+function atomicSave(store, incoming, membership, user, expected, { acknowledgeReservations = false } = {}) {
   store.db.exec('BEGIN IMMEDIATE');
   try {
     const row = store.getWorkspaceRow();checkVersion(row, expected);
-    const next = reconcileSave(JSON.parse(row.document), incoming, membership, user);
+    const previous = JSON.parse(row.document);
+    const next = reconcileSave(previous, incoming, membership, user);
+    const impact = store.workplace ? store.workplace.checkWorkspaceChange(previous, next, acknowledgeReservations) : [];
     const saved = store.saveWorkspace(next, user.id, expected);
+    store.workplace?.applyWorkspaceChange(impact, user.id);
     store.audit({ userId: user.id, action: 'save', detail: { version: saved.version, scoped: Boolean(membership.scope_position_id) } });
     store.db.exec('COMMIT');return { ...saved, workspace: next };
   } catch (error) { store.db.exec('ROLLBACK');throw error; }
@@ -68,7 +73,9 @@ function decisionCommand(store, scenarioId, action, input, membership, user, exp
     // Retried application is a true no-op: no extra workspace revision or duplicate audit event.
     if (M.same(planning, stored.planning)) { store.db.exec('COMMIT');return { workspace: stored, version: row.version, updatedAt: row.updated_at }; }
     const next = validateDocument({ ...stored, planning });
+    const impact = store.workplace ? store.workplace.checkWorkspaceChange(stored, next, input.acknowledgeReservations === true) : [];
     const saved = store.saveWorkspace(next, user.id, expected);
+    store.workplace?.applyWorkspaceChange(impact, user.id);
     store.audit({ userId: user.id, action: 'scenario.' + action, detail: { scenarioId, version: saved.version } });
     store.db.exec('COMMIT');return { ...saved, workspace: next };
   } catch (error) { store.db.exec('ROLLBACK');throw error; }

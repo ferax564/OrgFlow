@@ -23,6 +23,8 @@
       const session=await jsonFetch('/api/session',{headers:{accept:'application/json'}});
       if(session.res.status===401){location.href='/auth/login';return;}
       if(session.res.status===403){location.href='/login.html?error=not_member';return;}
+      // Scheduling-only members use the workplace screens; the organization chart is not theirs to load.
+      if(session.body?.role==='employee'){location.replace('workplace.html');return;}
       if(!session.res.ok)throw new Error('The shared host could not verify your session. Reload to retry.');
       const loaded=await jsonFetch('/api/workspace',{headers:{accept:'application/json'}});
       if(!loaded.res.ok)throw new Error(loaded.body.error||'Could not load the shared organization. Reload to retry.');
@@ -68,12 +70,23 @@
     try{
       await OrgFlowStore.flush();
       await persistPending(payload,'sending');
-      const{res,body}=await jsonFetch('/api/workspace',{method:'PUT',headers:{'content-type':'application/json','if-match':String(api.version)},body:JSON.stringify({workspace:payload,version:api.version})});
+      const{res,body}=await putWorkspace(payload,api.version);
+      if(res.status===409&&body.code==='reservations_affected'){status('Save failed');await persistPending(payload,'error');throw new Error('Not saved: the change would affect confirmed desk reservations. Undo it, or use Retry server save to review and confirm.');}
       if(res.status===409){conflict={base:structuredClone(baseline),local:structuredClone(payload),remote:null,version:null,resolutions:{},page:0};status('Conflict');await persistPending(payload,'conflict');throw new Error('Someone else saved. Your edits remain here. Use Resolve save conflict.');}
       if(!res.ok)throw new Error(body.error||'Save failed.');
       accept(body);dirty=false;status('Saved');
     }catch(error){if(api.saveState!=='Conflict'){status('Save failed');await persistPending(payload,'error');}throw error;}
     finally{api.busy=false;releaseEnterpriseUi();}
+  }
+  /** Desk removals and owner changes that touch confirmed reservations need an explicit confirmation. */
+  function confirmReservations(body){
+    const rows=(body.reservations||[]).slice(0,12).map(r=>`• ${r.date} · ${r.officeName||'office'} · desk ${r.deskId} (${r.reason.replace('-',' ')})`).join('\n');
+    return window.confirm(`${body.error}\n\n${rows}${body.reservations.length>12?'\n…':''}\n\nRemoved desks lose their reservations and the visitors are notified. Owner changes keep the visitor's booking and flag a seating conflict. Save anyway?`);
+  }
+  async function putWorkspace(payload,version){
+    let out=await jsonFetch('/api/workspace',{method:'PUT',headers:{'content-type':'application/json','if-match':String(version)},body:JSON.stringify({workspace:payload,version})});
+    if(out.res.status===409&&out.body.code==='reservations_affected'&&confirmReservations(out.body))out=await jsonFetch('/api/workspace',{method:'PUT',headers:{'content-type':'application/json','if-match':String(version)},body:JSON.stringify({workspace:payload,version,acknowledgeReservations:true})});
+    return out;
   }
   function accept(body,{preserveView=true}={}){
     api.version=body.version;api.applying=true;
@@ -90,7 +103,9 @@
     if(!api.canWrite||api.session?.scopePositionId)throw new Error('This action requires an unscoped editor or administrator.');
     await flush();api.busy=true;status('Saving decision');
     try{
-      const{res,body}=await jsonFetch(`/api/scenarios/${encodeURIComponent(id)}/decision`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({action,input,version:api.version})});
+      let{res,body}=await jsonFetch(`/api/scenarios/${encodeURIComponent(id)}/decision`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({action,input,version:api.version})});
+      if(res.status===409&&body.code==='reservations_affected'&&confirmReservations(body))({res,body}=await jsonFetch(`/api/scenarios/${encodeURIComponent(id)}/decision`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({action,input:{...input,acknowledgeReservations:true},version:api.version})}));
+      if(res.status===409&&body.code==='reservations_affected')throw new Error('Not applied: confirmed desk reservations would be affected.');
       if(!res.ok){if(res.status===409){conflict={base:structuredClone(baseline),local:structuredClone(window.enterpriseWorkspacePayload()),remote:null,resolutions:{},page:0};dirty=true;status('Conflict');}throw new Error(body.error||'Decision was not saved.');}
       accept(body,{preserveView:action!=='rollback'});dirty=false;undoStack=[];redoStack=[];updateUndoButtons();status('Saved');
     }catch(error){if(api.saveState!=='Conflict')status(dirty?'Save failed':'Saved');throw error;}
@@ -114,7 +129,8 @@
     if(merged.conflicts.length)throw new Error('Choose every conflict resolution first.');merged.workspace.planning=validatePlanning(merged.workspace.planning);
     api.busy=true;
     try{
-      const{res,body}=await jsonFetch('/api/workspace',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({workspace:merged.workspace,version:conflict.version})});
+      const{res,body}=await putWorkspace(merged.workspace,conflict.version);
+      if(res.status===409&&body.code==='reservations_affected')throw new Error('Not saved: confirmed desk reservations would be affected.');
       if(res.status===409){await openConflict();throw new Error('The server changed again. Review the refreshed conflict list.');}
       if(!res.ok)throw new Error(body.error||'Reconciled save failed.');
       accept(body);dirty=false;conflict=null;undoStack=[];redoStack=[];updateUndoButtons();status('Saved');closeDialog('serverConflictModal',true);toast('Independent edits combined and saved.');

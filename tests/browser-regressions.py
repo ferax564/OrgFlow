@@ -156,9 +156,10 @@ class BrowserTests(unittest.TestCase):
         self.assertEqual(self.ev('activeScenario().workflow.state'),'Applied');self.assertEqual(self.ev('scenarioById("current").positions[0].title'),'Approved proposed title')
         self.click('[data-decision-action="rollback"]');self.assertEqual(self.ev('activeScenario().workflow.state'),'Draft');self.assertEqual(self.ev('scenarioById("current").positions[0].title'),'Approved proposed title')
     def test_12_dated_records_and_forecast_drilldown(self):
+        # Firefox has no month picker: fill() types into a text field and fires 'input'; the planner applies the month on 'change'.
         self.planning('timeline');self.page.locator('#timelineKind').select_option('costs');self.click('[data-planning-add="costs"]')
         self.page.locator('#planning-annualCost').fill('120000');self.page.locator('#planning-startDate').fill('2026-09-01');self.click('#planningRecordSave');self.assertEqual(self.ev('activeScenario().costs.length'),1)
-        self.click('[data-management-tab="forecast"]');self.page.locator('#forecastMonth').fill('2026-09');self.click('[data-forecast-detail="2026-09"]')
+        self.click('[data-management-tab="forecast"]');self.page.locator('#forecastMonth').fill('2026-09');self.page.locator('#forecastMonth').dispatch_event('change');self.click('[data-forecast-detail="2026-09"]')
         self.assertIn('CHF 10',self.page.locator('#planningRecordForm').inner_text());self.page.keyboard.press('Escape')
         self.click('[data-management-tab="timeline"]');self.page.locator('#timelineKind').select_option('commitments');self.click('[data-planning-add="commitments"]')
         self.page.locator('#planning-name').fill('2027 platform');self.page.locator('#planning-requiredFte').fill('3');self.click('#planningRecordSave');self.assertEqual(self.ev('activeScenario().commitments.length'),1)

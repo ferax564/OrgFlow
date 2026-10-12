@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="color-scheme" content="light dark" />
+  <meta name="theme-color" content="#111111" />
+  <title>OrgFlow — Workplace</title>
+  <link rel="icon" href="assets/favicon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="css/workplace.css" />
+</head>
+<body>
+  <a class="sr-only" href="#main">Skip to content</a>
+  <header class="wp-top">
+    <a class="wp-mark" href="workplace.html"><span aria-hidden="true">▦</span>OrgFlow <span class="sr-only">workplace</span></a>
+    <div class="wp-who" id="who"></div>
+  </header>
+  <nav class="wp-tabs hidden" id="tabs" role="tablist" aria-label="Workplace">
+    <button role="tab" data-tab="week" aria-selected="true">My week</button>
+    <button role="tab" data-tab="vacation" aria-selected="false">Vacation</button>
+    <button role="tab" data-tab="book" aria-selected="false">Book a desk</button>
+    <button role="tab" data-tab="team" aria-selected="false">Team</button>
+    <button role="tab" data-tab="approvals" aria-selected="false" hidden>Approvals</button>
+    <button role="tab" data-tab="admin" aria-selected="false" hidden>Workplace admin</button>
+  </nav>
+  <main id="main" tabindex="-1">
+    <div id="status" role="status" aria-live="polite"></div>
+    <p class="notice hidden" id="notice"><strong>Full days only.</strong><span id="noticeText"></span></p>
+    <section id="view" aria-live="polite"></section>
+  </main>
+  <div class="card drawer hidden" id="drawer" role="dialog" aria-label="Notifications"></div>
+  <script src="js/workplace-core.js"></script>
+  <script src="js/seating-core.js"></script>
+  <script src="js/workplace-ui.js"></script>
+</body>
+</html>

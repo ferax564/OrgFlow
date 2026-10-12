@@ -94,7 +94,10 @@ function publicSession(user, membership, tenant) {
     canExport: Boolean(membership.can_export),
     canWrite: membership.role === 'admin' || membership.role === 'editor',
     isAdmin: membership.role === 'admin',
-    scopePositionId: membership.scope_position_id || ''
+    scopePositionId: membership.scope_position_id || '',
+    orgAccess: membership.role !== 'employee',
+    employeeId: membership.employee_id || '',
+    workplaceAdmin: Boolean(membership.workplace_admin) || membership.role === 'admin'
   };
 }
 

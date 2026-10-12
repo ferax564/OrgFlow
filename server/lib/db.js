@@ -14,6 +14,37 @@ function newId(prefix) {
   return prefix + '-' + crypto.randomUUID();
 }
 
+// `employee` members use scheduling only: no organization chart. Older databases are rebuilt once to allow it.
+const MEMBERSHIP_COLUMNS = `
+      tenant_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      role TEXT NOT NULL CHECK (role IN ('admin','editor','viewer','employee')),
+      can_export INTEGER NOT NULL DEFAULT 0,
+      scope_position_id TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL,
+      employee_id TEXT NOT NULL DEFAULT '',
+      workplace_admin INTEGER NOT NULL DEFAULT 0,
+      PRIMARY KEY (tenant_id, user_id),
+      FOREIGN KEY (tenant_id) REFERENCES tenants(id),
+      FOREIGN KEY (user_id) REFERENCES users(id)`;
+const ROLES = ['admin', 'editor', 'viewer', 'employee'];
+
+function migrateMemberships(db) {
+  const row = db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'memberships'").get();
+  if (row && !row.sql.includes("'employee'")) {
+    db.exec('PRAGMA foreign_keys = OFF;');
+    db.exec('BEGIN IMMEDIATE');
+    try {
+      db.exec(`CREATE TABLE memberships_v27 (${MEMBERSHIP_COLUMNS});`);
+      db.exec('INSERT INTO memberships_v27 (tenant_id, user_id, role, can_export, scope_position_id, created_at) SELECT tenant_id, user_id, role, can_export, scope_position_id, created_at FROM memberships;');
+      db.exec('DROP TABLE memberships; ALTER TABLE memberships_v27 RENAME TO memberships;');
+      db.exec('COMMIT');
+    } catch (error) { db.exec('ROLLBACK'); throw error; }
+    finally { db.exec('PRAGMA foreign_keys = ON;'); }
+  }
+  db.exec("CREATE UNIQUE INDEX IF NOT EXISTS memberships_employee ON memberships(tenant_id, employee_id) WHERE employee_id <> '';");
+}
+
 function openDatabase(filePath) {
   if (filePath && filePath !== ':memory:') {
     fs.mkdirSync(path.dirname(filePath), { recursive: true });
@@ -35,17 +66,7 @@ function openDatabase(filePath) {
       name TEXT NOT NULL,
       created_at TEXT NOT NULL
     );
-    CREATE TABLE IF NOT EXISTS memberships (
-      tenant_id TEXT NOT NULL,
-      user_id TEXT NOT NULL,
-      role TEXT NOT NULL CHECK (role IN ('admin','editor','viewer')),
-      can_export INTEGER NOT NULL DEFAULT 0,
-      scope_position_id TEXT NOT NULL DEFAULT '',
-      created_at TEXT NOT NULL,
-      PRIMARY KEY (tenant_id, user_id),
-      FOREIGN KEY (tenant_id) REFERENCES tenants(id),
-      FOREIGN KEY (user_id) REFERENCES users(id)
-    );
+    CREATE TABLE IF NOT EXISTS memberships (${MEMBERSHIP_COLUMNS});
     CREATE TABLE IF NOT EXISTS workspaces (
       tenant_id TEXT PRIMARY KEY,
       document TEXT NOT NULL,
@@ -103,6 +124,10 @@ function openDatabase(filePath) {
   if (!columns.has('scopes')) db.exec(`ALTER TABLE api_tokens ADD COLUMN scopes TEXT NOT NULL DEFAULT '["read"]'`);
   // Legacy credentials become read-only and expire after the migration grace period.
   db.prepare('UPDATE api_tokens SET expires_at = ? WHERE expires_at IS NULL').run(new Date(Date.now()+30*86400000).toISOString());
+  migrateMemberships(db);
+  const stateColumns = new Set(db.prepare('PRAGMA table_info(oauth_states)').all().map(x => x.name));
+  if (!stateColumns.has('return_to')) db.exec("ALTER TABLE oauth_states ADD COLUMN return_to TEXT NOT NULL DEFAULT ''");
+  require('./workplace-db').migrateWorkplace(db);
   db.exec(`CREATE TABLE IF NOT EXISTS command_receipts (tenant_id TEXT NOT NULL,user_id TEXT NOT NULL,key TEXT NOT NULL,hash TEXT NOT NULL,result TEXT NOT NULL,created_at TEXT NOT NULL,PRIMARY KEY(tenant_id,user_id,key));`);
   return db;
 }
@@ -168,7 +193,7 @@ function createStore(db, options = {}) {
     const count = memberCount();
     const nextRole = role || (count === 0 ? 'admin' : null);
     if (!nextRole) return null;
-    const exportFlag = canExport == null ? (nextRole === 'viewer' ? 0 : 1) : (canExport ? 1 : 0);
+    const exportFlag = canExport == null ? (['viewer', 'employee'].includes(nextRole) ? 0 : 1) : (canExport ? 1 : 0);
     db.prepare(`
       INSERT INTO memberships (tenant_id, user_id, role, can_export, scope_position_id, created_at)
       VALUES (?, ?, ?, ?, ?, ?)
@@ -178,17 +203,18 @@ function createStore(db, options = {}) {
 
   function listMembers() {
     return db.prepare(`
-      SELECT m.user_id, m.role, m.can_export, m.scope_position_id, m.created_at, u.email, u.name
+      SELECT m.user_id, m.role, m.can_export, m.scope_position_id, m.employee_id, m.workplace_admin, m.created_at, u.email, u.name
       FROM memberships m JOIN users u ON u.id = m.user_id
       WHERE m.tenant_id = ?
       ORDER BY u.email
     `).all(tenantId);
   }
 
-  function putMembership({ email, name, role, canExport, scopePositionId, issuerSub }) {
-    if (!['admin', 'editor', 'viewer'].includes(role)) throw new Error('Role must be admin, editor or viewer.');
+  function putMembership({ email, name, role, canExport, scopePositionId, issuerSub, employeeId, workplaceAdmin }) {
+    if (!ROLES.includes(role)) throw new Error('Role must be admin, editor, viewer or employee.');
     const normalizedEmail = String(email || '').trim().toLowerCase();
     if (!normalizedEmail || !normalizedEmail.includes('@') || normalizedEmail.length > 200) throw new Error('A valid email is required.');
+    const employee = employeeId == null ? null : String(employeeId).trim().slice(0, 150);
     const user = upsertUser({
       issuerSub: issuerSub || 'local:' + normalizedEmail,
       email: normalizedEmail,
@@ -199,18 +225,45 @@ function createStore(db, options = {}) {
       const admins = db.prepare("SELECT COUNT(*) AS n FROM memberships WHERE tenant_id = ? AND role = 'admin'").get(tenantId).n;
       if (admins <= 1) throw new Error('Cannot demote the last admin.');
     }
-    const exportFlag = canExport == null ? (role === 'viewer' ? 0 : 1) : (canExport ? 1 : 0);
-    const scope = String(scopePositionId || '').slice(0, 150);
+    if (employee) {
+      const taken = db.prepare('SELECT u.email FROM memberships m JOIN users u ON u.id = m.user_id WHERE m.tenant_id = ? AND m.employee_id = ? AND m.user_id <> ?').get(tenantId, employee, user.id);
+      if (taken) throw new Error(`Employee ${employee} is already linked to ${taken.email}.`);
+    }
+    const exportFlag = role === 'employee' ? 0 : canExport == null ? (role === 'viewer' ? 0 : 1) : (canExport ? 1 : 0);
+    const scope = role === 'employee' ? '' : String(scopePositionId || '').slice(0, 150);
+    const nextEmployee = employee ?? existing?.employee_id ?? '';
+    const nextWorkplace = workplaceAdmin == null ? (existing?.workplace_admin || 0) : (workplaceAdmin ? 1 : 0);
     if (existing) {
-      db.prepare('UPDATE memberships SET role = ?, can_export = ?, scope_position_id = ? WHERE tenant_id = ? AND user_id = ?')
-        .run(role, exportFlag, scope, tenantId, user.id);
+      db.prepare('UPDATE memberships SET role = ?, can_export = ?, scope_position_id = ?, employee_id = ?, workplace_admin = ? WHERE tenant_id = ? AND user_id = ?')
+        .run(role, exportFlag, scope, nextEmployee, nextWorkplace, tenantId, user.id);
     } else {
       db.prepare(`
-        INSERT INTO memberships (tenant_id, user_id, role, can_export, scope_position_id, created_at)
-        VALUES (?, ?, ?, ?, ?, ?)
-      `).run(tenantId, user.id, role, exportFlag, scope, nowIso());
+        INSERT INTO memberships (tenant_id, user_id, role, can_export, scope_position_id, created_at, employee_id, workplace_admin)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(tenantId, user.id, role, exportFlag, scope, nowIso(), nextEmployee, nextWorkplace);
     }
     return getMembership(user.id);
+  }
+
+  /** Links a member to their employee record (automatic match on a verified directory email). */
+  function linkEmployee(userId, employeeId) {
+    db.prepare('UPDATE memberships SET employee_id = ? WHERE tenant_id = ? AND user_id = ?').run(employeeId, tenantId, userId);
+    return getMembership(userId);
+  }
+
+  /** Identity-provider subjects (e.g. a Teams user's Entra object ID) mapped to one OrgFlow user. */
+  function userForIdentity(issuerSub) {
+    const row = db.prepare('SELECT u.* FROM user_identities i JOIN users u ON u.id = i.user_id WHERE i.issuer_sub = ?').get(issuerSub);
+    return row || db.prepare('SELECT * FROM users WHERE issuer_sub = ?').get(issuerSub) || null;
+  }
+  function linkIdentity(issuerSub, userId) {
+    db.prepare('INSERT OR IGNORE INTO user_identities (issuer_sub, user_id, created_at) VALUES (?, ?, ?)').run(issuerSub, userId, nowIso());
+  }
+  function memberByEmail(email) {
+    return db.prepare(`
+      SELECT m.*, u.email, u.name FROM memberships m JOIN users u ON u.id = m.user_id
+      WHERE m.tenant_id = ? AND u.email = ? ORDER BY m.created_at LIMIT 1
+    `).get(tenantId, String(email || '').trim().toLowerCase()) || null;
   }
 
   function deleteMembership(userId) {
@@ -282,9 +335,9 @@ function createStore(db, options = {}) {
     if (id) db.prepare('DELETE FROM sessions WHERE id = ?').run(id);
   }
 
-  function saveOauthState({ state, nonce, codeVerifier, expiresAt }) {
-    db.prepare('INSERT INTO oauth_states (state, nonce, code_verifier, expires_at) VALUES (?, ?, ?, ?)')
-      .run(state, nonce, codeVerifier, expiresAt);
+  function saveOauthState({ state, nonce, codeVerifier, expiresAt, returnTo = '' }) {
+    db.prepare('INSERT INTO oauth_states (state, nonce, code_verifier, expires_at, return_to) VALUES (?, ?, ?, ?, ?)')
+      .run(state, nonce, codeVerifier, expiresAt, returnTo);
   }
 
   function takeOauthState(state) {
@@ -353,8 +406,8 @@ function createStore(db, options = {}) {
 
   function listAudit(limit = 100) {
     return db.prepare(`
-      SELECT a.id, a.action, a.detail, a.created_at, u.email, u.name
-      FROM audit_log a JOIN users u ON u.id = a.user_id
+      SELECT a.id, a.action, a.detail, a.created_at, COALESCE(u.email, a.user_id) AS email, COALESCE(u.name, 'OrgFlow') AS name
+      FROM audit_log a LEFT JOIN users u ON u.id = a.user_id
       WHERE a.tenant_id = ?
       ORDER BY a.created_at DESC
       LIMIT ?
@@ -371,6 +424,10 @@ function createStore(db, options = {}) {
     getMembership,
     listMembers,
     putMembership,
+    linkEmployee,
+    userForIdentity,
+    linkIdentity,
+    memberByEmail,
     deleteMembership,
     getWorkspaceRow,
     saveWorkspace,
@@ -390,4 +447,4 @@ function createStore(db, options = {}) {
   };
 }
 
-module.exports = { openDatabase, createStore, newId };
+module.exports = { openDatabase, createStore, newId, nowIso, ROLES };

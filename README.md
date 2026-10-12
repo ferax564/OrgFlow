@@ -28,13 +28,13 @@ Then open http://localhost:4173/ or http://localhost:4173/app.html. Opening the 
 
 ### Desktop app
 
-CI builds desktop binaries for each OS. **v2.6.0** is the current release. The Windows and macOS builds are not code-signed yet, so the first open shows a SmartScreen or Gatekeeper prompt (see each row below). Download it below, or browse [all GitHub Releases](https://github.com/ferax564/OrgFlow/releases) (or the **Desktop binaries** workflow artifacts). You do not install into Program Files or `/Applications`.
+CI builds desktop binaries for each OS. **v2.7.0** is the current release. The Windows and macOS builds are not code-signed yet, so the first open shows a SmartScreen or Gatekeeper prompt (see each row below). Download it below, or browse [all GitHub Releases](https://github.com/ferax564/OrgFlow/releases) (or the **Desktop binaries** workflow artifacts). You do not install into Program Files or `/Applications`.
 
 | OS | File | How to run |
 | --- | --- | --- |
-| Windows | [OrgFlow-2.6.0-windows.exe](https://github.com/ferax564/OrgFlow/releases/download/v2.6.0/OrgFlow-2.6.0-windows.exe) | Double-click the `.exe`. Windows may show SmartScreen on an unsigned build — More info → Run anyway. Workspace data is stored in `OrgFlow-data` next to the exe. |
-| macOS | [OrgFlow-2.6.0-mac.zip](https://github.com/ferax564/OrgFlow/releases/download/v2.6.0/OrgFlow-2.6.0-mac.zip) | Unzip and double-click `OrgFlow.app`. You can leave it in Downloads; you do not need to drag it to Applications. If Gatekeeper blocks it, right-click → Open. |
-| Linux | [OrgFlow-2.6.0-linux.AppImage](https://github.com/ferax564/OrgFlow/releases/download/v2.6.0/OrgFlow-2.6.0-linux.AppImage) | `chmod +x OrgFlow-*-linux.AppImage && ./OrgFlow-*-linux.AppImage` |
+| Windows | [OrgFlow-2.7.0-windows.exe](https://github.com/ferax564/OrgFlow/releases/download/v2.7.0/OrgFlow-2.7.0-windows.exe) | Double-click the `.exe`. Windows may show SmartScreen on an unsigned build — More info → Run anyway. Workspace data is stored in `OrgFlow-data` next to the exe. |
+| macOS | [OrgFlow-2.7.0-mac.zip](https://github.com/ferax564/OrgFlow/releases/download/v2.7.0/OrgFlow-2.7.0-mac.zip) | Unzip and double-click `OrgFlow.app`. You can leave it in Downloads; you do not need to drag it to Applications. If Gatekeeper blocks it, right-click → Open. |
+| Linux | [OrgFlow-2.7.0-linux.AppImage](https://github.com/ferax564/OrgFlow/releases/download/v2.7.0/OrgFlow-2.7.0-linux.AppImage) | `chmod +x OrgFlow-*-linux.AppImage && ./OrgFlow-*-linux.AppImage` |
 
 ```bash
 npm ci
@@ -56,7 +56,7 @@ The desktop app loads the planner from a fixed `orgflow://` origin, so restarts 
 
 On this public site there is no backend. IndexedDB is the authoritative document store, with full recovery checkpoints and an atomic pending-change queue. `localStorage` is an optional cache and preference store; its quota failure does not prevent durable saves. Concurrent stale tabs are refused rather than overwriting newer commits. Clearing *all* site data still removes everything; export a JSON backup first. An optional Node host can share one org — see [Enterprise host](#enterprise-host-optional).
 
-Windows automatic updates require the [installer](https://github.com/ferax564/OrgFlow/releases/download/v2.6.0/OrgFlow-2.6.0-windows-setup.exe). The portable EXE uses manual replacement. See [release validation](RELEASE_VALIDATION.md), [changes](CHANGELOG.md), and [host operations](server/README.md).
+Windows automatic updates require the [installer](https://github.com/ferax564/OrgFlow/releases/download/v2.7.0/OrgFlow-2.7.0-windows-setup.exe). The portable EXE uses manual replacement. See [release validation](RELEASE_VALIDATION.md), [changes](CHANGELOG.md), and [host operations](server/README.md).
 
 ## Using the planner
 
@@ -112,6 +112,7 @@ The **Seating** tab (`5`) draws rooms and assigns desks. One floor plan is share
 - **Editing**: drag desks to move them, or drag empty space to select several. `R` rotates, `⌘/Ctrl+D` duplicates, the arrow keys nudge by the snap grid (10 cm to 1 m), and Delete removes. Pan with the scrollbars, Space-drag or the middle mouse button, or on a touch screen by dragging empty floor. ⌘/Ctrl + scroll zooms. Desks outside the walls or overlapping another desk are outlined in red. Every change can be undone.
 - **Assigning**: drag a name from **People & positions** onto a desk, pick a position in the desk panel, or select a desk and click a name. Seating someone who already has a desk moves them. **Auto-seat by team** fills the free desks in reading order, keeping each group together. **Hot desks** are shared and cannot be assigned. The position editor shows each position's desk.
 - **Export**: seating CSV (room, floor, desk, position, person, group, site) and a PNG of the room. Seating travels with the JSON backup and `.orgflow` bundle. Subtree-scoped members of a shared host do not receive the seating plan and cannot change it.
+- **Availability on a date** (shared host): pick a date to see which desks are protected for their owner, available to borrow, reserved by a visitor or unavailable, from live work plans in Current. Saves that remove a booked desk or change its owner list the affected reservations and ask for confirmation. Desk booking itself happens in the [workplace screens](WORKPLACE.md).
 
 ### Export
 
@@ -224,9 +225,11 @@ That host also provides:
 
 - Workspace API (save/load the existing `orgflow.workspace` JSON; one org per tenant)
 - Optional Keycloak OIDC in production (`AUTH_MODE=oidc`) with an **httpOnly** session cookie
-- Members: **admin / editor / viewer**, plus a separate **export** permission
+- Members: **admin / editor / viewer**, plus a separate **export** permission, and **employee** for scheduling-only access
+- **Workplace planning**: personal work-location calendar with weekly patterns, vacation requests with manager approval and a team absence calendar, and desk sharing — colleagues visiting another office borrow an assigned desk on days its owner is confirmed away, without changing the permanent seating plan. Full days only. See [`WORKPLACE.md`](WORKPLACE.md)
+- **Microsoft Teams app**: the workplace screens as a personal tab with single sign-on, plus notification-only bot messages that link to the right record. See [`TEAMS.md`](TEAMS.md)
 - Optional **subtree scope** (a position id): the API never sends seats outside that branch
-- Audit log of load, save and export
+- Audit log of load, save, export and every scheduling, vacation and reservation change
 - MCP read tools for Cursor / Claude, including workforce forecasts (`npm run mcp` with a member token); a separately enabled proposal-only tool never approves or applies changes
 
 Details, hardening notes, Docker Keycloak, AWS: [`server/README.md`](server/README.md).
@@ -249,6 +252,8 @@ python3 tests/browser-regressions.py --browser chromium
 ```
 
 The suite covers CSV parsing, spreadsheet-formula escaping, scenario validation, dotted-line rules, custom-field CSV round-trips, starter templates, comparison diffs, example workspaces, filter-set migration, stacked chart layout, sibling reordering, custom position levels, group/site chips, bulk edit, named views, A3 tiling, schema-version guards and forward-compatible field preservation, seating-plan geometry (walls, desk overlap, desk blocks, auto-seat and redaction), share-dataset redaction and subtree scoping, the journaled desktop workspace store (atomic writes, rotating backups, newest-revision selection), the desktop file server, and enterprise ACL/stress cases (forged cookies, path traversal, oversized bodies, last-admin protection, concurrent saves).
+
+`npm test` also covers the workplace rules and acceptance criteria (time zones and daylight saving, availability, vacation approval, concurrent bookings, seating conflicts, permissions, Teams sign-in, bot delivery and the Teams package). `npm run test:workplace` drives the workplace screens and the Teams tab in Chromium (set `CHROMIUM_PATH` if Playwright's browser is not installed).
 
 With Chrome and `puppeteer-core` installed locally:
 

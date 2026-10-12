@@ -3,7 +3,7 @@
 
 const { createApp, assertProductionConfig } = require('./lib/app');
 
-const { server, config, store, db } = createApp();
+const { server, config, store, db, workplace, teams } = createApp();
 try {
   assertProductionConfig(config);
 } catch (err) {
@@ -24,7 +24,9 @@ server.listen(config.port, config.host, () => {
   }
 });
 
-store.prune();
-const cleanup=setInterval(()=>{try{store.prune();}catch(error){console.error(JSON.stringify({level:'error',event:'retention_failed',message:error.message}));}},3600000);
+const prune=()=>{store.prune();workplace.prune();};
+prune();
+teams.start();
+const cleanup=setInterval(()=>{try{prune();}catch(error){console.error(JSON.stringify({level:'error',event:'retention_failed',message:error.message}));}},3600000);
 cleanup.unref();
-for(const signal of ['SIGINT','SIGTERM'])process.once(signal,()=>{clearInterval(cleanup);server.close(()=>{db.close();process.exit(0);});setTimeout(()=>process.exit(1),10000).unref();});
+for(const signal of ['SIGINT','SIGTERM'])process.once(signal,()=>{clearInterval(cleanup);teams.stop();server.close(()=>{db.close();process.exit(0);});setTimeout(()=>process.exit(1),10000).unref();});

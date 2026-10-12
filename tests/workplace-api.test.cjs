@@ -84,6 +84,9 @@ test('recurring remote days, day overrides and missing plans decide desk availab
   assert.equal((await desk(people.admin, '2026-10-14', 'desk-z5')).reason, 'vacant');
   const london = (await call(people.visitor, '/api/workplace/offices/lon/map?date=2026-10-14')).rooms[0].desks[0];
   assert.equal(london.state, 'protected', 'desks without sharing stay protected');
+  assert.equal((await call(people.admin, '/api/workplace/admin/sharing', { deskIds: ['desk-l1'], equipment: 'Standing desk' }, 'PUT')).status, 409, 'describing equipment does not share a desk');
+  assert.equal((await desk(people.admin, '2026-10-14')).equipment, 'Two monitors, USB-C dock');
+  assert.equal((await call(people.visitor, '/api/workplace/offices/lon/map?date=2026-10-14')).rooms[0].desks[0].state, 'protected');
   assert.equal(london.mine, true);
   const week = await call(people.owner, '/api/workplace/week?start=2026-10-12');
   assert.deepEqual(week.days.map(d => d.source), ['none', 'none', 'pattern', 'none', 'pattern', 'none', 'none']);
@@ -260,7 +263,9 @@ test('workspace changes and closures identify affected reservations before compl
   desk.hotDesk = false; desk.positionId = 'POS-009';
   const owner = await call(people.admin, '/api/workspace', { workspace: again.workspace, version: again.version }, 'PUT');
   assert.equal(owner.reservations?.[0]?.reason, 'owner-changed');
-  // Office closures too.
+  // Office closures too; a room or desk from another office is refused rather than silently closing nothing.
+  assert.equal((await call(people.admin, '/api/workplace/admin/closures', { officeId: 'zrh', roomId: 'room-lon', start: '2026-10-15', end: '2026-10-15' })).status, 400);
+  assert.equal((await call(people.admin, '/api/workplace/admin/closures', { officeId: 'lon', deskId: 'desk-z4', start: '2026-10-15', end: '2026-10-15' })).status, 400);
   const closure = await call(people.admin, '/api/workplace/admin/closures', { officeId: 'zrh', start: '2026-10-15', end: '2026-10-15', reason: 'Fire drill' });
   assert.equal(closure.status, 409);
   assert.equal(closure.reservations.length, 1);

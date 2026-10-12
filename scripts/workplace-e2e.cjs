@@ -15,7 +15,7 @@ const TENANT = '11111111-2222-3333-4444-555555555555', CLIENT = 'aaaaaaaa-bbbb-c
 const keys = crypto.generateKeyPairSync('rsa', { modulusLength: 2048 });
 function ssoToken(oid, upn) {
   const enc = x => Buffer.from(JSON.stringify(x)).toString('base64url'), now = Math.floor(Date.now() / 1000);
-  const input = enc({ alg: 'RS256', kid: 'k1' }) + '.' + enc({ iss: `${AUTHORITY}/${TENANT}/v2.0`, aud: CLIENT, tid: TENANT, oid, scp: 'access_as_user', preferred_username: upn, iat: now, nbf: now, exp: now + 3600 });
+  const input = enc({ alg: 'RS256', kid: 'k1' }) + '.' + enc({ iss: `${AUTHORITY}/${TENANT}/v2.0`, aud: CLIENT, tid: TENANT, oid, scp: 'access_as_user', azp: '5e3ce6c0-2b1f-4285-8d4b-75ee78787346', preferred_username: upn, iat: now, nbf: now, exp: now + 3600 });
   return input + '.' + crypto.sign('RSA-SHA256', Buffer.from(input), keys.privateKey).toString('base64url');
 }
 

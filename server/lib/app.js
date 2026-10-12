@@ -196,8 +196,9 @@ function identityFromReq(req, store, cfg) {
   }
   const cookies = auth.parseCookies(req.headers.cookie);
   // Teams tabs run in a third-party frame where cookies are unreliable; they send the signed session in a header instead.
-  const header = typeof req.headers['x-orgflow-session'] === 'string' ? req.headers['x-orgflow-session'] : '';
-  const sid = auth.unsignSid(cookies[auth.COOKIE] || header, cfg.sessionSecret);
+  // An explicit header always decides, so an unrelated cookie in the same webview can never pick the account.
+  const header = typeof req.headers['x-orgflow-session'] === 'string' ? req.headers['x-orgflow-session'] : null;
+  const sid = auth.unsignSid(header ?? cookies[auth.COOKIE], cfg.sessionSecret);
   const session = store.getSession(sid);
   if (!session) return { error: 401, message: 'Sign in required.' };
   const membership = store.getMembership(session.user_id);

@@ -17,6 +17,8 @@ function teamsConfig(env = process.env) {
     serviceHosts: env.TEAMS_SERVICE_HOSTS ? env.TEAMS_SERVICE_HOSTS.split(',').map(x => x.trim()).filter(Boolean) : SERVICE_HOSTS,
     allowHttpServiceUrl: env.TEAMS_ALLOW_HTTP_SERVICE_URL === 'true',
     autoEnroll: env.WORKPLACE_AUTO_ENROLL === 'true',
+    // Entra client IDs allowed to exchange a token: Teams desktop/mobile and web, plus any listed extras.
+    allowedClients: [...TEAMS_CLIENTS, ...String(env.TEAMS_ALLOWED_CLIENT_IDS || '').split(',').map(x => x.trim()).filter(Boolean)],
     ssoEnabled: Boolean(tenantId && clientId),
     botEnabled: Boolean(tenantId && botId && botPassword)
   };
@@ -39,6 +41,9 @@ function createTeams({ cfg, store, workplace, publicUrl, fetchImpl = (...args) =
     if (claims.tid !== cfg.tenantId) throw Object.assign(new Error('This Microsoft 365 organization is not allowed.'), { status: 403 });
     if (!String(claims.scp || '').split(' ').includes('access_as_user')) throw Object.assign(new Error('Token lacks the access_as_user scope.'), { status: 401 });
     if (!claims.oid) throw Object.assign(new Error('Token has no object ID.'), { status: 401 });
+    // The API scope is pre-authorized for Teams; a token another application obtained is not a Teams sign-in.
+    const client = claims.azp || claims.appid;
+    if (!(cfg.allowedClients || TEAMS_CLIENTS).includes(client)) throw Object.assign(new Error('Token was not issued to Microsoft Teams.'), { status: 401 });
     return claims;
   }
   /** Maps a validated Entra ID user to their OrgFlow member. The tenant is the company's own

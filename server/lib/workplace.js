@@ -639,10 +639,13 @@ function createWorkplace(store, options = {}) {
     if (!ids.length || ids.length > 5000) throw fail(400, 'Choose desks or a room.');
     for (const id of ids) if (!view.findDesk(id)) throw fail(404, `Desk ${id} not found.`);
     const kit = equipment === undefined ? null : text(equipment, 'Equipment', 200);
+    if (enabled !== true && enabled !== false && kit === null) throw fail(400, 'Say whether sharing is enabled, or give the equipment.');
     return tx(() => {
       for (const id of ids) {
         if (enabled === false) db.prepare('DELETE FROM desk_sharing WHERE tenant_id = ? AND desk_id = ?').run(T, id);
-        else if (enabled === true || kit !== null) db.prepare(`INSERT INTO desk_sharing (tenant_id, desk_id, equipment, updated_by, updated_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT(tenant_id, desk_id) DO UPDATE SET ${kit === null ? '' : 'equipment = excluded.equipment, '}updated_by = excluded.updated_by, updated_at = excluded.updated_at`).run(T, id, kit || '', a.userId, nowIso());
+        else if (enabled === true) db.prepare(`INSERT INTO desk_sharing (tenant_id, desk_id, equipment, updated_by, updated_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT(tenant_id, desk_id) DO UPDATE SET ${kit === null ? '' : 'equipment = excluded.equipment, '}updated_by = excluded.updated_by, updated_at = excluded.updated_at`).run(T, id, kit || '', a.userId, nowIso());
+        // Describing equipment never makes a desk bookable; only an explicit enable does.
+        else if (!db.prepare('UPDATE desk_sharing SET equipment = ?, updated_by = ?, updated_at = ? WHERE tenant_id = ? AND desk_id = ?').run(kit, a.userId, nowIso(), T, id).changes) throw fail(409, 'Share this desk before describing its equipment.');
       }
       const kept = enabled === false ? futureReservations(`desk_id IN (${ids.map(() => '?').join(',')})`, ids).length : 0;
       store.audit({ userId: a.userId, action: 'workplace.sharing', detail: { desks: ids.length, roomId: roomId || '', enabled, equipment: kit } });
@@ -654,7 +657,12 @@ function createWorkplace(store, options = {}) {
     if (!office(officeId)) throw fail(400, 'Unknown office.');
     validDate(start, 'Start date'); validDate(end, 'End date');
     if (end < start || W.daysBetween(start, end) > 366) throw fail(400, 'Choose a closure of at most a year.');
-    const note = text(reason, 'Reason', 200);
+    const note = text(reason, 'Reason', 200), map = roomOffices();
+    if (roomId && map.get(roomId) !== officeId) throw fail(400, 'That room is not in the chosen office.');
+    if (deskId) {
+      const found = org().findDesk(deskId);
+      if (!found || map.get(found.room.id) !== officeId || (roomId && found.room.id !== roomId)) throw fail(400, 'That desk is not in the chosen office or room.');
+    }
     return tx(() => {
       const params = [start, end, officeId], where = ['date BETWEEN ? AND ?', 'office_id = ?'];
       if (roomId) { where.push('room_id = ?'); params.push(roomId); }

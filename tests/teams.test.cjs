@@ -12,7 +12,7 @@ function sign(claims, pair = entra, kid = 'entra-1') {
   return input + '.' + crypto.sign('RSA-SHA256', Buffer.from(input), pair.privateKey).toString('base64url');
 }
 const NOW = new Date('2026-10-12T09:00:00Z'), t0 = Math.floor(NOW.getTime() / 1000);
-const ssoClaims = (extra = {}) => ({ iss: `${AUTHORITY}/${TENANT}/v2.0`, aud: CLIENT, tid: TENANT, oid: 'oid-manager', scp: 'access_as_user', preferred_username: 'manager@test.example', name: 'Luca Rossi', iat: t0 - 60, nbf: t0 - 60, exp: t0 + 3600, ...extra });
+const ssoClaims = (extra = {}) => ({ iss: `${AUTHORITY}/${TENANT}/v2.0`, aud: CLIENT, tid: TENANT, oid: 'oid-manager', scp: 'access_as_user', azp: '5e3ce6c0-2b1f-4285-8d4b-75ee78787346', preferred_username: 'manager@test.example', name: 'Luca Rossi', iat: t0 - 60, nbf: t0 - 60, exp: t0 + 3600, ...extra });
 const botClaims = (extra = {}) => ({ iss: 'https://api.botframework.com', aud: BOT, serviceurl: SERVICE, iat: t0 - 60, nbf: t0 - 60, exp: t0 + 3600, ...extra });
 
 function mockFetch() {
@@ -61,7 +61,7 @@ async function setup(t) {
 }
 
 test('Teams single sign-on validates the Entra ID token on the server and maps it to the member', async t => {
-  const { call } = await setup(t);
+  const env = await setup(t), { call } = env;
   const ok = await call('/auth/teams/sso', { body: { token: sign(ssoClaims()) } });
   assert.equal(ok.http, 200, ok.error);
   assert.equal(ok.landing, '/workplace.html');
@@ -70,13 +70,20 @@ test('Teams single sign-on validates the Entra ID token on the server and maps i
   assert.equal(me.http, 200);
   assert.equal(me.employee.name, 'Luca Rossi');
   assert.equal((await call('/api/workplace/me', { headers: { 'x-orgflow-session': ok.sessionToken + 'x' } })).http, 401, 'tampered session');
+  // The explicit Teams session decides even when the webview also carries another account's cookie.
+  const { admin } = env;
+  assert.equal((await call('/api/workplace/me', { headers: { 'x-orgflow-session': ok.sessionToken, cookie: admin } })).employee.name, 'Luca Rossi');
+  assert.equal((await call('/api/workplace/me', { headers: { 'x-orgflow-session': 'bogus', cookie: admin } })).http, 401, 'a bad header never falls back to the cookie');
   // The object ID is remembered: a renamed account still maps to the same member.
   const renamed = await call('/auth/teams/sso', { body: { token: sign(ssoClaims({ preferred_username: 'luca.rossi@test.example' })) } });
   assert.equal(renamed.session.employeeId, 'EMP-003');
   const rejected = [
     sign(ssoClaims(), rogue), sign(ssoClaims({ exp: t0 - 3600 })), sign(ssoClaims({ aud: 'someone-else' })),
-    sign(ssoClaims({ iss: 'https://login.example.test/other/v2.0' })), sign(ssoClaims({ scp: 'User.Read' })), 'not-a-token'
+    sign(ssoClaims({ iss: 'https://login.example.test/other/v2.0' })), sign(ssoClaims({ scp: 'User.Read' })), 'not-a-token',
+    sign(ssoClaims({ azp: '99999999-0000-0000-0000-000000000000' })), sign(ssoClaims({ azp: undefined }))
   ];
+  // v1 tokens name the client in appid; Teams desktop is accepted there too.
+  assert.equal((await call('/auth/teams/sso', { body: { token: sign(ssoClaims({ iss: `https://sts.windows.net/${TENANT}/`, azp: undefined, appid: '1fec8e78-bce4-4aaf-ab1b-5451cc387264' })) } })).http, 200);
   for (const token of rejected) assert.equal((await call('/auth/teams/sso', { body: { token } })).http, 401, token.slice(0, 20));
   assert.equal((await call('/auth/teams/sso', { body: { token: sign(ssoClaims({ tid: 'other-tenant' })) } })).http, 403, 'other tenants');
   const stranger = await call('/auth/teams/sso', { body: { token: sign(ssoClaims({ oid: 'oid-x', preferred_username: 'stranger@test.example' })) } });

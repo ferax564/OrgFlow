@@ -64,7 +64,7 @@ An employee chooses the first and last day, optionally adds a private note, and 
 
 ## Desk sharing
 
-A workplace administrator first creates offices (name and IANA time zone, such as `Europe/Zurich`), then assigns each room of the seating plan to an office and enables sharing for single desks or whole rooms. Desks without sharing stay protected.
+A workplace administrator first creates offices (name and IANA time zone, such as `Europe/Zurich`), then assigns each room of the seating plan to an office and enables sharing for single desks or whole rooms. Desks without sharing stay protected. Equipment can be described once a desk is shared; describing it never shares a desk by itself. A closure's room or desk must belong to its office.
 
 For a shared, assigned desk on a given date:
 

@@ -13,6 +13,10 @@ function workspace() {
     { id: 'room-zrh', name: 'Zurich floor 2', floor: 'HQ', outline: [[0, 0], [1200, 0], [1200, 800], [0, 800]], deskSize: { w: 160, h: 80 }, desks: [
       { id: 'desk-z1', label: 'Z1', x: 200, y: 200, w: 160, h: 80, rotation: 0, positionId: 'POS-008', hotDesk: false },
       { id: 'desk-z3', label: 'Z3', x: 600, y: 200, w: 160, h: 80, rotation: 0, positionId: '', hotDesk: false }
+    ] },
+    // Labels only need to be unique per room; the CLI must not guess between two Z3 desks.
+    { id: 'room-zrh3', name: 'Zurich floor 3', floor: 'HQ', outline: [[0, 0], [800, 0], [800, 600], [0, 600]], deskSize: { w: 160, h: 80 }, desks: [
+      { id: 'desk-z3-upper', label: 'Z3', x: 200, y: 200, w: 160, h: 80, rotation: 0, positionId: '', hotDesk: false }
     ] }
   ] };
   return doc;
@@ -43,8 +47,10 @@ async function setup(t) {
     cookies[name] = await login(`${name}@test.example`);
   }
   assert.equal((await call(admin, '/api/workplace/admin/offices', { id: 'zrh', name: 'Zurich', timezone: 'Europe/Zurich' }, 'PUT')).status, 200);
-  assert.equal((await call(admin, '/api/workplace/admin/rooms/room-zrh/office', { officeId: 'zrh' }, 'PUT')).status, 200);
-  assert.equal((await call(admin, '/api/workplace/admin/sharing', { roomId: 'room-zrh', enabled: true }, 'PUT')).status, 200);
+  for (const roomId of ['room-zrh', 'room-zrh3']) {
+    assert.equal((await call(admin, `/api/workplace/admin/rooms/${roomId}/office`, { officeId: 'zrh' }, 'PUT')).status, 200);
+    assert.equal((await call(admin, '/api/workplace/admin/sharing', { roomId, enabled: true }, 'PUT')).status, 200);
+  }
   async function token(who, scopes) {
     const r = await call(cookies[who], '/api/tokens', { name: 'cli test', scopes });
     assert.equal(r.status, 201, r.body.error);
@@ -117,6 +123,18 @@ test('token scopes keep organization-chart and workplace access apart', async t 
   assert.equal(JSON.parse(await orgflow(both, 'org', 'person', 'EMP-008')).id, 'EMP-008');
   assert.ok(JSON.parse(await orgflow(both, 'org', 'span', 'POS-003')));
   await assert.rejects(orgflow(both, 'org', 'span'), /org commands/);
+  await assert.rejects(orgflow(both, 'vacation', 'request', '--from', '2026-12-21', '2026-12-24'), /vacation does not take --from/, 'an option meant for another command never swallows a date');
+  // Duplicate labels need the desk id.
+  await assert.rejects(orgflow(both, 'book', 'zrh', '2026-10-14', 'Z3'), /Several desks are labelled "Z3".*desk-z3 \(Zurich floor 2\).*desk-z3-upper \(Zurich floor 3\)/);
+  // Booking on behalf without naming a desk skips the target's own desk even when it is free that day.
+  const owner = await token('owner', ['workplace']);
+  await orgflow(owner, 'plan', '2026-10-14..2026-10-15', 'remote');
+  assert.match(await orgflow(both, 'desks', 'zrh', '2026-10-14', '--available'), /Z1\s+Zurich floor 2\s+Available/);
+  const onBehalf = JSON.parse(await orgflow(both, '--json', 'book', 'zrh', '2026-10-14', '--for', 'EMP-010'));
+  assert.equal(onBehalf.deskLabel, 'Z1', 'another person may get the free desk');
+  await orgflow(both, 'unbook', onBehalf.id);
+  const forOwner = JSON.parse(await orgflow(both, '--json', 'book', 'zrh', '2026-10-15', '--for', 'EMP-008'));
+  assert.notEqual(forOwner.deskId, 'desk-z1', 'never the target\'s own desk');
   await assert.rejects(orgflow(both, 'desks', 'mars'), err => /Unknown office "mars"\. Offices: zrh \(Zurich\)/.test(err.message));
 });
 
@@ -142,6 +160,8 @@ test('login checks the token and saves it privately; plain http is refused for r
 test('argument parsing, help and exit codes', () => {
   assert.deepEqual(cli.parse(['book', 'zrh', '--for', 'EMP-1', '--json', '--note=a=b']), { args: ['book', 'zrh'], opts: { for: 'EMP-1', json: true, note: 'a=b' } });
   assert.throws(() => cli.parse(['vacation', '--note']), /--note needs a value/);
+  assert.throws(() => cli.parse(['vacation', 'request', '--form', '2026-12-21', '2026-12-24']), /Unknown option --form/);
+  assert.throws(() => cli.parse(['week', '--json=yes']), /--json takes no value/);
   assert.equal(cli.configPath({ ORGFLOW_CONFIG: '/x/y.json' }), '/x/y.json');
   for (const name of ['login', 'week', 'plan', 'book', 'vacation request', 'approve', 'not-mine', 'org summary']) assert.ok(cli.HELP.includes(name), name);
   const version = spawnSync(process.execPath, [BIN, '--version'], { encoding: 'utf8' });

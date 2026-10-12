@@ -70,18 +70,29 @@ const usage = message => { throw new UsageError(message); };
 
 function parse(argv) {
   const args = [], opts = {};
+  // Unknown options are refused rather than guessed at: a misspelt option must never swallow a date.
   const flags = new Set(['json', 'help', 'version', 'available', 'token-stdin', 'read-all', 'insecure', 'claude', 'codex']);
+  const values = new Set(['url', 'token', 'days', 'for', 'reason', 'note', 'from', 'to', 'dir', 'scenario']);
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (!a.startsWith('--')) { args.push(a); continue; }
     const [key, inline] = a.slice(2).split(/=(.*)/s);
-    if (flags.has(key)) opts[key] = true;
+    if (flags.has(key)) { if (inline !== undefined) usage(`--${key} takes no value.`); opts[key] = true; }
+    else if (!values.has(key)) usage(`Unknown option --${key}. Run orgflow --help.`);
     else if (inline !== undefined) opts[key] = inline;
-    else if (i + 1 < argv.length) opts[key] = argv[++i];
+    else if (i + 1 < argv.length && !argv[i + 1].startsWith('--')) opts[key] = argv[++i];
     else usage(`--${key} needs a value.`);
   }
   return { args, opts };
 }
+
+// Options each command accepts besides the global ones, so `vacation request --from A B` fails instead of booking B alone.
+const GLOBAL_OPTIONS = ['json', 'help', 'version', 'url', 'token', 'insecure'];
+const COMMAND_OPTIONS = {
+  login: ['token-stdin'], logout: [], whoami: [], offices: [], week: ['days'], plan: [], pattern: [], desks: ['available'], book: ['for'], bookings: [], unbook: ['reason'],
+  vacation: ['note'], team: ['from', 'to'], approvals: [], approve: ['note'], reject: ['note'], 'not-mine': ['note'], conflicts: [], notifications: ['read-all'],
+  report: [], org: ['scenario'], mcp: [], skills: ['claude', 'codex', 'dir']
+};
 
 // ---- Configuration --------------------------------------------------------------------------------
 function configPath(env = process.env) {
@@ -181,6 +192,8 @@ async function run(argv, { env = process.env, stdout = s => process.stdout.write
   const [cmd, ...rest] = args;
   if (opts.version) return stdout(VERSION);
   if (opts.help || !cmd || cmd === 'help') return stdout(HELP);
+  const allowed = COMMAND_OPTIONS[cmd];
+  if (allowed) for (const key of Object.keys(opts)) if (!GLOBAL_OPTIONS.includes(key) && !allowed.includes(key)) usage(`${cmd} does not take --${key}. Run orgflow --help.`);
   const saved = readConfig(env);
   const out = (data, text) => stdout(opts.json ? JSON.stringify(data, null, 2) : typeof text === 'function' ? text(data) : text);
 
@@ -260,7 +273,13 @@ async function run(argv, { env = process.env, stdout = s => process.stdout.write
       const info = await me(), office = await officeId(call, rest[0] || usage('book needs an office.')), d0 = day(rest[1] || usage('book needs a date.'), info.today);
       const map = await call(`/api/workplace/offices/${encodeURIComponent(office.id)}/map?date=${d0}&plans=0`);
       const desks = map.rooms.flatMap(r => r.desks.map(x => ({ ...x, room: r.name })));
-      const wanted = rest[2], desk = wanted ? desks.find(x => x.id === wanted || (x.label || '').toLowerCase() === wanted.toLowerCase()) : desks.find(x => x.state === 'available' && !x.mine);
+      const wanted = rest[2];
+      // Labels need not be unique across rooms; an ambiguous label must name the desk id instead.
+      const matches = wanted ? (desks.filter(x => x.id === wanted).length ? desks.filter(x => x.id === wanted) : desks.filter(x => (x.label || '').toLowerCase() === wanted.toLowerCase())) : [];
+      if (matches.length > 1) usage(`Several desks are labelled "${wanted}" in ${office.name}: ${matches.map(x => `${x.id} (${x.room})`).join(', ')}. Name the desk id.`);
+      // Booking for someone else: skip that person's own desk, not the administrator's.
+      const ownDesk = x => (opts.for ? x.ownerId === opts.for : x.mine);
+      const desk = wanted ? matches[0] : desks.find(x => x.state === 'available' && !ownDesk(x));
       if (!desk) usage(wanted ? `No desk "${wanted}" in ${office.name}.` : `No desk is available in ${office.name} on ${d0}.`);
       const data = await call('/api/workplace/reservations', { method: 'POST', body: { deskId: desk.id, date: d0, ...(opts.for ? { employeeId: opts.for } : {}) } });
       return out(data, d => `Reserved desk ${d.deskLabel} · ${d.roomName} · ${d.officeName} on ${d.date}${d.onBehalf ? ' for ' + d.employeeName : ''} (reservation ${d.id}). Whole day; it stays yours even if the owner's plans change.`);

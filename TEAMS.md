@@ -23,6 +23,8 @@ Teams users sign in with the company's Microsoft Entra ID account. OrgFlow valid
 
 **Fallback sign-in**: when single sign-on cannot complete (for example consent was not granted yet), the tab offers **Sign in**, which opens a Teams pop-up running OrgFlow's normal company sign-in (`/auth/login`, your configured OIDC provider) and hands the session back to the tab. No extra redirect URI is needed beyond the existing `KEYCLOAK_REDIRECT_URI` (`/auth/callback`). If your OIDC provider is not Entra ID, the email it returns must match the member's email.
 
+**Roles and managers are not taken from Teams.** OrgFlow ignores Entra ID job titles, departments, manager fields and app roles. Who approves whom comes from the OrgFlow organization chart and administrator corrections, so a stale Teams profile changes nothing; employees and managers report wrong details from the tab and administrators fix them (see [WORKPLACE.md](WORKPLACE.md#when-the-organization-chart-or-a-teams-profile-is-wrong)).
+
 **Who may use the app**: only OrgFlow members. Invite people on the Admin page (role **employee** gives scheduling only) and link each to their employee ID. Alternatively set `WORKPLACE_AUTO_ENROLL=true`: a validated sign-in from your tenant whose email matches exactly one unlinked employee in Current (an `email` field on the person record) gets a scheduling-only membership automatically. Everyone else is refused.
 
 ## 3. Notification bot

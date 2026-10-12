@@ -321,6 +321,71 @@ test('OrgFlow administrators are workplace administrators; the tick grants it to
   assert.ok(!(await call(people.other, '/api/workplace/notifications')).items.some(n => n.kind === 'conflict.opened'));
 });
 
+test('wrong or outdated reporting lines never strand a request', async t => {
+  const { app, call, member, people } = await setup(t);
+  const ceo = people.admin; // EMP-001 tops the chart: Current names no approver
+  const second = await member('second@test.example', 'EMP-014', 'admin');
+  const top = await call(ceo, '/api/workplace/vacations', { start: '2026-11-02', end: '2026-11-03' });
+  assert.equal(top.status, 201, 'submitted instead of refused');
+  assert.equal(top.routing, 'unassigned');
+  assert.equal((await call(ceo, '/api/workplace/me')).approver, null);
+  assert.ok((await call(second, '/api/workplace/notifications')).items.some(n => n.kind === 'vacation.unassigned' && n.route === 'admin/routing/' + top.id));
+  const queue = await call(second, '/api/workplace/admin');
+  assert.ok(queue.routing.some(r => r.id === top.id));
+  assert.equal(queue.approvers.find(x => x.employeeId === 'EMP-001').hint, 'no-approver');
+  assert.equal((await call(people.manager, `/api/workplace/admin/vacations/${top.id}/approver`, { approverId: 'EMP-014' }, 'PUT')).status, 403, 'only OrgFlow administrators route requests');
+  assert.equal((await call(second, `/api/workplace/admin/vacations/${top.id}/approver`, { approverId: 'EMP-001' }, 'PUT')).status, 400, 'never to the requester');
+  const pinned = await call(second, `/api/workplace/admin/vacations/${top.id}/approver`, { approverId: 'EMP-014' }, 'PUT');
+  assert.equal(pinned.routing, 'pinned');
+  assert.equal((await call(second, `/api/workplace/vacations/${top.id}/decision`, { decision: 'approve' })).status, 200);
+
+  // A manager who receives someone else's request hands it back instead of approving or rejecting it.
+  const req = await call(people.owner, '/api/workplace/vacations', { start: '2026-11-09', end: '2026-11-10', note: 'Trip' });
+  assert.equal(req.approverName, 'Luca Rossi');
+  assert.equal((await call(people.other, `/api/workplace/vacations/${req.id}/return`, { note: 'x' })).status, 403, 'only the assigned approver');
+  const back = await call(people.manager, `/api/workplace/vacations/${req.id}/return`, { note: 'Priya moved to Product last month' });
+  assert.equal(back.status, 200, back.error);
+  assert.equal(back.routing, 'unassigned');
+  assert.equal((await call(people.manager, `/api/workplace/vacations/${req.id}/decision`, { decision: 'approve' })).status, 403, 'no longer theirs');
+  assert.equal((await call(people.manager, '/api/workplace/approvals')).pending.length, 0);
+  assert.ok((await call(people.owner, '/api/workplace/notifications')).items.some(n => n.kind === 'vacation.routing'));
+  // Reconciliation after other changes does not send it back to the manager who returned it.
+  await call(people.owner, '/api/workplace/days', { dates: ['2026-10-20'], location: 'remote' }, 'PUT');
+  assert.equal((await call(people.owner, `/api/workplace/vacations/${req.id}`)).routing, 'unassigned');
+  const report = (await call(ceo, '/api/workplace/reports')).reports.find(r => r.employeeId === 'EMP-008' && r.kind === 'approver');
+  assert.match(report.note, /not this person's approver/);
+  // Routing with "remember" corrects the approver for future requests and closes the report.
+  const routed = await call(ceo, `/api/workplace/admin/vacations/${req.id}/approver`, { approverId: 'EMP-002', remember: true }, 'PUT');
+  assert.equal(routed.approverName, 'Maya Chen');
+  assert.equal(routed.routing, 'auto');
+  assert.equal((await call(ceo, '/api/workplace/reports')).reports.find(r => r.id === report.id).status, 'resolved');
+  assert.equal((await call(people.owner, '/api/workplace/me')).approver.source, 'correction');
+  assert.equal((await call(people.owner, '/api/workplace/vacations', { start: '2026-11-16', end: '2026-11-16' })).approverName, 'Maya Chen');
+
+  // Employees report wrong details themselves; only OrgFlow administrators close reports.
+  const filed = await call(people.other, '/api/workplace/reports', { kind: 'desk', note: 'I sit at Z4 now' });
+  assert.equal(filed.status, 201);
+  assert.equal(filed.employeeName, undefined, 'reporters see their own report without directory data');
+  assert.equal((await call(people.other, '/api/workplace/reports', { kind: 'salary' })).status, 400);
+  assert.equal((await call(people.manager, `/api/workplace/reports/${filed.id}/resolve`, { status: 'resolved' })).status, 403);
+  assert.equal((await call(ceo, `/api/workplace/reports/${filed.id}/resolve`, { status: 'dismissed', note: 'Seating plan is correct' })).status, 200);
+  assert.ok((await call(people.other, '/api/workplace/notifications')).items.some(n => n.kind === 'report.dismissed'));
+
+  // A correction pointing at someone who left stops working: the request goes to administrators, and the correction is flagged.
+  const loaded = await call(ceo, '/api/workspace');
+  const cur = loaded.workspace.planning.scenarios.find(s => s.id === 'current');
+  Object.assign(cur.positions.find(p => p.id === 'POS-002'), { personId: '', hiringState: 'Vacant' });
+  cur.employees = cur.employees.filter(e => e.id !== 'EMP-002');
+  assert.equal((await call(ceo, '/api/workspace', { workspace: loaded.workspace, version: loaded.version, acknowledgeReservations: true }, 'PUT')).status, 200);
+  const later = (await call(people.owner, '/api/workplace/vacations')).requests.find(r => r.start === '2026-11-16');
+  assert.equal(later.routing, 'unassigned');
+  assert.equal((await call(ceo, '/api/workplace/admin')).approvers.find(x => x.employeeId === 'EMP-008').hint, 'approver-gone');
+  // Clearing the correction hands it back to Current, which names the owner's manager again.
+  await call(ceo, '/api/workplace/admin/approvers', { employeeId: 'EMP-008', approverId: '' }, 'PUT');
+  assert.equal((await call(ceo, '/api/workplace/admin')).approvers.find(x => x.employeeId === 'EMP-008').hint, '');
+  void app;
+});
+
 test('planning scenarios do not affect live schedules or reservations (10)', async t => {
   const { call, people, desk } = await setup(t);
   await call(people.owner, '/api/workplace/pattern', { weekdays: { 3: 'remote' } }, 'PUT');

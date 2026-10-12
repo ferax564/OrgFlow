@@ -18,13 +18,15 @@ The same screens open in a browser at `/workplace.html` and as the OrgFlow perso
 | **Workplace admin**: arranging an alternative desk | **Teams tab** (dark theme), deep-linked to an approval |
 | ![Planner availability overlay](docs/workplace/planner-availability.png) | ![Phone layout](docs/workplace/mobile-book.png) |
 | **Planner Seating view** with availability on a date | **Phone browser** fallback |
+| ![Not my report](docs/workplace/not-my-report.png) | ![Routing queue](docs/workplace/admin-routing.png) |
+| **Not my report**: a manager hands a misrouted request back | **Routing queue and reported problems** for OrgFlow administrators |
 
 ## What each person can do
 
 | Role | How it is granted | Can |
 | --- | --- | --- |
 | Employee | Any member whose account is linked to an employee record in Current | Maintain their own work location and weekly pattern, request, change and cancel their own vacation, see permitted desk availability, book and cancel their own reservations, see the team absence calendar |
-| Manager | Derived: the nearest filled position above a person in Current, or an administrator correction | Employee actions, plus the approval inbox for the people they are responsible for and their team's pending and approved absences |
+| Manager | Derived: the nearest filled position above a person in Current, or an administrator correction (never from Teams or Microsoft 365 profiles) | Employee actions, plus the approval inbox for the people they are responsible for and their team's pending and approved absences |
 | Workplace administrator | Every OrgFlow administrator, plus members with the **Workplace admin** tick on the Admin page | Manage offices and time zones, assign seating rooms to offices, enable desk sharing and describe equipment, close offices, rooms or desks, book and cancel on behalf of employees, resolve seating conflicts |
 | OrgFlow administrator | `admin` role | Members, roles, employee links, approver corrections and configuration, plus everything a workplace administrator can do |
 
@@ -61,6 +63,17 @@ An employee chooses the first and last day, optionally adds a private note, and 
 - Colleagues (manager, people with the same manager, reports) see confirmed absence dates in **Team**. Private notes and decision notes are visible only to the requester, the approver and OrgFlow administrators.
 - The approver is the nearest filled position above the employee in Current. When Current changes, or an administrator corrects an approver, pending requests move to the new approver and they are notified. Without any approver (for example the top of the organization), the employee is asked to have one assigned.
 - Vacation balances, accrual and payroll are outside OrgFlow.
+
+## When the organization chart or a Teams profile is wrong
+
+Approvers, teams, desks and roles always come from the OrgFlow organization chart (Current) plus administrator corrections. OrgFlow never reads a job title, department, manager or role from Teams or Microsoft 365, so an outdated Teams profile cannot give or take away approval rights; Teams only proves who someone is. When the chart itself is wrong or late, nobody is stuck:
+
+- **Employees see where their approver comes from** ("from the organization chart" or "set by an OrgFlow administrator") and can **report wrong details**: a wrong manager or approver, a wrong desk, an account linked to the wrong person, or a wrong role or team. Reports go to OrgFlow administrators, who close them with a note; the reporter is notified.
+- **Managers can say "Not my report".** A request that reached the wrong person is handed back instead of being approved or rejected. It waits in the administrators' routing queue, the employee is told it is being routed, and a report about the reporting line is filed automatically. It is never sent back to the manager who returned it.
+- **No dead ends.** When there is no valid approver — the top of the chart, a vacant chain, an approver who left, or a correction pointing at someone no longer in Current — a request is still accepted and goes to the routing queue instead of being refused.
+- **Administrators route requests.** They pick the approver for one request, or tick *Use for future requests* to save a correction for that employee (waiting requests follow it immediately and open approver reports close). A request routed by hand stays with its approver even if the chart later says otherwise; one that follows the chart moves when the chart changes.
+- **Corrections cannot silently go stale.** The approver list shows who set each correction and when, flags corrections that Current now agrees with ("can be cleared") and corrections whose approver has left, and lists people with no approver at all.
+- An approver chosen explicitly by an administrator only has to be a person in Current (for example an HR contact without a position); an approver derived from the chart must hold a position today. Nobody can ever approve their own vacation.
 
 ## Desk sharing
 

@@ -92,6 +92,28 @@ function ssoToken(oid, upn) {
     assert.match(await admin.textContent('#members'), /EMP-008[\s\S]*yes \(admin\)|yes \(admin\)[\s\S]*EMP-008/);
     if (OUT) await admin.screenshot({ path: path.join(OUT, 'admin-members.png'), fullPage: true });
     await open('priya@harbor.example', '#vacation', { shot: 'vacation.png' });
+    // Wrong reporting line: Luca hands Priya's second request back, the administrator routes it.
+    const misrouted = await call('priya@harbor.example', '/api/workplace/vacations', { start: W.addDays(next, 28), end: W.addDays(next, 29) });
+    const luca = await open('luca@harbor.example', '#approvals/' + misrouted.id);
+    await luca.click(`[data-decide="${misrouted.id}"] [data-act="return"]`);
+    await luca.fill('#askInput', 'Priya moved to Product; Maya Chen approves now');
+    if (OUT) await luca.screenshot({ path: path.join(OUT, 'not-my-report.png') });
+    await luca.click('[data-ask="ok"]');
+    await luca.waitForSelector(`#appr-${misrouted.id}`, { state: 'detached' });
+    const routing = await open('admin@harbor.example', '#admin/routing/' + misrouted.id);
+    await routing.fill(`[data-route="${misrouted.id}"] input[name="approverId"]`, 'EMP-002');
+    await routing.uncheck(`[data-route="${misrouted.id}"] input[name="remember"]`); // this request only; Priya's other request stays with Luca
+    if (OUT) await routing.screenshot({ path: path.join(OUT, 'admin-routing.png') });
+    await routing.click(`[data-route="${misrouted.id}"] button`);
+    await routing.waitForSelector(`#route-${misrouted.id}`, { state: 'detached' });
+    assert.equal((await call('priya@harbor.example', '/api/workplace/vacations/' + misrouted.id)).approverName, 'Maya Chen');
+    // An employee reports a wrong desk from My week.
+    const report = await open('ana@harbor.example', '#week/' + next);
+    await report.click('[data-act="report"][data-kind="desk"]');
+    await report.fill('#reportForm input[name="note"]', 'I moved to Z4 in September');
+    await report.click('#reportForm button[type="submit"]');
+    await report.waitForSelector('#status .ok');
+    assert.ok((await call('admin@harbor.example', '/api/workplace/reports')).reports.some(r => r.kind === 'desk' && r.employeeName === 'Ana Silva'));
     await open('priya@harbor.example', '#team', { shot: 'team.png' });
     await open('luca@harbor.example', '#approvals/' + vacation.id, { shot: 'approvals.png' });
     const ana = await open('ana@harbor.example', '#week/' + next, { shot: 'week-booked.png' });

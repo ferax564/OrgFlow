@@ -94,6 +94,13 @@ function createWorkplace(store, options = {}) {
   function requireOrgAdmin(a) { if (!a.orgAdmin) throw fail(403, 'Only OrgFlow administrators can do this.'); }
   function userForEmployee(employeeId) { return db.prepare('SELECT user_id FROM memberships WHERE tenant_id = ? AND employee_id = ?').get(T, employeeId)?.user_id || ''; }
   function userName(userId) { if (!userId || userId === 'system') return userId === 'system' ? 'OrgFlow' : ''; const u = db.prepare('SELECT name, email FROM users WHERE id = ?').get(userId); return u ? u.name || u.email : ''; }
+  function orgAdminUsers() { return db.prepare("SELECT user_id FROM memberships WHERE tenant_id = ? AND role = 'admin'").all(T).map(r => r.user_id); }
+  function notifyOrgAdmins(n) { for (const userId of orgAdminUsers()) notifyUser(userId, n); }
+  /** A usable approver is someone else in Current. One derived from reporting lines must hold a position today;
+   *  an administrator's explicit choice only has to be a person in Current (for example an HR contact). */
+  function validApprover(approverId, employeeId, explicit = false) {
+    return Boolean(approverId && approverId !== employeeId && org().person(approverId) && (explicit || org().positionOf(approverId, utcToday())));
+  }
   function workplaceAdminUsers() {
     return db.prepare("SELECT user_id FROM memberships WHERE tenant_id = ? AND (workplace_admin = 1 OR role = 'admin')").all(T).map(r => r.user_id);
   }
@@ -356,16 +363,26 @@ function createWorkplace(store, options = {}) {
     }
     reroute();
   }
-  /** Pending requests follow manager changes in Current and administrator corrections. */
+  /** Pending requests follow manager changes in Current and administrator corrections. A request whose
+   *  approver is no longer valid goes to the administrators instead of waiting on someone who cannot act;
+   *  a request returned by a manager or pinned by an administrator is never moved back automatically. */
   function reroute() {
     const over = overrides();
-    for (const r of db.prepare("SELECT * FROM vacation_requests WHERE tenant_id = ? AND status = 'pending'").all(T)) {
+    for (const r of db.prepare("SELECT * FROM vacation_requests WHERE tenant_id = ? AND status = 'pending' AND routing <> 'unassigned'").all(T)) {
+      if (r.routing === 'pinned') { if (!validApprover(r.approver_id, r.employee_id, true)) unassign(r, 'The assigned approver is no longer in the organization.', 'system'); continue; }
       const next = approverFor(r.employee_id, over);
-      if (!next || next === r.approver_id || next === r.employee_id) continue;
+      if (!validApprover(next, r.employee_id, over.has(r.employee_id)) || (next === r.returned_by && !over.has(r.employee_id))) { unassign(r, 'No valid approver in the organization chart.', 'system'); continue; }
+      if (next === r.approver_id) continue;
       db.prepare('UPDATE vacation_requests SET approver_id = ?, updated_at = ? WHERE id = ?').run(next, nowIso(), r.id);
       store.audit({ userId: 'system', action: 'workplace.vacation.reroute', detail: { requestId: r.id, from: r.approver_id, to: next } });
       notifyEmployee(next, { kind: 'vacation.submitted', title: 'A vacation request is awaiting your review.', route: 'approvals/' + r.id, key: 'vacation.routed:' + r.id + ':' + next });
     }
+  }
+  function unassign(r, note, userId) {
+    db.prepare("UPDATE vacation_requests SET approver_id = '', routing = 'unassigned', routing_note = ?, updated_at = ? WHERE id = ?").run(note, nowIso(), r.id);
+    store.audit({ userId, action: 'workplace.vacation.unassigned', detail: { requestId: r.id, previousApprover: r.approver_id, note } });
+    notifyOrgAdmins({ kind: 'vacation.unassigned', title: 'A vacation request needs an approver.', route: 'admin/routing/' + r.id, key: 'vacation.unassigned:' + r.id + ':' + r.updated_at });
+    notifyEmployee(r.employee_id, { kind: 'vacation.routing', title: 'Your vacation request is being routed to the right approver by an administrator.', route: 'vacation/' + r.id, key: 'vacation.routing:' + r.id + ':' + r.updated_at });
   }
   function conflictView(c, a) {
     const view = org(), r = db.prepare('SELECT * FROM reservations WHERE id = ?').get(c.reservation_id), found = view.findDesk(c.desk_id);
@@ -429,8 +446,8 @@ function createWorkplace(store, options = {}) {
   function requestRow(id) { return db.prepare('SELECT * FROM vacation_requests WHERE tenant_id = ? AND id = ?').get(T, String(id)) || null; }
   function vacationView(r, a) {
     const view = org(), privateOk = a.employeeId === r.employee_id || a.employeeId === r.approver_id || a.orgAdmin;
-    const out = { id: r.id, kind: r.kind, targetId: r.target_id, employeeId: r.employee_id, employeeName: view.name(r.employee_id), approverId: r.approver_id, approverName: view.name(r.approver_id), start: r.start_date, end: r.end_date, days: W.daysBetween(r.start_date, r.end_date) + 1, status: r.status, submittedAt: r.submitted_at, decidedAt: r.decided_at, decidedBy: userName(r.decided_by), supersededBy: r.superseded_by };
-    if (privateOk) { out.note = r.note; out.decisionNote = r.decision_note; }
+    const out = { id: r.id, kind: r.kind, targetId: r.target_id, employeeId: r.employee_id, employeeName: view.name(r.employee_id), approverId: r.approver_id, approverName: view.name(r.approver_id), routing: r.routing || 'auto', start: r.start_date, end: r.end_date, days: W.daysBetween(r.start_date, r.end_date) + 1, status: r.status, submittedAt: r.submitted_at, decidedAt: r.decided_at, decidedBy: userName(r.decided_by), supersededBy: r.superseded_by };
+    if (privateOk) { out.note = r.note; out.decisionNote = r.decision_note; out.routingNote = r.routing_note; out.returnedBy = view.name(r.returned_by); }
     if (r.kind !== 'cancel' && r.status === 'approved') {
       const pending = db.prepare("SELECT id, kind, start_date, end_date FROM vacation_requests WHERE tenant_id = ? AND target_id = ? AND status = 'pending'").get(T, r.id);
       if (pending) out.pendingChange = { id: pending.id, kind: pending.kind, start: pending.start_date, end: pending.end_date };
@@ -445,26 +462,31 @@ function createWorkplace(store, options = {}) {
   function range(me, start, end) {
     try { return W.validateVacationRange(start, end, employeeToday(me)); } catch (error) { throw fail(400, error.message); }
   }
-  function approverOrFail(me) {
-    const approver = approverFor(me);
-    if (!approver || !org().person(approver)) throw fail(409, 'No approver is configured for you. Ask an OrgFlow administrator to set your manager.', { code: 'no_approver' });
-    if (approver === me) throw fail(409, 'You cannot approve your own vacation. Ask an OrgFlow administrator to assign an approver.', { code: 'no_approver' });
-    return approver;
+  /** Where a new request goes. Without a valid approver it is not refused: it waits for an administrator. */
+  function routeFor(me) {
+    const over = overrides(), approver = approverFor(me, over);
+    return validApprover(approver, me, over.has(me)) ? { approver, routing: 'auto' } : { approver: '', routing: 'unassigned', note: approver === me ? 'The organization chart names the employee as their own approver.' : 'No valid approver in the organization chart.' };
   }
   function insertRequest(a, me, fields) {
-    const id = newId('vac'), at = nowIso();
-    db.prepare("INSERT INTO vacation_requests (id, tenant_id, employee_id, approver_id, kind, target_id, start_date, end_date, status, note, submitted_at, submitted_by, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?)")
-      .run(id, T, me, fields.approver, fields.kind, fields.targetId || '', fields.start, fields.end, fields.note || '', at, a.userId, at);
-    store.audit({ userId: a.userId, action: 'workplace.vacation.' + (fields.kind === 'new' ? 'submit' : fields.kind + '-request'), detail: { requestId: id, start: fields.start, end: fields.end, targetId: fields.targetId || '' } });
+    const id = newId('vac'), at = nowIso(), route = fields.route || routeFor(me);
+    db.prepare("INSERT INTO vacation_requests (id, tenant_id, employee_id, approver_id, kind, target_id, start_date, end_date, status, note, submitted_at, submitted_by, updated_at, routing, routing_note) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?)")
+      .run(id, T, me, route.approver, fields.kind, fields.targetId || '', fields.start, fields.end, fields.note || '', at, a.userId, at, route.routing, route.note || '');
+    store.audit({ userId: a.userId, action: 'workplace.vacation.' + (fields.kind === 'new' ? 'submit' : fields.kind + '-request'), detail: { requestId: id, start: fields.start, end: fields.end, targetId: fields.targetId || '', routing: route.routing } });
     const title = fields.kind === 'new' ? 'A vacation request is awaiting your review.' : fields.kind === 'cancel' ? 'A request to cancel approved vacation is awaiting your review.' : 'A request to change approved vacation is awaiting your review.';
-    notifyEmployee(fields.approver, { kind: 'vacation.' + (fields.kind === 'new' ? 'submitted' : fields.kind + '_requested'), title, route: 'approvals/' + id, key: 'vacation.submitted:' + id });
+    if (route.approver) notifyEmployee(route.approver, { kind: 'vacation.' + (fields.kind === 'new' ? 'submitted' : fields.kind + '_requested'), title, route: 'approvals/' + id, key: 'vacation.submitted:' + id });
+    else notifyOrgAdmins({ kind: 'vacation.unassigned', title: 'A vacation request needs an approver.', route: 'admin/routing/' + id, key: 'vacation.unassigned:' + id });
     return requestRow(id);
+  }
+  /** Change and cancellation requests go where the approved vacation was decided when that approver is still valid. */
+  function followUpRoute(me, target) {
+    if (target.routing === 'pinned' && validApprover(target.approver_id, me, true)) return { approver: target.approver_id, routing: 'pinned' };
+    return routeFor(me);
   }
   function submitVacation(a, { start, end, note }) {
     const me = requireEmployee(a), r = range(me, start, end), memo = text(note, 'Note', 1000);
     return tx(() => {
       checkOverlap(me, r.start, r.end, []);
-      return vacationView(insertRequest(a, me, { kind: 'new', approver: approverOrFail(me), start: r.start, end: r.end, note: memo }), a);
+      return vacationView(insertRequest(a, me, { kind: 'new', start: r.start, end: r.end, note: memo }), a);
     });
   }
   function ownRequest(a, id) {
@@ -479,16 +501,18 @@ function createWorkplace(store, options = {}) {
       if (r.kind === 'cancel' || !['pending', 'approved'].includes(r.status)) throw fail(409, 'Only pending or approved vacation can be changed.');
       if (r.status === 'pending') {
         checkOverlap(me, next.start, next.end, [r.id, r.target_id].filter(Boolean));
-        const approver = approverOrFail(me);
-        db.prepare('UPDATE vacation_requests SET start_date = ?, end_date = ?, note = ?, approver_id = ?, submitted_at = ?, updated_at = ? WHERE id = ?').run(next.start, next.end, memo, approver, nowIso(), nowIso(), r.id);
+        // New dates keep the request's routing: a pinned or unassigned request stays with its approver or the administrators.
+        db.prepare('UPDATE vacation_requests SET start_date = ?, end_date = ?, note = ?, submitted_at = ?, updated_at = ? WHERE id = ?').run(next.start, next.end, memo, nowIso(), nowIso(), r.id);
         store.audit({ userId: a.userId, action: 'workplace.vacation.edit', detail: { requestId: r.id, start: next.start, end: next.end } });
-        notifyEmployee(approver, { kind: 'vacation.submitted', title: 'A vacation request you are reviewing has new dates.', route: 'approvals/' + r.id, key: 'vacation.edited:' + r.id + ':' + next.start + ':' + next.end });
-        return vacationView(requestRow(r.id), a);
+        reroute();
+        const fresh = requestRow(r.id);
+        if (fresh.approver_id) notifyEmployee(fresh.approver_id, { kind: 'vacation.submitted', title: 'A vacation request you are reviewing has new dates.', route: 'approvals/' + r.id, key: 'vacation.edited:' + r.id + ':' + next.start + ':' + next.end });
+        return vacationView(fresh, a);
       }
       if (db.prepare("SELECT 1 FROM vacation_requests WHERE tenant_id = ? AND target_id = ? AND status = 'pending'").get(T, r.id)) throw fail(409, 'A change to this vacation is already awaiting a decision.', { code: 'pending_change' });
       if (next.start === r.start_date && next.end === r.end_date) throw fail(400, 'Choose different dates.');
       checkOverlap(me, next.start, next.end, [r.id]);
-      return vacationView(insertRequest(a, me, { kind: 'change', targetId: r.id, approver: approverOrFail(me), start: next.start, end: next.end, note: memo }), a);
+      return vacationView(insertRequest(a, me, { kind: 'change', targetId: r.id, route: followUpRoute(me, r), start: next.start, end: next.end, note: memo }), a);
     });
   }
   function cancelVacation(a, id, { note } = {}) {
@@ -502,7 +526,7 @@ function createWorkplace(store, options = {}) {
       }
       if (r.status !== 'approved' || r.kind === 'cancel') throw fail(409, 'This request can no longer be cancelled.');
       if (db.prepare("SELECT 1 FROM vacation_requests WHERE tenant_id = ? AND target_id = ? AND status = 'pending'").get(T, r.id)) throw fail(409, 'A change to this vacation is already awaiting a decision.', { code: 'pending_change' });
-      return vacationView(insertRequest(a, me, { kind: 'cancel', targetId: r.id, approver: approverOrFail(me), start: r.start_date, end: r.end_date, note: memo }), a);
+      return vacationView(insertRequest(a, me, { kind: 'cancel', targetId: r.id, route: followUpRoute(me, r), start: r.start_date, end: r.end_date, note: memo }), a);
     });
   }
   function decideVacation(a, id, { decision, note }) {
@@ -561,7 +585,7 @@ function createWorkplace(store, options = {}) {
     const out = { notice: W.FULL_DAY_NOTICE, offices: offices(), workplaceAdmin: a.workplaceAdmin, orgAdmin: a.orgAdmin, orgAccess: a.orgAccess, linked: false, unread: notifications(a).unread, bookingDays: cfg.bookingDays };
     if (!a.employeeId || !org().person(a.employeeId)) return { ...out, today: W.todayIn(cfg.defaultTimezone, now()), timezone: cfg.defaultTimezone };
     const home = homeOfficeId(a.employeeId), seat = org().deskOf(a.employeeId, utcToday());
-    return { ...out, linked: true, employee: { id: a.employeeId, name: org().name(a.employeeId) }, homeOfficeId: home, timezone: home ? tzOf(home) : cfg.defaultTimezone, today: employeeToday(a.employeeId), pattern: pattern(a.employeeId), desk: seat ? { id: seat.desk.id, label: seat.desk.label, roomName: seat.room.name } : null, approver: (id => id ? { id, name: org().name(id) } : null)(approverFor(a.employeeId)), isManager: directReports(a.employeeId).length > 0 };
+    return { ...out, linked: true, employee: { id: a.employeeId, name: org().name(a.employeeId) }, homeOfficeId: home, timezone: home ? tzOf(home) : cfg.defaultTimezone, today: employeeToday(a.employeeId), pattern: pattern(a.employeeId), desk: seat ? { id: seat.desk.id, label: seat.desk.label, roomName: seat.room.name } : null, approver: (() => { const over = overrides(), id = approverFor(a.employeeId, over), source = over.has(a.employeeId) ? 'correction' : 'org-chart'; return validApprover(id, a.employeeId, source === 'correction') ? { id, name: org().name(id), source } : null; })(), openReports: db.prepare("SELECT COUNT(*) AS n FROM data_reports WHERE tenant_id = ? AND employee_id = ? AND status = 'open'").get(T, a.employeeId).n, isManager: directReports(a.employeeId).length > 0 };
   }
   function week(a, { start, days = 7 }) {
     const id = requireEmployee(a);
@@ -695,9 +719,85 @@ function createWorkplace(store, options = {}) {
       if (approverId) db.prepare('INSERT INTO approver_overrides (tenant_id, employee_id, approver_id, updated_by, updated_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT(tenant_id, employee_id) DO UPDATE SET approver_id = excluded.approver_id, updated_by = excluded.updated_by, updated_at = excluded.updated_at').run(T, employeeId, approverId, a.userId, nowIso());
       else db.prepare('DELETE FROM approver_overrides WHERE tenant_id = ? AND employee_id = ?').run(T, employeeId);
       store.audit({ userId: a.userId, action: 'workplace.approver.override', detail: { employeeId, approverId: approverId || '' } });
+      // Requests that were waiting for an administrator follow the new correction straight away.
+      if (approverId) for (const r of db.prepare("SELECT * FROM vacation_requests WHERE tenant_id = ? AND employee_id = ? AND status = 'pending' AND routing = 'unassigned'").all(T, employeeId)) assignTo(r, approverId, 'auto', a.userId);
+      for (const r of db.prepare("SELECT id FROM data_reports WHERE tenant_id = ? AND employee_id = ? AND kind = 'approver' AND status = 'open'").all(T, employeeId)) closeReport(r.id, 'resolved', 'Approver corrected by an administrator.', a.userId);
       reroute();
       return { employeeId, approverId: approverFor(employeeId), derived: view.derivedManager(employeeId, employeeToday(employeeId)), overridden: Boolean(approverId) };
     });
+  }
+  function assignTo(r, approverId, routing, userId) {
+    db.prepare("UPDATE vacation_requests SET approver_id = ?, routing = ?, routing_note = '', updated_at = ? WHERE id = ?").run(approverId, routing, nowIso(), r.id);
+    store.audit({ userId, action: 'workplace.vacation.assign', detail: { requestId: r.id, approverId, routing } });
+    notifyEmployee(approverId, { kind: 'vacation.submitted', title: 'A vacation request is awaiting your review.', route: 'approvals/' + r.id, key: 'vacation.assigned:' + r.id + ':' + approverId });
+  }
+  /** "Not my report": the assigned approver hands the request back instead of approving or rejecting it. */
+  function returnVacation(a, id, { note }) {
+    const r = requestRow(id), memo = text(note, 'Note', 500);
+    if (!r) throw fail(404, 'Vacation request not found.');
+    if (!a.employeeId || r.approver_id !== a.employeeId) throw fail(403, 'Only the assigned approver can hand a request back.');
+    if (r.status !== 'pending') throw fail(409, 'This request has already been decided or withdrawn.', { code: 'decided' });
+    return tx(() => {
+      db.prepare('UPDATE vacation_requests SET returned_by = ? WHERE id = ?').run(a.employeeId, r.id);
+      unassign(requestRow(r.id), memo ? `Returned by ${org().name(a.employeeId)}: ${memo}` : `Returned by ${org().name(a.employeeId)}: not their report.`, a.userId);
+      fileReport(r.employee_id, 'approver', `${org().name(a.employeeId)} says they are not this person's approver.${memo ? ' ' + memo : ''}`, a.userId);
+      return vacationView(requestRow(r.id), a);
+    });
+  }
+  /** An OrgFlow administrator routes one request; `remember` also corrects the approver for future requests. */
+  function assignApprover(a, id, { approverId, remember }) {
+    requireOrgAdmin(a);
+    const r = requestRow(id);
+    if (!r) throw fail(404, 'Vacation request not found.');
+    if (r.status !== 'pending') throw fail(409, 'This request has already been decided or withdrawn.', { code: 'decided' });
+    if (!validApprover(approverId, r.employee_id, true)) throw fail(400, approverId === r.employee_id ? 'Employees cannot approve their own vacation.' : 'Choose an approver who is in the current organization.');
+    if (remember) return tx(() => {
+      if (r.routing === 'pinned') db.prepare("UPDATE vacation_requests SET routing = 'auto' WHERE id = ?").run(r.id);
+      setApprover(a, { employeeId: r.employee_id, approverId });
+      return vacationView(requestRow(r.id), a);
+    });
+    return tx(() => { assignTo(r, approverId, 'pinned', a.userId); return vacationView(requestRow(r.id), a); });
+  }
+  // ---- Reports of wrong organization data (approver, desk, linked record, role) ----------------------
+  const REPORT_KINDS = { approver: 'Wrong manager or approver', desk: 'Wrong assigned desk', identity: 'Linked to the wrong person', role: 'Wrong role or team' };
+  function fileReport(employeeId, kind, note, userId) {
+    const open = db.prepare("SELECT id FROM data_reports WHERE tenant_id = ? AND employee_id = ? AND kind = ? AND status = 'open'").get(T, employeeId, kind);
+    if (open) { db.prepare("UPDATE data_reports SET note = note || char(10) || ? WHERE id = ?").run(note, open.id); return open.id; }
+    const id = newId('rpt');
+    db.prepare("INSERT INTO data_reports (id, tenant_id, employee_id, kind, note, status, created_by, created_at) VALUES (?, ?, ?, ?, ?, 'open', ?, ?)").run(id, T, employeeId, kind, note, userId, nowIso());
+    store.audit({ userId, action: 'workplace.report.create', detail: { reportId: id, employeeId, kind } });
+    notifyOrgAdmins({ kind: 'report.created', title: 'Someone reported wrong organization details.', route: 'admin/reports/' + id, key: 'report.created:' + id });
+    return id;
+  }
+  function closeReport(id, status, resolution, userId) {
+    const r = db.prepare('SELECT * FROM data_reports WHERE tenant_id = ? AND id = ?').get(T, id);
+    db.prepare('UPDATE data_reports SET status = ?, resolution = ?, resolved_by = ?, resolved_at = ? WHERE id = ?').run(status, resolution, userId, nowIso(), id);
+    store.audit({ userId, action: 'workplace.report.' + status, detail: { reportId: id } });
+    notifyEmployee(r.employee_id, { kind: 'report.' + status, title: status === 'resolved' ? 'Your report about your organization details was resolved.' : 'Your report about your organization details was reviewed.', route: 'vacation', key: 'report.closed:' + id });
+  }
+  function reportView(r, a) {
+    const out = { id: r.id, kind: r.kind, label: REPORT_KINDS[r.kind], status: r.status, note: r.note, createdAt: r.created_at, resolvedAt: r.resolved_at, resolution: r.resolution };
+    if (a.orgAdmin) { out.employeeId = r.employee_id; out.employeeName = org().name(r.employee_id); out.reportedBy = userName(r.created_by); }
+    return out;
+  }
+  function createReport(a, { kind, note }) {
+    const me = requireEmployee(a);
+    if (!REPORT_KINDS[kind]) throw fail(400, 'Choose what is wrong.');
+    const memo = text(note, 'Details', 1000);
+    return tx(() => reportView(db.prepare('SELECT * FROM data_reports WHERE id = ?').get(fileReport(me, kind, memo || REPORT_KINDS[kind] + '.', a.userId)), a));
+  }
+  function reports(a) {
+    if (a.orgAdmin) return db.prepare("SELECT * FROM data_reports WHERE tenant_id = ? AND (status = 'open' OR resolved_at >= ?) ORDER BY status = 'open' DESC, created_at DESC LIMIT 200").all(T, W.addDays(utcToday(), -30)).map(r => reportView(r, a));
+    return db.prepare('SELECT * FROM data_reports WHERE tenant_id = ? AND employee_id = ? ORDER BY created_at DESC LIMIT 20').all(T, requireEmployee(a)).map(r => reportView(r, a));
+  }
+  function resolveReport(a, id, { status, note }) {
+    requireOrgAdmin(a);
+    if (!['resolved', 'dismissed'].includes(status)) throw fail(400, 'Status must be resolved or dismissed.');
+    const r = db.prepare('SELECT * FROM data_reports WHERE tenant_id = ? AND id = ?').get(T, String(id));
+    if (!r) throw fail(404, 'Report not found.');
+    if (r.status !== 'open') throw fail(409, 'This report is already closed.');
+    const memo = text(note, 'Note', 1000);
+    return tx(() => { closeReport(r.id, status, memo, a.userId); return reportView(db.prepare('SELECT * FROM data_reports WHERE id = ?').get(r.id), a); });
   }
   function directory(a, q) {
     if (!a.workplaceAdmin && !a.orgAdmin) throw fail(403, 'The directory search is for administrators.');
@@ -715,7 +815,15 @@ function createWorkplace(store, options = {}) {
     }
     if (a.orgAdmin) {
       const over = overrides();
-      out.approvers = [...view.employees.values()].filter(e => view.positionOf(e.id, d)).map(e => ({ employeeId: e.id, name: e.name, derivedId: view.derivedManager(e.id, d), derivedName: view.name(view.derivedManager(e.id, d)), overrideId: over.get(e.id) || '', overrideName: view.name(over.get(e.id) || '') })).sort((x, y) => x.name.localeCompare(y.name));
+      const meta = new Map(db.prepare('SELECT employee_id, updated_at, updated_by FROM approver_overrides WHERE tenant_id = ?').all(T).map(r => [r.employee_id, r]));
+      // Corrections can go stale: flag ones that Current now agrees with, or whose approver has left.
+      out.approvers = [...view.employees.values()].filter(e => view.positionOf(e.id, d) || over.has(e.id)).map(e => {
+        const derivedId = view.derivedManager(e.id, d), overrideId = over.get(e.id) || '';
+        const hint = overrideId && overrideId === derivedId ? 'matches-current' : overrideId && !validApprover(overrideId, e.id, true) ? 'approver-gone' : !overrideId && !derivedId ? 'no-approver' : '';
+        return { employeeId: e.id, name: e.name, derivedId, derivedName: view.name(derivedId), overrideId, overrideName: view.name(overrideId), correctedAt: meta.get(e.id)?.updated_at || '', correctedBy: userName(meta.get(e.id)?.updated_by), hint };
+      }).sort((x, y) => Boolean(y.hint) - Boolean(x.hint) || x.name.localeCompare(y.name));
+      out.routing = db.prepare("SELECT * FROM vacation_requests WHERE tenant_id = ? AND status = 'pending' AND routing = 'unassigned' ORDER BY submitted_at").all(T).map(r => vacationView(r, a));
+      out.reports = reports(a);
     }
     return out;
   }
@@ -763,6 +871,7 @@ function createWorkplace(store, options = {}) {
   return {
     hooks, cfg, actor, me, week, setDays, setPattern, officeMap, availability, book, cancelReservation, myReservations, listReservations,
     conflicts, alternatives, resolveConflict, submitVacation, changeVacation, cancelVacation, decideVacation, getVacation, myVacations, approvals, team,
+    returnVacation, assignApprover, createReport, reports, resolveReport,
     notifications, markRead, upsertOffice, deleteOffice, setRoomOffice, setSharing, createClosure, deleteClosure, setApprover, directory, adminOverview,
     checkWorkspaceChange, applyWorkspaceChange, reconcile: () => tx(reconcile), prune, offices, approverFor, org, userForEmployee
   };

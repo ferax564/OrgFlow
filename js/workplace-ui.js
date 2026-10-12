@@ -19,6 +19,21 @@
     clearTimeout(toastTimer); toastTimer = setTimeout(() => { el.hidden = true; }, 4200);
   }
   function setStatus(html) { $('#status').innerHTML = html; }
+  /** In-page confirmation (and optional text answer). Teams frames do not reliably allow window.confirm/prompt.
+   *  Resolves to false when cancelled, true when confirmed, or the typed text when `input` is set. */
+  function ask(message, { input = '', ok = 'Continue', details = '' } = {}) {
+    return new Promise(resolve => {
+      const back = document.createElement('div');
+      back.className = 'ask-backdrop';
+      back.innerHTML = `<div class="card ask" role="alertdialog" aria-modal="true" aria-labelledby="askText"><p id="askText">${esc(message)}</p>${details ? `<pre class="small">${esc(details)}</pre>` : ''}${input !== false && input !== '' ? `<label class="small">${esc(input)}<input id="askInput" maxlength="500"></label>` : ''}<div class="row"><button class="btn primary" data-ask="ok">${esc(ok)}</button><button class="btn" data-ask="cancel">Cancel</button></div></div>`;
+      const opener = document.activeElement;
+      const done = value => { back.remove(); opener?.focus?.(); resolve(value); };
+      back.addEventListener('click', e => { const b = e.target.closest('[data-ask]'); if (b) { e.stopPropagation(); done(b.dataset.ask === 'ok' ? (input ? back.querySelector('#askInput').value : true) : false); } });
+      back.addEventListener('keydown', e => { if (e.key === 'Escape') { e.stopPropagation(); done(false); } });
+      document.body.append(back);
+      (back.querySelector('#askInput') || back.querySelector('[data-ask="ok"]')).focus();
+    });
+  }
 
   // ---- Server access ----------------------------------------------------------------------------
   async function api(path, { method = 'GET', body, retried = false } = {}) {
@@ -102,6 +117,7 @@
     if (tab === 'book') { if (a) st.bookOffice = a; if (W.isDate(b)) st.bookDate = b; }
     if (tab === 'conflict') return { tab: 'conflict', id: a };
     if (tab === 'admin' && a === 'reservations' && W.isDate(b)) { st.adminDate = b; }
+    if (tab === 'admin' && (a === 'routing' || a === 'reports')) return { tab: 'admin', id: b || '' };
     return { tab: ['week', 'vacation', 'book', 'team', 'approvals', 'admin'].includes(tab) ? tab : 'week', id: tab === 'vacation' || tab === 'approvals' ? a || '' : '' };
   }
   async function route() {
@@ -137,7 +153,7 @@
     view().innerHTML = `<div class="card">
       <div class="week-head"><h2>Week of ${esc(fmtDate(st.weekStart, { day: 'numeric', month: 'long', year: 'numeric' }))}</h2>
         <button class="btn small" data-act="week-prev" aria-label="Previous week">‹</button><button class="btn small" data-act="week-today">This week</button><button class="btn small" data-act="week-next" aria-label="Next week">›</button></div>
-      <p class="muted small">${st.me.desk ? `Your desk: <b>${esc(st.me.desk.label || 'desk')}</b> · ${esc(st.me.desk.roomName)}${st.me.homeOfficeId ? ' · ' + esc(officeName(st.me.homeOfficeId)) : ''}. When you are confirmed away, colleagues may borrow it if sharing is enabled. Missing plans keep it protected.` : 'You have no assigned desk. Book one under “Book a desk”.'} Dates follow ${esc(st.me.timezone)}.</p>
+      <p class="muted small">${st.me.desk ? `Your desk: <b>${esc(st.me.desk.label || 'desk')}</b> · ${esc(st.me.desk.roomName)}${st.me.homeOfficeId ? ' · ' + esc(officeName(st.me.homeOfficeId)) : ''}. When you are confirmed away, colleagues may borrow it if sharing is enabled. Missing plans keep it protected. <button class="btn small" data-act="report" data-kind="desk">Not your desk?</button>` : 'You have no assigned desk. Book one under “Book a desk”. <button class="btn small" data-act="report" data-kind="desk">Should you have one?</button>'} Dates follow ${esc(st.me.timezone)}.</p>
       <div class="days">${data.days.map(dayCard).join('')}</div></div>
       <div class="card"><h2>Weekly pattern</h2><p class="muted small">Repeats every week. A choice on a specific day wins over the pattern; approved vacation wins over both.</p>
         <form id="patternForm"><div class="pattern">${WD.map((name, i) => `<label>${name}<select name="${i + 1}">${locationOptions(pattern[i + 1] || '', { blank: 'No plan' })}</select></label>`).join('')}</div>
@@ -167,17 +183,20 @@
   // ---- Vacation ---------------------------------------------------------------------------------
   async function renderVacation() {
     if (!st.me.linked) throw Object.assign(new Error('Your account is not linked to an employee record yet.'), { data: { code: 'not_linked' } });
-    const { requests } = await api('/api/workplace/vacations');
-    const today = st.me.today;
+    const [{ requests }, { reports }] = await Promise.all([api('/api/workplace/vacations'), api('/api/workplace/reports')]);
+    const today = st.me.today, ap = st.me.approver;
     view().innerHTML = `<div class="card"><h2>Request vacation</h2>
-      <p class="muted small">${st.me.approver ? 'Your approver: <b>' + esc(st.me.approver.name) + '</b>.' : 'No approver is set for you yet; an OrgFlow administrator must assign one before you can submit.'} Requests cover whole days. Your note is visible only to you, your approver and OrgFlow administrators. Vacation balances are not tracked here.</p>
+      <p class="muted small">${ap ? `Your approver: <b>${esc(ap.name)}</b> (${ap.source === 'correction' ? 'set by an OrgFlow administrator' : 'from the organization chart'}). <button class="btn small" data-act="report" data-kind="approver">Wrong approver?</button>` : 'No approver is known for you. You can still submit: an OrgFlow administrator routes your request to the right person.'} Requests cover whole days. Your note is visible only to you, your approver and OrgFlow administrators. Vacation balances are not tracked here.</p>
       <form id="vacForm" class="row"><label>First day<input type="date" name="start" min="${today}" required /></label><label>Last day<input type="date" name="end" min="${today}" required /></label>
       <label style="flex:1;min-width:200px">Private note (optional)<input name="note" maxlength="1000" /></label><button class="btn primary" type="submit">Submit request</button></form></div>
-      <div class="card"><h2>Your requests</h2><div class="list">${requests.map(vacationItem).join('') || '<p class="empty">No vacation requests yet.</p>'}</div></div>`;
+      <div class="card"><h2>Your requests</h2><div class="list">${requests.map(vacationItem).join('') || '<p class="empty">No vacation requests yet.</p>'}</div></div>
+      <div class="card"><h2>Something wrong in your details?</h2><p class="muted small">Approvers, desks and teams come from the OrgFlow organization chart, not from your Teams or Microsoft 365 profile. If something is out of date, tell the OrgFlow administrators; they can correct it without waiting for the chart.</p>
+        <div class="list">${reports.map(r => `<div class="item"><div class="what"><b>${esc(r.label)}</b><span class="small muted">Reported ${esc(r.createdAt.slice(0, 10))}${r.resolution ? ' · ' + esc(r.resolution) : ''}</span></div>${chip(r.status === 'open' ? 'pending' : r.status === 'resolved' ? 'approved' : 'cancelled')}</div>`).join('')}</div>
+        <div class="row" style="margin-top:8px"><button class="btn" data-act="report" data-kind="approver">Report a problem…</button></div></div>`;
     $('#vacForm').onsubmit = async e => {
       e.preventDefault();
       const fd = new FormData(e.target);
-      try { await api('/api/workplace/vacations', { method: 'POST', body: { start: fd.get('start'), end: fd.get('end'), note: fd.get('note') } }); toast('Request sent to your approver.'); renderVacation(); } catch (error) { toast(error.message); }
+      try { const r = await api('/api/workplace/vacations', { method: 'POST', body: { start: fd.get('start'), end: fd.get('end'), note: fd.get('note') } }); toast(r.routing === 'unassigned' ? 'Request sent. An OrgFlow administrator will route it to your approver.' : 'Request sent to your approver.'); renderVacation(); } catch (error) { toast(error.message); }
     };
     if (st.focus) document.getElementById('vac-' + st.focus)?.scrollIntoView({ block: 'center' });
   }
@@ -190,9 +209,10 @@
       r.status === 'approved' && r.kind !== 'cancel' && !r.pendingChange ? `<button class="btn small danger" data-act="vac-cancel" data-id="${esc(r.id)}">Request cancellation</button>` : ''
     ].join('');
     return `<div class="item${st.focus === r.id ? ' focus' : ''}" id="vac-${esc(r.id)}"><div class="what"><b>${esc(what)}</b>
-      <span class="small muted">${r.approverName ? 'Approver ' + esc(r.approverName) + ' · ' : ''}submitted ${esc(r.submittedAt.slice(0, 10))}${r.decidedAt ? ' · decided ' + esc(r.decidedAt.slice(0, 10)) + (r.decidedBy ? ' by ' + esc(r.decidedBy) : '') : ''}</span>
+      <span class="small muted">${r.approverName ? 'Approver ' + esc(r.approverName) + ' · ' : r.status === 'pending' ? 'Being routed · ' : ''}submitted ${esc(r.submittedAt.slice(0, 10))}${r.decidedAt ? ' · decided ' + esc(r.decidedAt.slice(0, 10)) + (r.decidedBy ? ' by ' + esc(r.decidedBy) : '') : ''}</span>
       ${r.note ? `<span class="small">Note: ${esc(r.note)}</span>` : ''}${r.decisionNote ? `<span class="small">Approver note: ${esc(r.decisionNote)}</span>` : ''}
-      ${r.pendingChange ? `<span class="small muted">A ${r.pendingChange.kind === 'cancel' ? 'cancellation' : 'date change'} is awaiting approval; these dates stay in force until then.</span>` : ''}</div>
+      ${r.pendingChange ? `<span class="small muted">A ${r.pendingChange.kind === 'cancel' ? 'cancellation' : 'date change'} is awaiting approval; these dates stay in force until then.</span>` : ''}
+      ${r.status === 'pending' && r.routing === 'unassigned' ? `<span class="small">Waiting for an OrgFlow administrator to route it${r.routingNote ? ': ' + esc(r.routingNote) : '.'}</span>` : ''}</div>
       ${chip(r.status)}<div class="actions">${actions}</div><form class="row hidden" data-edit="${esc(r.id)}"><label>First day<input type="date" name="start" value="${r.start}" required></label><label>Last day<input type="date" name="end" value="${r.end}" required></label><button class="btn primary small" type="submit">${r.status === 'approved' ? 'Ask for approval' : 'Save new dates'}</button></form></div>`;
   }
 
@@ -267,7 +287,7 @@
     }
   }
   async function cancelReservation(id) {
-    if (!confirm('Cancel this desk reservation?')) return;
+    if (!(await ask('Cancel this desk reservation?', { ok: 'Cancel reservation' }))) return;
     try {
       const r = await api(`/api/workplace/reservations/${encodeURIComponent(id)}/cancel`, { method: 'POST', body: {} });
       if (r.reservation.employeeId && r.reservation.employeeId === st.me.employee?.id) promptLocation(r.confirmLocation);
@@ -304,8 +324,8 @@
     const data = await api('/api/workplace/approvals');
     const item = (r, decide) => `<div class="item${decide && st.focus === r.id ? ' focus' : ''}"${decide ? ` id="appr-${esc(r.id)}"` : ''}><div class="what"><b>${esc(r.employeeName)} · ${esc(r.kind === 'cancel' ? 'Cancel ' + fmtRange(r.start, r.end) : r.kind === 'change' ? 'Change ' + (r.target ? fmtRange(r.target.start, r.target.end) : '') + ' → ' + fmtRange(r.start, r.end) : fmtRange(r.start, r.end))}</b>
       <span class="small muted">${r.days} day${r.days === 1 ? '' : 's'} · submitted ${esc(r.submittedAt.slice(0, 10))}${r.decidedAt ? ' · decided ' + esc(r.decidedAt.slice(0, 10)) : ''}</span>${r.note ? `<span class="small">Note: ${esc(r.note)}</span>` : ''}${r.decisionNote ? `<span class="small">Your note: ${esc(r.decisionNote)}</span>` : ''}</div>${chip(r.status)}
-      ${decide ? `<form class="row" data-decide="${esc(r.id)}"><label style="flex:1;min-width:180px">Note to ${esc(r.employeeName)} (optional)<input name="note" maxlength="1000" /></label><button class="btn primary small" name="decision" value="approve">Approve</button><button class="btn small danger" name="decision" value="reject">Reject</button></form>` : ''}</div>`;
-    view().innerHTML = `<div class="card"><h2>Awaiting your decision</h2><div class="list">${data.pending.map(r => item(r, true)).join('') || '<p class="empty">Nothing to review.</p>'}</div></div>
+      ${decide ? `<form class="row" data-decide="${esc(r.id)}"><label style="flex:1;min-width:180px">Note to ${esc(r.employeeName)} (optional)<input name="note" maxlength="1000" /></label><button class="btn primary small" name="decision" value="approve">Approve</button><button class="btn small danger" name="decision" value="reject">Reject</button><button class="btn small" type="button" data-act="return" data-id="${esc(r.id)}" title="Hand it back to the administrators if ${esc(r.employeeName)} does not report to you">Not my report</button></form>` : ''}</div>`;
+    view().innerHTML = `<p class="muted small">Your team comes from the OrgFlow organization chart. If a request is not yours to decide, use <b>Not my report</b>: an OrgFlow administrator routes it and fixes the reporting line.</p><div class="card"><h2>Awaiting your decision</h2><div class="list">${data.pending.map(r => item(r, true)).join('') || '<p class="empty">Nothing to review.</p>'}</div></div>
       <div class="card"><h2>Your team’s absences</h2><p class="muted small">Approved and pending vacation of your direct reports in the next six months.</p><div class="list">${data.absences.map(r => item(r, false)).join('') || '<p class="empty">No upcoming absences.</p>'}</div></div>
       <div class="card"><h2>Recently decided</h2><div class="list">${data.decided.map(r => item(r, false)).join('') || '<p class="empty">No recent decisions.</p>'}</div></div>`;
     if (st.focus) document.getElementById('appr-' + st.focus)?.scrollIntoView({ block: 'center' });
@@ -334,9 +354,15 @@
         <div class="list">${res.reservations.map(r => `<div class="item"><div class="what"><b>${esc(fmtDate(r.date))} · ${esc(r.officeName)} · ${esc(r.roomName)} · desk ${esc(r.deskLabel)}</b><span class="small muted">${esc(r.employeeName)}${r.onBehalf ? ' · booked by an administrator' : ''}${r.cancelReason ? ' · ' + esc(r.cancelReason) : ''}</span></div>${chip(r.status)}${r.status === 'confirmed' ? `<button class="btn small danger" data-act="cancel-res" data-id="${esc(r.id)}" data-date="${r.date}">Cancel</button>` : ''}</div>`).join('') || '<p class="empty">No reservations in this period.</p>'}</div></div>`;
     }
     if (data.orgAdmin) {
+      const people = `<datalist id="approverList">${data.approvers.map(a => `<option value="${esc(a.employeeId)}">${esc(a.name)}</option>`).join('')}</datalist>`;
+      html = `<div class="card"><h2>Requests waiting for an approver</h2><p class="muted small">Requests whose approver is unknown, has left, or handed them back as “not my report”. Route each one; tick <b>Use for future requests</b> to correct the reporting line too.</p>
+        <div class="list">${data.routing.map(r => `<div class="item${st.focus === r.id ? ' focus' : ''}" id="route-${esc(r.id)}"><div class="what"><b>${esc(r.employeeName)} · ${esc(r.kind === 'cancel' ? 'Cancel ' : r.kind === 'change' ? 'Change to ' : '')}${esc(fmtRange(r.start, r.end))}</b><span class="small muted">${esc(r.routingNote || '')}</span></div>
+          <form class="row" data-route="${esc(r.id)}"><input name="approverId" list="approverList" placeholder="Approver employee ID" required aria-label="Approver for ${esc(r.employeeName)}"><label class="check small"><input type="checkbox" name="remember" checked> Use for future requests</label><button class="btn small primary" type="submit">Route</button></form></div>`).join('') || '<p class="empty">Nothing is waiting.</p>'}</div></div>
+      <div class="card"><h2>Reported problems</h2><p class="muted small">Employees and managers report wrong approvers, desks, roles or account links here. Fix the organization chart, the seating plan, an approver correction or the account link on the Admin page, then close the report; the reporter is notified.</p>
+        <div class="list">${data.reports.map(r => `<div class="item${st.focus === r.id ? ' focus' : ''}" id="report-${esc(r.id)}"><div class="what"><b>${esc(r.employeeName)} · ${esc(r.label)}</b><span class="small muted">Reported by ${esc(r.reportedBy)} on ${esc(r.createdAt.slice(0, 10))}</span><span class="small">${esc(r.note)}</span>${r.resolution ? `<span class="small muted">${esc(r.resolution)}</span>` : ''}</div>${chip(r.status === 'open' ? 'open' : r.status)}
+          ${r.status === 'open' ? `<form class="row" data-report="${esc(r.id)}"><input name="note" maxlength="1000" placeholder="What was done (sent to the reporter)" aria-label="Resolution note"><button class="btn small primary" name="status" value="resolved">Resolved</button><button class="btn small" name="status" value="dismissed">Dismiss</button></form>` : ''}</div>`).join('') || '<p class="empty">No reports.</p>'}</div></div>` + html + people;
       html += `<div class="card"><h2>Approvers</h2><p class="muted small">Approvers come from Current: the nearest filled position above each person. Set a correction where that is wrong (for example the top of the organization). People cannot approve their own vacation. Link accounts to employees on the <a href="admin.html">Admin page</a>.</p>
-        <table class="grid"><thead><tr><th>Employee</th><th>From Current</th><th>Correction (employee ID)</th></tr></thead><tbody>${data.approvers.map(a => `<tr><td>${esc(a.name)} <span class="muted small">${esc(a.employeeId)}</span></td><td>${esc(a.derivedName || '—')}</td><td><form class="row" data-approver="${esc(a.employeeId)}"><input name="approverId" value="${esc(a.overrideId)}" placeholder="Use Current" list="approverList" aria-label="Approver for ${esc(a.name)}"><button class="btn small" type="submit">Save</button></form>${a.overrideName ? `<span class="small muted">${esc(a.overrideName)}</span>` : ''}</td></tr>`).join('')}</tbody></table>
-        <datalist id="approverList">${data.approvers.map(a => `<option value="${esc(a.employeeId)}">${esc(a.name)}</option>`).join('')}</datalist></div>`;
+        <table class="grid"><thead><tr><th>Employee</th><th>From Current</th><th>Correction (employee ID)</th></tr></thead><tbody>${data.approvers.map(a => `<tr><td>${esc(a.name)} <span class="muted small">${esc(a.employeeId)}</span></td><td>${esc(a.derivedName || '—')}${a.hint === 'no-approver' ? '<br><span class="chip open">No approver</span>' : ''}</td><td><form class="row" data-approver="${esc(a.employeeId)}"><input name="approverId" value="${esc(a.overrideId)}" placeholder="Use Current" list="approverList" aria-label="Approver for ${esc(a.name)}"><button class="btn small" type="submit">Save</button></form>${a.overrideName ? `<span class="small muted">${esc(a.overrideName)}${a.correctedAt ? ' · set ' + esc(a.correctedAt.slice(0, 10)) + (a.correctedBy ? ' by ' + esc(a.correctedBy) : '') : ''}</span>` : ''}${a.hint === 'matches-current' ? '<br><span class="chip">Current now agrees; the correction can be cleared</span>' : a.hint === 'approver-gone' ? '<br><span class="chip open">Approver no longer in the organization</span>' : ''}</td></tr>`).join('')}</tbody></table></div>`;
     }
     view().innerHTML = html || '<div class="card"><p class="empty">Nothing to administer.</p></div>';
     $('#officeForm')?.addEventListener('submit', async e => { e.preventDefault(); const fd = new FormData(e.target); try { await api('/api/workplace/admin/offices', { method: 'PUT', body: { name: fd.get('name'), timezone: fd.get('timezone') } }); await refreshMe(); renderAdmin(); } catch (error) { toast(error.message); } });
@@ -344,7 +370,19 @@
     $('#closureForm')?.officeId.addEventListener('change', closureRooms); closureRooms();
     $('#closureForm')?.addEventListener('submit', async e => { e.preventDefault(); const body = Object.fromEntries(new FormData(e.target)); await withConfirmation('/api/workplace/admin/closures', 'POST', body, 'Closure saved.'); });
     $('#adminDate')?.addEventListener('change', e => { if (W.isDate(e.target.value)) { st.adminDate = e.target.value; renderAdmin(); } });
-    if (st.focus) document.getElementById('cfl-' + st.focus)?.scrollIntoView({ block: 'center' });
+    if (st.focus) (document.getElementById('cfl-' + st.focus) || document.getElementById('route-' + st.focus) || document.getElementById('report-' + st.focus))?.scrollIntoView({ block: 'center' });
+  }
+  /** Report wrong organization details: a small dialog in the status area. */
+  function reportForm(kind) {
+    const kinds = { approver: 'Wrong manager or approver', desk: 'Wrong assigned desk', identity: 'Linked to the wrong person', role: 'Wrong role or team' };
+    setStatus(`<div class="card" role="dialog" aria-labelledby="reportTitle"><h2 id="reportTitle">Report wrong details</h2><p class="muted small">Your report goes to the OrgFlow administrators, who can correct it right away. Your Teams or Microsoft 365 profile is not used for approvals or desks.</p>
+      <form class="row" id="reportForm"><label>What is wrong<select name="kind">${Object.entries(kinds).map(([k, v]) => `<option value="${k}" ${k === kind ? 'selected' : ''}>${esc(v)}</option>`).join('')}</select></label><label style="flex:1;min-width:220px">Details (optional)<input name="note" maxlength="1000" placeholder="e.g. I report to Maya Chen since September"></label><button class="btn primary" type="submit">Send report</button><button class="btn" type="button" data-act="close-status">Cancel</button></form></div>`);
+    $('#reportForm').onsubmit = async e => {
+      e.preventDefault();
+      const fd = new FormData(e.target);
+      try { await api('/api/workplace/reports', { method: 'POST', body: { kind: fd.get('kind'), note: fd.get('note') } }); setStatus('<p class="ok">Thanks — the OrgFlow administrators have been notified.</p>'); if (st.tab === 'vacation') renderVacation(); } catch (error) { toast(error.message); }
+    };
+    $('#reportForm select').focus();
   }
   /** Changes that would displace confirmed reservations come back with the list; the administrator confirms. */
   async function withConfirmation(path, method, body, done) {
@@ -352,7 +390,7 @@
     catch (error) {
       if (error.data?.code !== 'reservations_affected') { toast(error.message); return; }
       const list = error.data.reservations.map(r => `• ${fmtDate(r.date)} · ${r.officeName} ${r.roomName ? '· ' + r.roomName : ''} · desk ${r.deskLabel || r.deskId}${r.employeeName ? ' · ' + r.employeeName : ''}`).join('\n');
-      if (!confirm(`${error.message}\n\n${list}\n\nThe holders will be notified and asked to choose another desk. Continue?`)) return;
+      if (!(await ask(`${error.message} The holders will be notified and asked to choose another desk.`, { details: list }))) return;
       try { await api(path, { method, body: { ...body, confirm: true } }); toast(done); renderAdmin(); } catch (e2) { toast(e2.message); }
     }
   }
@@ -398,9 +436,17 @@
       if (act === 'find-desk') { st.bookDate = date; st.bookOffice = st.me.homeOfficeId || st.bookOffice; return show('book'); }
       if (act === 'focus-day') { document.getElementById('loc-' + date)?.focus(); return; }
       if (act === 'reserve') return reserve(btn);
+      if (act === 'report') return reportForm(btn.dataset.kind);
+      if (act === 'close-status') { setStatus(''); return; }
+      if (act === 'return') {
+        const note = await ask('Hand this request back to the OrgFlow administrators? They route it to the right approver and correct the reporting line.', { input: 'Who should approve it? (optional)', ok: 'Not my report' });
+        if (note === false) return;
+        await api(`/api/workplace/vacations/${encodeURIComponent(id)}/return`, { method: 'POST', body: { note } });
+        toast('Handed back. An administrator will route it and correct the reporting line.'); await refreshMe(); return renderApprovals();
+      }
       if (act === 'vac-edit') { document.querySelector(`[data-edit="${CSS.escape(id)}"]`).classList.toggle('hidden'); return; }
       if (act === 'vac-cancel') {
-        if (!confirm('Withdraw or cancel this vacation? Approved vacation stays in force until your approver accepts the cancellation.')) return;
+        if (!(await ask('Withdraw or cancel this vacation? Approved vacation stays in force until your approver accepts the cancellation.', { ok: 'Yes, cancel' }))) return;
         const r = await api(`/api/workplace/vacations/${encodeURIComponent(id)}/cancel`, { method: 'POST', body: {} });
         toast(r.kind === 'cancel' ? 'Cancellation sent for approval.' : 'Request withdrawn.'); return renderVacation();
       }
@@ -452,6 +498,15 @@
       e.preventDefault();
       const fd = new FormData(f);
       try { await api(`/api/workplace/conflicts/${encodeURIComponent(f.dataset.resolve)}/resolve`, { method: 'POST', body: { action: e.submitter?.value, deskId: fd.get('deskId'), note: fd.get('note') } }); toast('Conflict resolved. Affected employees are notified.'); renderAdmin(); } catch (error) { toast(error.message); }
+    }
+    if (f.dataset.route) {
+      e.preventDefault();
+      const fd = new FormData(f);
+      try { await api(`/api/workplace/admin/vacations/${encodeURIComponent(f.dataset.route)}/approver`, { method: 'PUT', body: { approverId: fd.get('approverId').trim(), remember: fd.get('remember') === 'on' } }); toast('Routed. The approver is notified.'); renderAdmin(); } catch (error) { toast(error.message); }
+    }
+    if (f.dataset.report) {
+      e.preventDefault();
+      try { await api(`/api/workplace/reports/${encodeURIComponent(f.dataset.report)}/resolve`, { method: 'POST', body: { status: e.submitter?.value, note: new FormData(f).get('note') } }); toast('Report closed. The reporter is notified.'); renderAdmin(); } catch (error) { toast(error.message); }
     }
     if (f.dataset.approver) {
       e.preventDefault();

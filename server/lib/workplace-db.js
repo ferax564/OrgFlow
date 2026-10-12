@@ -151,6 +151,20 @@ function migrateWorkplace(db) {
       sent_at TEXT NOT NULL DEFAULT ''
     );
     CREATE INDEX IF NOT EXISTS deliveries_due ON notification_deliveries(status, next_attempt_at);
+    CREATE TABLE IF NOT EXISTS data_reports (
+      id TEXT PRIMARY KEY,
+      tenant_id TEXT NOT NULL,
+      employee_id TEXT NOT NULL,
+      kind TEXT NOT NULL CHECK (kind IN ('approver','desk','identity','role')),
+      note TEXT NOT NULL DEFAULT '',
+      status TEXT NOT NULL CHECK (status IN ('open','resolved','dismissed')),
+      created_by TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      resolved_by TEXT NOT NULL DEFAULT '',
+      resolved_at TEXT NOT NULL DEFAULT '',
+      resolution TEXT NOT NULL DEFAULT ''
+    );
+    CREATE INDEX IF NOT EXISTS data_reports_status ON data_reports(tenant_id, status);
     CREATE TABLE IF NOT EXISTS teams_conversations (
       tenant_id TEXT NOT NULL,
       aad_object_id TEXT NOT NULL,
@@ -160,6 +174,12 @@ function migrateWorkplace(db) {
       PRIMARY KEY (tenant_id, aad_object_id)
     );
   `);
+  // Approval routing: 'auto' follows Current and corrections, 'pinned' was assigned by an administrator
+  // for this request, 'unassigned' waits for an administrator (no valid approver, or returned by a manager).
+  const columns = new Set(db.prepare('PRAGMA table_info(vacation_requests)').all().map(c => c.name));
+  if (!columns.has('routing')) db.exec("ALTER TABLE vacation_requests ADD COLUMN routing TEXT NOT NULL DEFAULT 'auto'");
+  if (!columns.has('routing_note')) db.exec("ALTER TABLE vacation_requests ADD COLUMN routing_note TEXT NOT NULL DEFAULT ''");
+  if (!columns.has('returned_by')) db.exec("ALTER TABLE vacation_requests ADD COLUMN returned_by TEXT NOT NULL DEFAULT ''");
 }
 
 module.exports = { migrateWorkplace };

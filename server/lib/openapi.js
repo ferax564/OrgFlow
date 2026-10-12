@@ -83,6 +83,11 @@ function spec(version) {
   add('/api/workplace/vacations/{requestId}/cancel','post','Withdraw a pending request or ask to cancel approved vacation',obj,object({note:str}),[param('requestId',str,true,'path')]);
   add('/api/workplace/vacations/{requestId}/decision','post','Approve or reject (assigned approver only)',obj,object({decision:{enum:['approve','reject']},note:str},['decision']),[param('requestId',str,true,'path')]);
   add('/api/workplace/approvals','get','Approval inbox with the team’s absences',obj);
+  add('/api/workplace/vacations/{requestId}/return','post','“Not my report”: the assigned approver hands a request back for routing',obj,object({note:str}),[param('requestId',str,true,'path')]);
+  add('/api/workplace/admin/vacations/{requestId}/approver','put','Route a request to an approver; remember also saves a correction (OrgFlow administrators)',obj,object({approverId:str,remember:{type:'boolean'}},['approverId']),[param('requestId',str,true,'path')]);
+  add('/api/workplace/reports','get','Own reports of wrong details, or all recent ones for OrgFlow administrators',obj);
+  add('/api/workplace/reports','post','Report a wrong approver, desk, account link or role',obj,object({kind:{enum:['approver','desk','identity','role']},note:str},['kind']),[],'201');
+  add('/api/workplace/reports/{reportId}/resolve','post','Close a report (OrgFlow administrators); the reporter is notified',obj,object({status:{enum:['resolved','dismissed']},note:str},['status']),[param('reportId',str,true,'path')]);
   add('/api/workplace/team','get','Team absence calendar',obj,null,[param('from',date,true),param('to',date,true)]);
   add('/api/workplace/notifications','get','In-app notifications (authoritative; Teams messages are copies)',obj);
   add('/api/workplace/notifications/read','post','Mark notifications read',obj,object({ids:{oneOf:[array(str),{enum:['all']}]}}));

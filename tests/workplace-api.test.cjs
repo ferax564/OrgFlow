@@ -69,7 +69,9 @@ test('recurring remote days, day overrides and missing plans decide desk availab
   assert.equal((await desk(people.visitor, '2026-10-14')).state, 'available', 'Wednesday remote pattern frees the desk');
   assert.equal((await desk(people.visitor, '2026-10-16')).state, 'available', 'working in another office frees the desk');
   assert.equal((await desk(people.visitor, '2026-10-15')).state, 'protected', 'no plan protects the desk');
-  assert.equal((await desk(people.visitor, '2026-10-15')).reason, 'owner-no-plan');
+  assert.equal((await desk(people.admin, '2026-10-15')).reason, 'owner-no-plan');
+  assert.equal((await desk(people.visitor, '2026-10-15')).reason, 'protected', 'visitors do not learn why');
+  assert.equal((await desk(people.visitor, '2026-10-14')).reason, 'owner-away');
   const override = await call(people.owner, '/api/workplace/days', { dates: ['2026-10-21'], location: 'office:zrh' }, 'PUT');
   assert.equal(override.status, 200, override.error);
   assert.equal((await desk(people.visitor, '2026-10-21')).state, 'protected', 'an office-day override beats the remote pattern');
@@ -79,7 +81,7 @@ test('recurring remote days, day overrides and missing plans decide desk availab
   // Unassigned desks need explicit sharing; a vacancy alone never frees a desk.
   assert.equal((await desk(people.visitor, '2026-10-14', 'desk-z3')).state, 'available');
   assert.equal((await desk(people.visitor, '2026-10-14', 'desk-z5')).state, 'protected');
-  assert.equal((await desk(people.visitor, '2026-10-14', 'desk-z5')).reason, 'vacant');
+  assert.equal((await desk(people.admin, '2026-10-14', 'desk-z5')).reason, 'vacant');
   const london = (await call(people.visitor, '/api/workplace/offices/lon/map?date=2026-10-14')).rooms[0].desks[0];
   assert.equal(london.state, 'protected', 'desks without sharing stay protected');
   assert.equal(london.mine, true);
@@ -95,7 +97,7 @@ test('pending vacation protects the desk; manager approval releases it; only the
   assert.equal(req.status, 201, req.error);
   assert.equal(req.approverName, 'Luca Rossi');
   assert.equal((await desk(people.visitor, '2026-10-26')).state, 'protected');
-  assert.equal((await desk(people.visitor, '2026-10-26')).reason, 'owner-pending-vacation');
+  assert.equal((await desk(people.admin, '2026-10-26')).reason, 'owner-pending-vacation');
   assert.equal((await call(people.owner, '/api/workplace/vacations', { start: '2026-10-27', end: '2026-10-29' })).status, 409, 'overlapping requests are rejected');
   assert.equal((await call(people.owner, `/api/workplace/vacations/${req.id}/decision`, { decision: 'approve' })).status, 403, 'no self-approval');
   assert.equal((await call(people.visitor, `/api/workplace/vacations/${req.id}/decision`, { decision: 'approve' })).status, 403, 'outside responsibility');

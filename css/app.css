@@ -450,6 +450,10 @@ aside{padding:0 0 24px}
 .seat-desk.issue .seat-top{stroke:var(--bad);stroke-width:4;stroke-dasharray:10 6}
 .seat-desk.selected .seat-top{stroke:var(--accent);stroke-width:5;stroke-dasharray:none}.seat-desk.drop-target .seat-top{stroke:var(--accent);stroke-width:6;fill:var(--accent-soft)}
 .seat-desk:hover .seat-top{stroke:var(--accent)}
+/* Date-specific availability from the workplace planner, drawn over the assignment colours. */
+.seating-avail{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:600;color:var(--muted)}.seating-avail input{height:34px;border:1px solid var(--line-strong);border-radius:999px;padding:0 10px;background:var(--panel);color:var(--ink)}
+.seat-desk.avail-available .seat-top{stroke:#16a34a;stroke-width:6;stroke-dasharray:none}.seat-desk.avail-reserved .seat-top{stroke:#4f46e5;stroke-width:6;stroke-dasharray:none}.seat-desk.avail-protected .seat-top{stroke:#78716c;stroke-width:6;stroke-dasharray:none}.seat-desk.avail-unavailable .seat-top{stroke:#a8a29e;stroke-width:6;stroke-dasharray:10 6}
+.seating-legend i.avail-available{border:3px solid #16a34a;background:transparent}.seating-legend i.avail-reserved{border:3px solid #4f46e5;background:transparent}.seating-legend i.avail-protected{border:3px solid #78716c;background:transparent}.seating-legend i.avail-unavailable{border:3px dashed #a8a29e;background:transparent}.seating-legend .avail-legend{font-weight:700}
 .seat-label{fill:var(--ink);font-weight:800;pointer-events:none}.seat-name{fill:var(--muted);font-weight:650;pointer-events:none}
 .seat-ghost rect{fill:color-mix(in srgb,var(--accent) 22%,transparent);stroke:var(--accent);stroke-width:2;stroke-dasharray:6 4;pointer-events:none}
 .seat-preview-room{fill:color-mix(in srgb,var(--accent) 8%,transparent);stroke:var(--ink);stroke-width:12;stroke-dasharray:24 14;pointer-events:none}

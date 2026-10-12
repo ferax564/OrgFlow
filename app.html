@@ -222,7 +222,7 @@
   <div id="managementContent"></div>
 </section>
 <section class="plan-panel hidden seating-panel" id="seatingPanel" aria-labelledby="seatingTitle">
-  <div class="seating-head"><div><div class="eyebrow">Seating plan · shared by every scenario</div><h2 id="seatingTitle">Rooms &amp; desks</h2><p id="seatingSummary"></p></div><div class="right"><button class="btn" id="seatingCsvBtn" type="button">Export CSV</button><button class="btn" id="seatingPngBtn" type="button">Export PNG</button></div></div>
+  <div class="seating-head"><div><div class="eyebrow">Seating plan · shared by every scenario</div><h2 id="seatingTitle">Rooms &amp; desks</h2><p id="seatingSummary"></p></div><div class="right"><label class="seating-avail hidden" id="seatingAvailWrap" title="Live desk sharing from the workplace planner (always uses Current)">Availability on <input type="date" id="seatingAvailDate" /></label><button class="btn" id="seatingCsvBtn" type="button">Export CSV</button><button class="btn" id="seatingPngBtn" type="button">Export PNG</button></div></div>
   <div class="seating-layout">
     <nav class="seating-rooms" aria-label="Rooms"><div class="seating-rooms-head"><span class="menu-label">Rooms</span><button class="btn primary" id="seatingAddRoom" type="button">＋ Room</button></div><div id="seatingRoomList" class="seating-room-list"></div></nav>
     <div class="seating-stage">

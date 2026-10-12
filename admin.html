@@ -15,11 +15,12 @@
       <a class="mark" href="./"><span aria-hidden="true">▦</span>OrgFlow</a>
       <div class="nav-links">
         <a href="app.html">Planner</a>
+        <a href="workplace.html">Workplace</a>
       </div>
     </nav>
     <main>
       <h1>Organization access</h1>
-      <p class="muted">One workspace per tenant. Roles: admin (members + replace org), editor (save), viewer (read). Export is a separate flag. Subtree scope is a position id; that person only receives that branch.</p>
+      <p class="muted">One workspace per tenant. Roles: admin (members + replace org), editor (save), viewer (read), employee (work locations, vacation and desk booking only — no organization chart). Export is a separate flag. Subtree scope is a position id; that person only receives that branch. Link each account to its employee record in Current (for example EMP-008) so it can plan, book and approve. Workplace administrators manage offices, desk sharing, closures and reservations.</p>
       <h2>Members</h2>
       <form id="add" class="row">
         <input name="email" type="email" required placeholder="email@company.com" />
@@ -28,12 +29,15 @@
           <option value="viewer">viewer</option>
           <option value="editor">editor</option>
           <option value="admin">admin</option>
+          <option value="employee">employee</option>
         </select>
         <input name="scopePositionId" placeholder="Subtree POS-id (optional)" />
+        <input name="employeeId" placeholder="Employee ID (e.g. EMP-008)" />
         <label class="check"><input name="canExport" type="checkbox" /> Export</label>
+        <label class="check"><input name="workplaceAdmin" type="checkbox" /> Workplace admin</label>
         <button class="btn primary" type="submit">Save member</button>
       </form>
-      <table><thead><tr><th>Email</th><th>Role</th><th>Export</th><th>Scope</th><th></th></tr></thead><tbody id="members"></tbody></table>
+      <table><thead><tr><th>Email</th><th>Role</th><th>Export</th><th>Scope</th><th>Employee</th><th>Workplace admin</th><th></th></tr></thead><tbody id="members"></tbody></table>
       <h2>Assigned reviews</h2>
       <p id="reviewAssignments" role="status"></p>
       <h2>MCP / API tokens</h2>
@@ -67,7 +71,7 @@
       if (!session.isAdmin) { document.querySelector('main').innerHTML = '<p>Admin only. <a href="app.html">Back</a></p>'; return; }
       const members = await api('/api/members');
       document.getElementById('members').innerHTML = members.members.map(m =>
-        `<tr><td>${esc(m.email)}<br><span class="muted">${esc(m.name || '')}</span></td><td>${esc(m.role)}</td><td>${m.can_export ? 'yes' : 'no'}</td><td>${esc(m.scope_position_id || 'whole org')}</td><td><button data-del="${esc(m.user_id)}">Remove</button></td></tr>`
+        `<tr><td>${esc(m.email)}<br><span class="muted">${esc(m.name || '')}</span></td><td>${esc(m.role)}</td><td>${m.can_export ? 'yes' : 'no'}</td><td>${esc(m.role === 'employee' ? '—' : m.scope_position_id || 'whole org')}</td><td>${esc(m.employee_id || 'not linked')}</td><td>${m.workplace_admin ? 'yes' : 'no'}</td><td><button data-edit="${esc(m.email)}" data-name="${esc(m.name || '')}" data-role="${esc(m.role)}" data-scope="${esc(m.scope_position_id || '')}" data-employee="${esc(m.employee_id || '')}" data-export="${m.can_export ? 1 : 0}" data-workplace="${m.workplace_admin ? 1 : 0}">Edit</button> <button data-del="${esc(m.user_id)}">Remove</button></td></tr>`
       ).join('');
       const assigned=await api('/api/reviews');
       document.getElementById('reviewAssignments').textContent=assigned.reviews.length?assigned.reviews.map(r=>r.name+' — '+r.owner).join(' · '):'No scenarios awaiting your review.';
@@ -83,7 +87,7 @@
     document.getElementById('add').onsubmit = async e => {
       e.preventDefault();
       const fd = new FormData(e.target);
-      await api('/api/members', { method: 'PUT', body: JSON.stringify({ email: fd.get('email'), name: fd.get('name'), role: fd.get('role'), scopePositionId: fd.get('scopePositionId'), canExport: fd.get('canExport') === 'on' }) });
+      await api('/api/members', { method: 'PUT', body: JSON.stringify({ email: fd.get('email'), name: fd.get('name'), role: fd.get('role'), scopePositionId: fd.get('scopePositionId'), canExport: fd.get('canExport') === 'on', employeeId: fd.get('employeeId'), workplaceAdmin: fd.get('workplaceAdmin') === 'on' }) });
       e.target.reset();
       refresh();
     };
@@ -99,6 +103,13 @@
     document.body.addEventListener('click', async e => {
       const del = e.target.closest('[data-del]');
       const tok = e.target.closest('[data-tok]');
+      const edit = e.target.closest('[data-edit]');
+      if (edit) {
+        const f = document.getElementById('add');
+        f.email.value = edit.dataset.edit; f.name.value = edit.dataset.name; f.role.value = edit.dataset.role; f.scopePositionId.value = edit.dataset.scope;
+        f.employeeId.value = edit.dataset.employee; f.canExport.checked = edit.dataset.export === '1'; f.workplaceAdmin.checked = edit.dataset.workplace === '1';
+        f.email.focus();
+      }
       if (del) { await api('/api/members/' + del.dataset.del, { method: 'DELETE' }); refresh(); }
       if (tok) { await api('/api/tokens/' + tok.dataset.tok, { method: 'DELETE' }); refresh(); }
     });

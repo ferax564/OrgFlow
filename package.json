@@ -25,7 +25,9 @@
     "test:desktop": "node scripts/desktop-regressions.cjs",
     "backup": "node server/backup.js",
     "verify:release": "node scripts/verify-release.cjs",
-    "check:deployment": "node scripts/deployment-check.cjs"
+    "check:deployment": "node scripts/deployment-check.cjs",
+    "test:workplace": "node scripts/workplace-e2e.cjs",
+    "teams:package": "node scripts/teams-package.cjs"
   },
   "engines": {
     "node": ">=22.16.0"

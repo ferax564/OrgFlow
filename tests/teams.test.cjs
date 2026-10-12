@@ -145,12 +145,13 @@ test('notifications retry without duplicates, link to the record, and failures n
 });
 
 test('only the Teams pages can be framed, and sign-in returns only to OrgFlow pages', async t => {
-  const { call } = await setup(t);
-  const tab = await call('/workplace.html');
-  assert.equal(tab.http, 200);
+  const { base } = await setup(t);
+  const tab = await fetch(base + '/workplace.html');
+  assert.equal(tab.status, 200);
   assert.equal(tab.headers.get('x-frame-options'), null);
   assert.match(tab.headers.get('content-security-policy'), /frame-ancestors 'self' https:\/\/teams\.microsoft\.com/);
-  const planner = await call('/app.html');
+  const planner = await fetch(base + '/app.html');
+  for (const page of ['/teams/auth-start.html', '/teams/auth-end.html', '/js/vendor/MicrosoftTeams.min.js']) assert.equal((await fetch(base + page)).status, 200, page);
   assert.equal(planner.headers.get('x-frame-options'), 'DENY');
   assert.equal(safeReturn('/teams/auth-end.html'), '/teams/auth-end.html');
   assert.equal(safeReturn('/workplace.html#approvals/vac-1'), '/workplace.html#approvals/vac-1');

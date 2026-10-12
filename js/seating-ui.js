@@ -15,7 +15,7 @@
     calibrate: 'Set the plan scale: click both ends of something whose real length you know, such as a wall or door. Then enter that length in the panel. Esc cancels.',
     move: 'Drag the floor plan to line it up with the walls. Arrow keys nudge it. Press Esc or Done when it fits.'
   };
-  const st = { plan: null, roomId: '', tool: 'select', zoom: 1, grid: 50, selected: new Set(), drag: null, draft: null, ghost: null, search: '', filter: 'unseated', block: { ...S.BLOCK_DEFAULTS }, fitted: '', space: false, dropDesk: '' };
+  const st = { avail: null, plan: null, roomId: '', tool: 'select', zoom: 1, grid: 50, selected: new Set(), drag: null, draft: null, ghost: null, search: '', filter: 'unseated', block: { ...S.BLOCK_DEFAULTS }, fitted: '', space: false, dropDesk: '' };
   try { const saved = JSON.parse(appStorage.getItem(PREFS_KEY) || '{}') || {}; if ([10, 25, 50, 100].includes(saved.grid)) st.grid = saved.grid; if (typeof saved.roomId === 'string') st.roomId = saved.roomId; if (saved.block && typeof saved.block === 'object') st.block = { layout: saved.block.layout === 'rows' ? 'rows' : 'pairs', spacing: clampInt(saved.block.spacing, 0, 300, 0), aisle: clampInt(saved.block.aisle, 0, 600, 120) }; if (['unseated', 'all', 'room', 'vacant'].includes(saved.filter)) st.filter = saved.filter; } catch { /* preferences are optional */ }
   function clampInt(v, min, max, fallback) { const n = Math.round(Number(v)); return Number.isFinite(n) ? Math.max(min, Math.min(max, n)) : fallback; }
   function savePrefs() { safePreference(PREFS_KEY, JSON.stringify({ grid: st.grid, roomId: st.roomId, block: st.block, filter: st.filter })); }
@@ -143,11 +143,13 @@
     const cls = ['seat-desk', d.hotDesk ? 'hot' : p ? 'assigned' : missing ? 'missing' : 'free'];
     if (selected) cls.push('selected');
     if (issues?.has(d.id)) cls.push('issue');
+    const live = !exportMode && st.avail?.desks[d.id];
+    if (live) cls.push('avail-' + live.state);
     if (st.dropDesk === d.id && !exportMode) cls.push('drop-target');
     const hw = d.w / 2, hh = d.h / 2, chair = Math.min(40, d.w * 0.3), color = p ? groupColor(p.group) : '';
     const avail = (d.rotation % 180 === 90 ? d.h : d.w) - 10, fs = Math.max(9, Math.min(22, avail / 5.5)), max = Math.max(3, Math.floor(avail / (fs * 0.56)));
     const name = d.hotDesk ? 'Hot desk' : p ? occupantName(p) : missing ? 'Not in scenario' : '';
-    const tip = `${d.label || 'Desk'}${d.hotDesk ? ' · shared hot desk' : p ? ` · ${occupantName(p)} · ${p.title}${p.group ? ' · ' + p.group : ''}` : missing ? ' · assigned position is not in this scenario' : ' · free'}`;
+    const tip = `${d.label || 'Desk'}${d.hotDesk ? ' · shared hot desk' : p ? ` · ${occupantName(p)} · ${p.title}${p.group ? ' · ' + p.group : ''}` : missing ? ' · assigned position is not in this scenario' : ' · free'}${live ? ` · ${st.avail.date}: ${st.avail.labels[live.state]}` : ''}`;
     return `<g class="${cls.join(' ')}" data-desk-id="${esc(d.id)}" transform="translate(${d.x} ${d.y})"><title>${esc(tip)}</title><g transform="rotate(${d.rotation})">`
       + `<rect class="seat-chair" x="${-chair / 2}" y="${hh + 6}" width="${chair}" height="${Math.min(28, chair * 0.75)}" rx="${Math.min(10, chair / 4)}"/>`
       + `<rect class="seat-top" x="${-hw}" y="${-hh}" width="${d.w}" height="${d.h}" rx="6"/>`
@@ -234,6 +236,9 @@
     $('#seatingCreateFirst').disabled = $('#seatingFromPlan').disabled = !editable();
     if (st.plan && !r?.background) st.plan = null;
     $('#seatingCsvBtn').disabled = $('#seatingPngBtn').disabled = !list.length;
+    // Live desk availability comes from the shared host and always reflects Current, whatever scenario is open.
+    const live = Boolean(window.OrgFlowEnterprise?.enabled && window.OrgFlowEnterprise.session && window.OrgFlowEnterprise.session.orgAccess !== false && !scoped());
+    $('#seatingAvailWrap').classList.toggle('hidden', !live || !list.length);
     // A save round-trip briefly blocks writes. Keep the active tool; only a real
     // read-only session (viewer, scoped member, failed load) falls back to Select.
     const gate = window.OrgFlowEnterprise;
@@ -248,7 +253,8 @@
     const el = $('#seatingLegend');
     if (!r) { el.innerHTML = ''; return; }
     const groups = [...new Set(r.desks.map(d => byId.get(d.positionId)).filter(Boolean).map(p => p.group || ''))].sort();
-    el.innerHTML = groups.map(g => `<span><i style="background:${groupColor(g)}"></i>${esc(g || 'No group')}</span>`).join('') + '<span><i class="free"></i>Free</span><span><i class="hot"></i>Hot desk</span><span><i class="issue"></i>Outside walls or overlapping</span>';
+    el.innerHTML = groups.map(g => `<span><i style="background:${groupColor(g)}"></i>${esc(g || 'No group')}</span>`).join('') + '<span><i class="free"></i>Free</span><span><i class="hot"></i>Hot desk</span><span><i class="issue"></i>Outside walls or overlapping</span>'
+      + (st.avail ? `<span class="avail-legend">On ${esc(st.avail.date)}:</span>` + ['available', 'reserved', 'protected', 'unavailable'].map(s => `<span><i class="avail-${s}"></i>${esc(st.avail.labels[s])}</span>`).join('') : '');
   }
   function positionOptions(selectedId) {
     const groups = new Map();
@@ -745,6 +751,17 @@
     $('#seatingZoomOut').addEventListener('click', () => setZoom(st.zoom / 1.2));
     $('#seatingFit').addEventListener('click', fit);
     $('#seatingCsvBtn').addEventListener('click', exportCSV);
+    $('#seatingAvailDate').addEventListener('change', async e => {
+      const date = e.target.value;
+      if (!date) { st.avail = null; render(); return; }
+      try {
+        const res = await fetch('/api/workplace/availability?date=' + encodeURIComponent(date), { credentials: 'same-origin', headers: { accept: 'application/json' } });
+        const body = await res.json();
+        if (!res.ok) throw new Error(body.error || 'Availability is not available.');
+        st.avail = body; render();
+        toast(`Showing desk availability on ${date}. Clear the date to hide it.`);
+      } catch (error) { st.avail = null; e.target.value = ''; toast(error.message); render(); }
+    });
     $('#seatingPngBtn').addEventListener('click', exportPNG);
     const inspector = $('#seatingInspector');
     inspector.addEventListener('change', e => {

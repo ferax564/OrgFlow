@@ -1,0 +1,43 @@
+{
+  "$schema": "https://developer.microsoft.com/en-us/json-schemas/teams/v1.17/MicrosoftTeams.schema.json",
+  "manifestVersion": "1.17",
+  "version": "{{VERSION}}",
+  "id": "{{APP_ID}}",
+  "developer": {
+    "name": "{{COMPANY}}",
+    "websiteUrl": "{{PUBLIC_URL}}/",
+    "privacyUrl": "{{PRIVACY_URL}}",
+    "termsOfUseUrl": "{{TERMS_URL}}"
+  },
+  "name": { "short": "OrgFlow", "full": "OrgFlow workplace planner" },
+  "description": {
+    "short": "Plan work locations, request vacation and borrow desks.",
+    "full": "Plan where you work each day, request vacation and get your manager's approval, and reserve a colleague's desk in another office when its owner is confirmed away. Managers see their team's absences and approve requests. Whole days only; a confirmed desk reservation stays with the visitor even if the owner's plans change."
+  },
+  "icons": { "color": "color.png", "outline": "outline.png" },
+  "accentColor": "#4F46E5",
+  "staticTabs": [
+    {
+      "entityId": "workplace",
+      "name": "Workplace",
+      "contentUrl": "{{PUBLIC_URL}}/workplace.html?teams=1",
+      "websiteUrl": "{{PUBLIC_URL}}/workplace.html",
+      "scopes": ["personal"]
+    }
+  ],
+  "bots": [
+    {
+      "botId": "{{BOT_ID}}",
+      "scopes": ["personal"],
+      "isNotificationOnly": true,
+      "supportsFiles": false,
+      "supportsCalling": false,
+      "supportsVideo": false
+    }
+  ],
+  "validDomains": ["{{HOST}}"],
+  "webApplicationInfo": {
+    "id": "{{CLIENT_ID}}",
+    "resource": "api://{{HOST}}/{{CLIENT_ID}}"
+  }
+}

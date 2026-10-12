@@ -238,7 +238,7 @@ async function handleOidcLogin(req, res, store, cfg, oidc, requestUrl) {
   res.end();
 }
 
-async function handleOidcCallback(req, res, store, cfg, oidc, url) {
+async function handleOidcCallback(req, res, store, cfg, oidc, url, enroll = () => null) {
   const state = url.searchParams.get('state') || '';
   const code = url.searchParams.get('code') || '';
   const bound=auth.unsignSid(auth.parseCookies(req.headers.cookie).orgflow_oidc,cfg.sessionSecret);
@@ -261,7 +261,7 @@ async function handleOidcCallback(req, res, store, cfg, oidc, url) {
     email,
     name: profile.name || profile.preferred_username || email
   });
-  const membership = store.getMembership(user.id) || (email === cfg.bootstrapAdminEmail ? store.ensureMembership(user,{role:'admin'}) : null);
+  const membership = store.getMembership(user.id) || (email === cfg.bootstrapAdminEmail ? store.ensureMembership(user,{role:'admin'}) : enroll(user, email));
   if (!membership) {
     res.writeHead(302, { location: '/login.html?error=not_member', 'cache-control': 'no-store' });
     res.end();
@@ -287,6 +287,16 @@ function createApp(options = {}) {
   workplace.hooks.channel = teamsCfg.botEnabled ? 'teams' : null;
   const teams = createTeams({ cfg: teamsCfg, store, workplace, publicUrl: cfg.publicUrl, fetchImpl: options.fetch, now: options.now ? () => options.now().getTime() : undefined });
   const handleWorkplace = workplaceRoutes.routes(workplace);
+  /** Optional (WORKPLACE_AUTO_ENROLL=true): a verified directory account whose email matches exactly one
+   *  unlinked employee in Current gets a scheduling-only membership. Everyone else still needs an invitation. */
+  function enrollEmployee(user, email) {
+    if (!teamsCfg.autoEnroll) return null;
+    const matches = workplace.org().findByEmail(email).filter(e => !workplace.userForEmployee(e.id));
+    if (matches.length !== 1) return null;
+    const member = store.putMembership({ email, name: user.name, role: 'employee', employeeId: matches[0].id, issuerSub: user.issuer_sub });
+    store.audit({ userId: user.id, action: 'workplace.enroll', detail: { employeeId: matches[0].id, via: 'oidc' } });
+    return member;
+  }
 
   async function oidcConfig() {
     if (!cfg.issuer) throw new Error('KEYCLOAK_ISSUER is not set.');
@@ -328,7 +338,7 @@ function createApp(options = {}) {
       }
 
       if (p === '/auth/callback' && method === 'GET') {
-        await handleOidcCallback(req, res, store, cfg, await oidcConfig(), url);
+        await handleOidcCallback(req, res, store, cfg, await oidcConfig(), url, enrollEmployee);
         return;
       }
 

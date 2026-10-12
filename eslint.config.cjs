@@ -8,7 +8,7 @@ module.exports = [
   { files:['server/**/*.js','desktop/**/*.cjs','scripts/**/*.cjs','tests/**/*.cjs','js/management-core.js','js/persistence.js','js/orgflow-core.js','js/seating-core.js','js/workplace-core.js'],
     languageOptions:{globals:readonly('module require exports __dirname __filename process Buffer console global globalThis structuredClone crypto fetch Response URL URLSearchParams TextEncoder TextDecoder Blob File AbortController setTimeout clearTimeout setInterval clearInterval setImmediate clearImmediate performance Intl')},
     rules:{'no-undef':'error'} },
-  { files:['scripts/browser-qa.cjs','scripts/smoke.cjs','scripts/generate-examples.cjs'],
+  { files:['scripts/browser-qa.cjs','scripts/smoke.cjs','scripts/generate-examples.cjs','scripts/workplace-e2e.cjs'],
     languageOptions:{globals:readonly('window document navigator localStorage sessionStorage Image FileReader requestAnimationFrame alert confirm getComputedStyle OrgFlow workspace activeScenario people branding cardDisplay currentView render setView openDrawer closeDialog openDialog updateScenario replaceWorkspace emptyWorkspace today selectedIds syncBulkBar toggleSelected exportWorkspace')},
     rules:{'no-undef':'off'} }
 ];

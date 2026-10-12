@@ -157,3 +157,35 @@ test('only the Teams pages can be framed, and sign-in returns only to OrgFlow pa
   assert.equal(safeReturn('/workplace.html#approvals/vac-1'), '/workplace.html#approvals/vac-1');
   for (const bad of ['https://evil.example/', '//evil.example/x', '/admin.html', '/workplace.html//evil', '/api/workspace']) assert.equal(safeReturn(bad), '', bad);
 });
+
+test('the Teams app package contains a valid manifest and both icons', t => {
+  const os = require('node:os'), zlib = require('node:zlib'), pkg = require('../scripts/teams-package.cjs');
+  const out = fs.mkdtempSync(path.join(os.tmpdir(), 'orgflow-teams-'));
+  t.after(() => fs.rmSync(out, { recursive: true, force: true }));
+  const opts = pkg.options(['--app-id', APP, '--client-id', CLIENT, '--bot-id', BOT, '--public-url', 'https://orgflow.example.com', '--company', 'Harbor & Co', '--out', out], {});
+  const { file, manifest } = pkg.build(opts);
+  assert.equal(manifest.staticTabs[0].contentUrl, 'https://orgflow.example.com/workplace.html?teams=1');
+  assert.equal(manifest.webApplicationInfo.resource, `api://orgflow.example.com/${CLIENT}`);
+  assert.deepEqual(manifest.validDomains, ['orgflow.example.com']);
+  assert.equal(manifest.bots[0].isNotificationOnly, true);
+  assert.equal(manifest.developer.name, 'Harbor & Co');
+  assert.ok(!JSON.stringify(manifest).includes('{{'), 'every placeholder is filled');
+  // Read the zip back through its central directory.
+  const zipBuf = fs.readFileSync(file), entries = {};
+  const end = zipBuf.lastIndexOf(Buffer.from([0x50, 0x4b, 0x05, 0x06]));
+  let at = zipBuf.readUInt32LE(end + 16);
+  for (let i = 0; i < zipBuf.readUInt16LE(end + 10); i++) {
+    const nameLen = zipBuf.readUInt16LE(at + 28), name = zipBuf.toString('utf8', at + 46, at + 46 + nameLen), local = zipBuf.readUInt32LE(at + 42), size = zipBuf.readUInt32LE(at + 20), crc = zipBuf.readUInt32LE(at + 16);
+    const start = local + 30 + zipBuf.readUInt16LE(local + 26) + zipBuf.readUInt16LE(local + 28);
+    entries[name] = zlib.inflateRawSync(zipBuf.subarray(start, start + size));
+    assert.equal(pkg.crc32(entries[name]), crc, name);
+    at += 46 + nameLen;
+  }
+  assert.deepEqual(Object.keys(entries).sort(), ['color.png', 'manifest.json', 'outline.png']);
+  assert.equal(JSON.parse(entries['manifest.json']).id, APP);
+  assert.equal(entries['color.png'].readUInt32BE(16), 192);
+  assert.equal(entries['outline.png'].readUInt32BE(16), 32);
+  assert.throws(() => pkg.manifest({ ...opts, publicUrl: 'http://orgflow.example.com' }), /HTTPS/);
+  assert.throws(() => pkg.manifest({ ...opts, appId: 'not-a-guid' }), /GUID/);
+  assert.equal(pkg.manifest({ ...opts, botId: '' }).bots, undefined, 'sign-in-only packages have no bot');
+});

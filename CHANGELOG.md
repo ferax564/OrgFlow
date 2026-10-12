@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+### Workplace planning and Microsoft Teams
+
+Employees plan where they work, request vacation and borrow desks in other offices on the shared enterprise host, in the browser or inside Microsoft Teams. See [WORKPLACE.md](WORKPLACE.md) and [TEAMS.md](TEAMS.md). Full days only in this release.
+
+- **My week**: office, remote or no plan for each day, a weekly pattern, and day-level overrides. Approved vacation wins over plans; missing plans keep the assigned desk protected. Dates follow each office's time zone.
+- **Vacation**: requests with a private note, manager approval inbox with the team's absences, a team absence calendar, and change or cancellation of approved vacation through a fresh decision (the approved dates stay in force meanwhile). Overlapping requests are rejected. Approvers come from Current, with administrator corrections.
+- **Desk sharing**: workplace administrators set up offices, assign seating rooms to them and enable sharing per desk or room, with equipment notes and closures. Assigned desks can be borrowed only while their owner is confirmed away; unassigned desks only when shared.
+- **Visitor reservations** on the existing room plans: one desk per person and per desk per day, enforced by the database, so simultaneous bookings yield one confirmation. Bookings set the visitor's location; cancelling asks to confirm it. Administrators book and cancel on behalf, with audit records.
+- **Confirmed bookings are protected**: an owner who returns, or whose vacation is cancelled, gets a visible seating conflict, notification and alternative desks; administrators can move the visitor. Workspace saves, scenario applications, room moves and closures that affect confirmed reservations list them and need confirmation.
+- **Planner**: the Seating view shows date-specific availability from live plans. A new scheduling-only **employee** role never receives the organization chart. Members can be linked to employee records and flagged as workplace administrators on the Admin page.
+- **Microsoft Teams**: a personal tab with Entra ID single sign-on validated on the server (pop-up sign-in as fallback; works without third-party cookies), Teams themes and deep links, and a notification-only bot. Messages carry a one-line summary and links; the in-app notification list stays authoritative, deliveries retry without duplicates. `npm run teams:package` builds the app package.
+- Records are kept beside the workspace, which keeps its format; older databases migrate on start, backups include the new tables, and retention is configurable.
+- Tests: 21 new unit, API and Teams tests covering the acceptance criteria, and `npm run test:workplace` for a browser run including the Teams tab.
+
+### Visual refresh
+
 Visual refresh in the style of the Portfolite Framer template: neutral greys, pill controls, soft rounded cards and tight sans-serif type across the planner and the public site.
 
 - **New default palette, Mono**: black on light grey, white on near-black in dark mode. The other palettes stay available. Workspaces saved with a palette keep it; files without one, new charts, the First Light template and the Harbor & Co sample now use Mono.

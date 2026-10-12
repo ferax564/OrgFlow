@@ -91,8 +91,19 @@ function createTeams({ cfg, store, workplace, publicUrl, fetchImpl = (...args) =
       if (activity.type === 'installationUpdate' && /^remove/.test(activity.action || '')) db.prepare('DELETE FROM teams_conversations WHERE tenant_id = ? AND aad_object_id = ?').run(T, oid);
       else db.prepare('INSERT INTO teams_conversations (tenant_id, aad_object_id, conversation_id, service_url, updated_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT(tenant_id, aad_object_id) DO UPDATE SET conversation_id = excluded.conversation_id, service_url = excluded.service_url, updated_at = excluded.updated_at')
         .run(T, oid, activity.conversation.id, activity.serviceUrl, new Date(now()).toISOString());
+      if (activity.from.id && !store.userForIdentity(identity(oid))) await linkInstaller(activity).catch(() => {});
     }
     return {};
+  }
+  /** Apps installed by policy reach people who may never open the tab. The connector's member lookup
+   *  (bot token, no Graph permission) gives the installer's principal name, which links them once. */
+  async function linkInstaller(activity) {
+    const res = await fetchImpl(`${activity.serviceUrl.replace(/\/$/, '')}/v3/conversations/${encodeURIComponent(activity.conversation.id)}/members/${encodeURIComponent(activity.from.id)}`, { headers: { authorization: 'Bearer ' + await botToken() } });
+    if (!res.ok) return;
+    const member = await res.json();
+    if (member.aadObjectId !== activity.from.aadObjectId) return;
+    const found = store.memberByEmail(String(member.userPrincipalName || member.email || '').toLowerCase());
+    if (found) { store.linkIdentity(identity(activity.from.aadObjectId), found.user_id); store.audit({ userId: found.user_id, action: 'teams.install', detail: { linked: true } }); }
   }
 
   // ---- Outbound ------------------------------------------------------------------------------

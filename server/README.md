@@ -49,6 +49,9 @@ On AWS: Node 22 container, Keycloak in the VPC, HTTPS `PUBLIC_URL`, `SECURE_COOK
 | admin | yes | yes | yes | yes |
 | editor | yes | yes (whole org, or subtree if scoped) | no | no |
 | viewer | yes | no | no | no |
+| employee | no (scheduling only) | no | no | no |
+
+Any member linked to an employee record (Admin page, *Employee ID*) can plan work locations, request vacation and book desks at `/workplace.html`. **Workplace admin** is a separate tick for offices, desk sharing, closures, reservations and seating conflicts. Managers are derived from Current. See [WORKPLACE.md](../WORKPLACE.md); for Microsoft Teams, [TEAMS.md](../TEAMS.md).
 
 **Export** is a separate flag. A viewer can be allowed to download; an editor can be denied.
 
@@ -96,6 +99,8 @@ See [Management guide](../MANAGEMENT.md) for version-required writes, transactio
 ## Production operations
 
 Use Node 22.16+ behind an HTTPS reverse proxy. Configure `AUTH_MODE=oidc`, `PUBLIC_URL`, `KEYCLOAK_REDIRECT_URI`, an HTTPS issuer, `SECURE_COOKIES=1`, and a random `SESSION_SECRET` of at least 32 characters. Non-loopback dev authentication and insecure production configuration fail at startup. Do not use the demonstration Keycloak passwords or client secret. The container runs as `node`; make its persistent `/app/data` volume writable by that user. Keep the database volume outside disposable containers.
+
+Workplace records (work locations, vacation requests, reservations, conflicts, notifications) are kept in the same database and covered by the same backups; their retention is described in [WORKPLACE.md](../WORKPLACE.md#records-audit-and-retention). Teams notification delivery runs in the host process every 30 seconds and right after each change.
 
 `GET /healthz` and `/readyz` check the database. Graceful SIGTERM closes the listener and database. Expired authentication records are pruned periodically; audit history retains 365 days and idempotency receipts 90 days. Export audit evidence before retention removes it if longer retention is required.
 

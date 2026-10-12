@@ -23,6 +23,7 @@ function mockFetch() {
     if (url === 'https://bot.example.test/openid') return json({ jwks_uri: 'https://bot.example.test/keys' });
     if (url === 'https://bot.example.test/keys') return json({ keys: [jwk(botKey, 'bot-1', { endorsements: ['msteams'] })] });
     if (url === `${AUTHORITY}/${TENANT}/oauth2/v2.0/token`) return json({ access_token: 'bot-access', expires_in: 3600 });
+    if (url.startsWith(SERVICE) && url.includes('/members/')) return init.headers?.authorization === 'Bearer bot-access' ? json({ id: '29:x', aadObjectId: 'oid-owner', userPrincipalName: 'owner@test.example' }) : json({}, 401);
     if (url.startsWith(SERVICE)) {
       const next = plan.fail.shift();
       if (next === 'network') throw new Error('connection reset');
@@ -94,6 +95,10 @@ test('bot activities are authenticated and record where to send personal notific
   assert.equal((await call('/api/teams/messages', { body: { ...activity, channelData: { tenant: { id: 'x' } } }, headers: { authorization: 'Bearer ' + sign(botClaims(), botKey, 'bot-1') } })).http, 403);
   assert.equal((await call('/api/teams/messages', { body: activity, headers: { authorization: 'Bearer ' + sign(botClaims(), botKey, 'bot-1') } })).http, 200);
   assert.equal(app.db.prepare('SELECT conversation_id FROM teams_conversations WHERE aad_object_id = ?').get('oid-manager').conversation_id, 'a:personal-1');
+  // An app installed by policy links its user from the connector's member record, before the tab is ever opened.
+  const policyInstall = { ...activity, type: 'installationUpdate', action: 'add', from: { id: '29:x', aadObjectId: 'oid-owner' }, conversation: { id: 'a:personal-2', conversationType: 'personal' } };
+  assert.equal((await call('/api/teams/messages', { body: policyInstall, headers: { authorization: 'Bearer ' + sign(botClaims(), botKey, 'bot-1') } })).http, 200);
+  assert.equal(app.store.userForIdentity(`entra:${TENANT}:oid-owner`).email, 'owner@test.example');
 });
 
 test('notifications retry without duplicates, link to the record, and failures never lose the request (12)', async t => {

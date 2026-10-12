@@ -1,0 +1,148 @@
+# Strategic workforce planning and headcount planning: what buyers expect in 2026 and what OrgFlow lacks
+
+Method note (read first): research done 2026-10-12. Direct page fetches failed with DNS errors for most vendor and analyst domains in this environment (gartner.com, charthop.com, hrtechedge.com, rework.com, getaleph.com). Most findings below therefore come from search-engine result summaries of the cited pages, not full-page reads. Treat figures as directional and confirm them on the linked page before quoting. Many sources are vendor or competitor blogs (Abacum, Orgvue, CFO Shortlist, Aleph), and they are flagged where it matters.
+
+## 1. What do headcount planning / SWP tools offer in 2026 (vendors, headline features, pricing, M&A)?
+
+### Takeaway
+The market has split into three layers: (a) finance-led FP&A suites where headcount is one module (Pigment, Anaplan, Workday Adaptive, Abacum, Causal, cfo.ai/Runway, Planful, Vena, HiBob's Bob Finance/Mosaic); (b) org-design and SWP tools (Orgvue, ChartHop, Dayforce SWP, which absorbed Agentnoon); (c) skills-intelligence platforms (Eightfold, Gloat, TechWolf, Lightcast) that feed SWP with skills data. There has been heavy consolidation in 2024–2026: Lucanet bought Causal, HiBob bought Mosaic, Dayforce bought Agentnoon, and Runway rebranded as cfo.ai. The new headline feature in 2026 is AI agents and MCP access, and its key condition is the one OrgFlow already uses: agents propose changes and humans approve them.
+
+### Cited Findings
+**M&A and status changes**
+- Mosaic was acquired by **HiBob**, not Bill, in a deal announced 13 Feb 2025 to bridge HR and finance planning for mid-sized companies. — [HiBob blog](https://www.hibob.com/blog/hibob-acquires-mosaic/); [UNLEASH](https://www.unleash.ai/hr-technology/news/hibob-acquires-mosaic-in-game-changing-move-to-bridge-hr-and-finance-gap-for-mid-sized-businesses)
+- The resulting product, "Bob Finance", connects budgeting, forecasting, scenario planning and variance analysis with Bob's employee and compensation data. This is secondary analysis, not an official HiBob source. — [Sacra](https://sacra.com/chat/h/3208783f-aef3-4d8f-9a6c-acf79e883f85/)
+- No evidence was found that Bill acquired Mosaic. Search results indicate that Finmark, a different startup FP&A tool, now redirects to BILL. — [TrustRadius Mosaic pricing](https://www.trustradius.com/products/mosaic/pricing) (search summary; unverified detail)
+- Lucanet acquired **Causal** in October 2024. Causal still runs as a standalone product with a free tier, and its Startup plan is listed at about $250/month per builder. — [Wikipedia: LucaNet](https://en.wikipedia.org/wiki/LucaNet); [MakerStack Causal review](https://makerstack.co/reviews/causal-review/); [CFO Shortlist Causal](https://www.cfoshortlist.com/vendors/causal)
+- **Runway Financial rebranded as cfo.ai** and pivoted with an AI agent called "Ari". Aleph dates this to 10 Sep 2026; another source says August 2026, so the exact month is uncertain. It still models headcount. Listed pricing conflicts: from $375/month billed annually in one source, a $295/month Startup tier in another. — [SiliconANGLE](https://siliconangle.com/?p=837986); [Aleph: Runway alternatives](https://www.getaleph.com/answers/runway-alternatives-financial-planning); [YesPress listing](https://yespress.io/products/runway-financial.md)
+- Runway's original positioning was "financial modeling, headcount planning, department budgeting". — [Constellation Research](https://www.constellationr.com/insights/news/runway-aims-make-business-finance-more-intuitive-collaborative)
+- **Dayforce announced the acquisition of Agentnoon on 7 Oct 2025** and launched Dayforce Strategic Workforce Planning the same day. agentnoon.com reportedly redirects to Dayforce. Capterra and Slashdot listings still show Agentnoon as standalone and are probably stale. — [Rework: best workforce planning software 2026](https://resources.rework.com/tools/workforce-management/best-workforce-planning-software-2026) (search summary); [Capterra Agentnoon](https://www.capterra.com/p/10003093/Agentnoon/); [PitchBook Agentnoon](https://pitchbook.com/profiles/company/493353-64)
+
+**FP&A-led headcount planning**
+- **Pigment** targets roughly 200–10,000+ employees and does granular role-based headcount modeling with HR-system integration. Comparisons say its price and modeling depth put it out of reach for most companies under 500 employees. — [CFO Shortlist: Abacum vs Pigment](https://www.cfoshortlist.com/reports/abacum-vs-pigment); [Bolt Consulting](https://boltconsulting.co.uk/compare/abacum-vs-pigment)
+- Pigment and Anaplan both charge a platform fee plus per-user pricing, with no public list price. Professional services run about 20–50% of first-year subscription for Pigment and 30–60% for Anaplan. — [Vendr: Pigment](https://www.vendr.com/marketplace/pigment)
+- Estimated 3-year TCO is about $250K–$900K for Pigment and $800K–$3.3M for Anaplan. These are estimates, not list prices. Pigment's AI includes a "Modeler Agent", and a vendor-adjacent case study claims 5–10x faster model iteration. — [CFO Shortlist: Pigment review](https://www.cfoshortlist.com/vendors/pigment); [CFO Shortlist: Anaplan vs Pigment](https://www.cfoshortlist.com/reports/anaplan-vs-pigment)
+- **Abacum** focuses on mid-market companies of about 100–800 employees, and its headcount plans tie directly to the budget. Typical implementation is 4–8 weeks, against 6–12 weeks for Pigment. A consultancy estimates Abacum's 3-year cost at $120K–$400K. — [CFO Shortlist: Abacum vs Pigment](https://www.cfoshortlist.com/reports/abacum-vs-pigment); [Bolt Consulting](https://boltconsulting.co.uk/compare/abacum-vs-pigment)
+- **Workday Adaptive Planning**'s main differentiator is native integration with Workday HCM, giving a unified people-and-finance planning environment. — [Lative: Pigment vs Workday Adaptive](https://lative.ai/blog/pigment-vs-workday-adaptive/); [PeerSpot](https://www.peerspot.com/products/comparisons/pigment_vs_workday-adaptive-planning)
+- **Workday Adaptive Planning MCP Server** appears in the 2026R2 release notes. It lets customer AI agents access Adaptive Planning data and model context, and its production date is listed as 2026-10-16. — [Workday docs: Adaptive Planning MCP Server](https://doc.workday.com/adaptive-planning/en-us/what-s-new/releases/2026r2-release-notes/2026r2-planning-for-hcm-and-financials/adaptive-planning-mcp-server.html)
+
+**Org-design / SWP tools**
+- **Orgvue** introduced a WebMCP (Web Model Context Protocol) interface on 6 Oct 2026. Customers bring their own AI agent, which connects to an open Orgvue workspace session, analyzes models with pre-built tools and *surfaces proposed changes*. Humans keep final decisions, and the agent cannot independently modify workforce data. — [HR Tech Edge: Orgvue brings governed AI agents to workforce design](https://hrtechedge.com/hr/orgvue-brings-governed-ai-agents-into-workforce-design/) (search summary; full page not reachable)
+- **ChartHop** advertises "AI Pro" agents, a Finance view for headcount planning, a built-in Nine Box and a deeper ADP sync, with updates through September 2026. Its Core plan is listed at **$5 per employee per month, billed annually**, and AI Pro is billed pay-as-you-go with no published price. — [ChartHop](https://www.charthop.com/) (search summary); background: [Contrary Research: ChartHop](https://research.contrary.com/company/charthop)
+- Orgvue publishes its own "10 best workforce planning software 2026" list, which is vendor-authored. — [Orgvue](https://www.orgvue.com/resources/articles/best-workforce-planning-software/)
+
+**People analytics and skills intelligence**
+- **Visier** offers an MCP server that lets AI agents query metrics, dimensions and analytic objects. Its Glean MCP connection has been available to enterprise customers since May 2026, and roundups describe its MCP as read-only. — [Visier: Next generation of Visier Workforce AI](https://www.visier.com/company/news/the-next-generation-of-visier-workforce-ai-arrives/); [Visier blog](https://www.visier.com/blog/whats-new-how-visier-is-driving-tomorrows-hr/); [Vacation Tracker: HR platforms with MCP](https://vacationtracker.io/blog/the-top-hr-platforms-with-mcp-connectors-right-now/)
+- Workday's core HCM MCP status is contested. One guide says there is no native MCP and a gateway such as Composio or Zapier is needed. Another says "Agent-Ready Tools" are in early access with GA projected for H2 2026. — [Doozy: Workday MCP](https://doozy.live/blog/workday-mcp); [Windmill: MCP for HR](https://gowindmill.com/resources/guides/mcp-for-hr/)
+- **Gloat** launched an "agentic HR platform" in March 2026 that connects to HCMs and to Teams, Slack and Copilot. Its agents include a Career Coach agent and a Redeployment agent. — [Gloat: AI workforce trends 2026](https://gloat.com/blog/ai-workforce-trends/); [iMocha: Gloat alternatives](https://blog.imocha.io/gloat-alternatives-competitors)
+- **Eightfold** ships an AI Interviewer and Interview Companion. One review found no public MCP server, and deployments take multiple months. — [The AI Agent Index: Eightfold](https://theaiagentindex.com/agents/eightfold-ai)
+- **TechWolf** infers skills from work data such as Jira and Asana for skills-gap analysis and workforce planning. **Lightcast** is a labor-market data layer that enterprises usually pair with Eightfold or Gloat. — [Third Bracket: TechWolf alternatives](https://blog.thirdbracket.in/top-10-techwolf-ai-alternatives-competitors-in-2026/); [HR Tech SaaS: skills intelligence software](https://hrtechsaas.com/blog/skills-intelligence-software/)
+
+### Inferences
+- OrgFlow's "agents draft proposals, humans approve" MCP design matches where Orgvue (Oct 2026) and Workday Adaptive (Oct 2026) have just landed. That is a real and timely parity point, and arguably a lead, since OrgFlow's MCP/CLI/agent skills already ship and are free or self-hosted.
+- Consolidation into HCM suites (HiBob+Mosaic, Dayforce+Agentnoon, Workday Adaptive) means mid-market buyers increasingly get headcount planning bundled with their HRIS. A standalone tool has to integrate with those HRIS or it gets displaced. OrgFlow has no vendor HRIS connectors, which is its biggest structural gap.
+- Price anchors for a mid-market OrgFlow offer: ChartHop at about $5 PEPM; Causal at about $250/month per builder; cfo.ai at about $295–375/month; Abacum and Pigment in the six figures over three years.
+
+### Gaps
+- No published pricing found for Orgvue, Visier, Planful, Vena, Workday Adaptive, Eightfold, Gloat, TechWolf, Lightcast or Dayforce SWP. All appear to be quote-only.
+- Planful and Vena 2026 headcount/workforce features were not researched in depth for lack of tool budget.
+- The ChartHop $5 PEPM price and the Orgvue WebMCP launch come from search summaries, because the pages could not be fetched.
+
+## 2. Key capabilities buyers expect, mapped to OrgFlow (have / partial / missing)
+
+### Takeaway
+OrgFlow is strong on the org-design half of SWP: scenarios with approvals, a dated timeline, position budgets, FTE forecasts, single-person-dependency analysis and agent access. It is weakest on the finance-and-hiring half: headcount requests tied to budget, plan-vs-actual, fully loaded cost with FX, attrition/backfill, ATS and HRIS sync. It also lacks the analytics half: span/layers dashboards and org-health metrics. Skills are present only as "declared skills", with no taxonomy and no gap analysis.
+
+### Cited Findings
+- A headcount-planning buyer's guide lists **planned-versus-actual headcount and personnel cost, with new hires automatically matched to planned roles** as core. It also lists approvals that show the plan before and after a change. Its ownership split: HR owns people data, budget owners request roles within limits, and finance owns approvals and the final number. — [Abacum: enterprise headcount planning buyer's guide](https://www.abacum.ai/blog/best-headcount-workforce-planning-software) (vendor-authored)
+- ATS vendors now run headcount approvals natively. Ashby's "Openings" and "Jobs" track hiring against headcount plans with approval workflows, so finance sees recruiting progress against plan in near real time. — [Ashby vs Greenhouse](https://www.ashbyhq.com/compare/ashby-vs-greenhouse)
+- Third-party planning layers such as TeamOhana sync headcount with Ashby and add approval workflows to "stop unapproved spend". — [TeamOhana x Ashby](https://www.teamohana.com/partners/ashby)
+- Greenhouse is positioned on structured hiring, not headcount planning, so a planning tool must supply the plan and push approved reqs into it. — [Rework: Greenhouse vs Ashby](https://resources.rework.com/tools/recruiting-ats/greenhouse-vs-ashby); [Plural Careers](https://pluralcareers.com/resources/articles/greenhouse-vs-ashby-2026-comparison)
+- Pigment does granular role-based headcount modeling with HR integrations and 200+ native connectors, including Workday. Anaplan usually needs Anaplan Connect or third-party ETL. — [CFO Shortlist: Abacum vs Pigment](https://www.cfoshortlist.com/reports/abacum-vs-pigment); [Fuel Finance: Pigment competitors](https://fuelfinance.me/blog/pigment-competitors)
+- ChartHop bundles headcount planning ("Finance view"), performance (Nine Box) and HRIS sync (ADP). — [ChartHop](https://www.charthop.com/)
+- Deloitte describes the target SWP loop: an AI agent initiates a job posting in the recruiting system, or flags skills gaps to trigger learning, *after a human approves the change*. It also recommends planning based on **work** rather than jobs. — [Deloitte Insights: Reinventing workforce planning](https://www.deloitte.com/us/en/insights/topics/talent/future-of-workforce-planning/reinventing-workforce-planning.html)
+- Skills-gap analysis in 2026 relies on inferred skills (from Jira and Asana work data, as TechWolf does) and external labor-market taxonomies (Lightcast), not self-declared lists. — [Third Bracket: TechWolf](https://blog.thirdbracket.in/top-10-techwolf-ai-alternatives-competitors-in-2026/); [HR Tech SaaS](https://hrtechsaas.com/blog/skills-intelligence-software/)
+
+### Capability map vs. OrgFlow (OrgFlow status from `_product_context.md`)
+
+| Capability buyers expect (2026) | Who sets the bar | OrgFlow status | Notes |
+| --- | --- | --- | --- |
+| Scenario / what-if org modeling with compare | Orgvue, Pigment, ChartHop | **Have** | Before/after compare, field-level merge, rollback |
+| Approval workflow on plan changes | Ashby, TeamOhana, Abacum, Orgvue | **Have** (for org scenarios) / **Partial** for hiring | No per-req "headcount request" by budget owners within a limit |
+| Headcount requests tied to budget owners and limits | Abacum, Pigment, TeamOhana | **Partial** | Vacancies and position budgets exist; no request intake or budget envelope per department |
+| Plan vs. actual (headcount and cost), auto-matching hires to planned roles | Abacum, Mosaic/Bob Finance | **Missing** | Forecast covers plan only; no actuals feed from HRIS or payroll |
+| Fully loaded cost (benefits, employer taxes, bonuses, FX) | Pigment, Abacum, Causal, cfo.ai | **Partial** | Position budget per 1.0 FTE; no burden rates, no FX (stated in context file) |
+| Attrition and backfill modeling | FP&A suites, Visier | **Missing** | No attrition rate assumptions or backfill lag in the forecast |
+| ATS integration (Greenhouse, Lever, Ashby) | Ashby native, TeamOhana, ChartHop | **Missing** | Recruiting seats exist but no sync of reqs/offers |
+| HRIS sync (Workday, ADP, BambooHR, HiBob, Personio), SCIM | ChartHop (ADP), Pigment (200+ connectors), Workday Adaptive | **Missing** | CSV import with mapping profiles only |
+| Skills taxonomy and skills-gap analysis | Eightfold, Gloat, TechWolf, Lightcast | **Partial** | Declared skills and capability summaries; no taxonomy, proficiency levels, inferred skills or demand-vs-supply gap |
+| Key-person / single-point-of-failure risk | Orgvue, Visier | **Have** | Single-person-dependency summary is a differentiator |
+| Span of control and layers analytics, benchmarks | Orgvue, ChartHop, Visier | **Partial** | The org-chart skill reads span of control; no dashboard, layer count, targets or delayering scenarios |
+| Org health metrics (attrition, diversity, manager load) | Visier, ChartHop | **Missing** | Listed as absent in context file |
+| Restructuring / RIF / M&A integration modeling | Orgvue | **Partial** | Scenarios can model it; no cost-of-change (severance), no bulk merge of two org charts |
+| Human + AI agent capacity ("digital labor") in plan | Gartner, Deloitte, Bersin framing; Orgvue | **Missing** | Positions/FTE could represent agents, but there is no agent worker type or cost/capacity model |
+| AI/agent access via MCP, API, CLI with human approval | Orgvue WebMCP (Oct 2026), Workday Adaptive MCP (Oct 2026), Visier MCP (read-only) | **Have** | OrgFlow MCP drafts proposals only; aligned with the 2026 governance norm |
+| In-app AI assistant | ChartHop AI Pro, Pigment agents, cfo.ai "Ari", Gloat | **Missing** | Agents are external only (Claude Code, Codex) |
+| Dated timeline / effective dating | Workday, Orgvue | **Have** | Inclusive intervals with capacity validation |
+| Multi-month forecast | All FP&A tools | **Have** | 1–36 months: headcount, FTE, staffed FTE, cost |
+
+### Inferences
+- The fastest wins for OrgFlow's existing model are cost and forecast extensions it can build without integrations: burden-rate/fully-loaded cost per position or per country, FX tables, and attrition/backfill assumptions in the 1–36 month forecast. All three extend existing position budgets and the forecast engine.
+- A "headcount request" object would turn OrgFlow's scenario approval workflow into the finance-HR hiring loop buyers describe: a budget owner requests a role within an envelope, finance approves, and an ATS req is opened. It needs a department budget envelope and ideally an outbound ATS hook (Ashby or Greenhouse first).
+- Plan-vs-actual needs an actuals source. Without HRIS connectors, a scheduled CSV/API "actuals snapshot" with auto-matching to planned positions is a pragmatic first step.
+- Span/layers analytics is cheap given the chart data (manager count, layers, distribution, outliers vs. a target span), and it lines up with the delayering trend in section 3.
+
+### Gaps
+- No primary-source vendor documentation was retrieved on how each tool models attrition/backfill or fully loaded cost (benefit rates, employer taxes, FX). The search found nothing specific.
+- No independent data was found on which ATS (Greenhouse vs. Lever vs. Ashby) mid-market planning buyers most often require.
+
+## 3. Trends 2025–2026 (Gartner, Bersin, Deloitte, McKinsey): SWP, skills-based orgs, agentic workforce, delayering, AI-native HR, MCP
+
+### Takeaway
+Analysts frame 2026 SWP as planning a blended workforce of humans and AI agents, organized around work and skills rather than jobs. Change is approved by humans while agents do the analysis. Delayering and wider spans are a live, contested trend: Gartner's 2024 prediction drives it, and newer commentary warns about rehiring. MCP has quickly become the integration surface for HR and planning vendors in 2026.
+
+### Cited Findings
+- Gartner's top future-of-work trends for CHROs in 2026 were published 12 Jan 2026. Gartner also published "4 shifts shaping the future of work" on 9 Sep 2026. — [Gartner newsroom, Jan 2026](https://www.gartner.com/en/newsroom/press-releases/2026-01-12-gartner-identifies-the-top-future-of-work-trends-for-chros-in-2026); [Gartner newsroom, Sep 2026](https://www.gartner.com/en/newsroom/press-releases/2026-09-09-gartner-identifies-four-shifts-shaping-the-future-of-work) (pages not fetchable; contents not verified)
+- Gartner's 2026 CHRO trends say HR is changing its approach to strategic workforce planning under growth and efficiency pressure. — [Gartner: top priorities for HR leaders](https://www.gartner.com/en/human-resources/trends/top-priorities-for-hr-leaders)
+- From Gartner's "Predicts 2026: AI's impact on the future of workforce", via secondary summaries: AI agents will become the primary users of 60% of digital products by 2030. The report also warns that poorly planned AI layoffs lead to rehiring about 30% of terminated employees at higher cost. — [Certinia-hosted Gartner report](https://www.certinia.com/landing/gartner-ai-report/); [Scribd copy](https://www.scribd.com/document/996454623/Gartner-Predicts-2026-AI-s-Impact-on-the-Future-of-Workforce) (secondary)
+- Gartner (Oct 2024, older data): through 2026, 20% of organizations will use AI to flatten their structure and eliminate more than half of current middle-management roles, with wider spans of control as AI automates scheduling, reporting and monitoring. Gartner also warns managers may be overwhelmed by extra direct reports. — [Gartner press release, 22 Oct 2024](https://www.gartner.com/en/newsroom/press-releases/2024-10-22-gartner-unveils-top-predictions-for-it-organizations-and-users-in-2025-and-beyond)
+- Several blogs claim Gartner said 75% of organizations that cut middle managers because of AI will rehire at least half by 2028. This is **unverified** on Gartner's site. Some blogs also misquote the original as "50% of middle managers replaced by 2027". — [Layers Not Linear](https://layersnotlinear.substack.com/p/rolled-over); [Shawn Kanungo](https://shawnkanungo.com/blog/why-50-of-middle-managers-could-be-replaced-by-ai-by-2027-and-what-to-do-if-youre-one)
+- Secondary write-ups cite Gallup data showing average span of control rising from 10.9 to 12.1 direct reports. A July 2024 Gartner survey found 75% of HR leaders say managers are overwhelmed. — [People Managing People: The Great Flattening](https://peoplemanagingpeople.com/hr-strategy/ai-middle-management/) (secondary)
+- Josh Bersin's Jan 2026 report "The Superworker Organization: AI Goes Enterprise" says AI could require up to 30% fewer HR staff and describes agents as "digital coworkers" that assemble teams of specialist agents. Bersin also finds 74% of organizations are not keeping pace with skills needs. — [Josh Bersin: 2026 Imperatives](https://joshbersin.com/imperatives/); [PR Newswire](https://www.prnewswire.com/news-releases/in-2026-ai-powered-superagents-will-radically-change-hr-driving-the-largest-hr-transformation-in-decades-302666677.html); [AMS summary](https://www.weareams.com/whitepapers/josh-bersins-hr-imperatives-for-2026-the-superworker-organization-ai-goes-enterprise/)
+- A later Bersin blueprint projects HR departments shrinking 30–50% by 2030. — [SkillFuel summary](https://www.skillfuel.com/hr-teams-smaller-agentic-ai-blueprint/) (secondary)
+- Deloitte's 2026 Global Human Capital Trends says HR must redesign culture and organizations so people and AI agents work side by side, and stresses business agility. — [AI Magazine on Deloitte HC Trends 2026](https://aimagazine.com/news/deloitte-global-human-capital-trends-report-2026); [Deloitte HC Trends through a Workday lens](https://www.deloitte.com/global/en/alliances/workday/perspectives/deloitte-global-human-capital-trends-workday-lens.html)
+- Deloitte recommends SWP that blends humans, technology and skills, moves from job-based to work-based planning, and has agents act after human approval. — [Deloitte Insights](https://www.deloitte.com/us/en/insights/topics/talent/future-of-workforce-planning/reinventing-workforce-planning.html)
+- Industry commentary describes talent-intelligence platforms in 2026 moving toward agents that recommend hires, flag attrition risk and suggest skill gaps to close. — [Knowlee: AI talent intelligence 2026](https://www.knowlee.ai/blog/ai-talent-intelligence)
+- MCP adoption in HR and planning software in 2026 includes Visier (MCP server, plus Glean MCP from May 2026), Workday Adaptive Planning (MCP server, production 2026-10-16) and Orgvue (WebMCP, Oct 2026). Gloat connects to Teams, Slack and Copilot. — [Visier](https://www.visier.com/company/news/the-next-generation-of-visier-workforce-ai-arrives/); [Workday docs](https://doc.workday.com/adaptive-planning/en-us/what-s-new/releases/2026r2-release-notes/2026r2-planning-for-hcm-and-financials/adaptive-planning-mcp-server.html); [HR Tech Edge on Orgvue](https://hrtechedge.com/hr/orgvue-brings-governed-ai-agents-into-workforce-design/); [Vacation Tracker MCP roundup](https://vacationtracker.io/blog/the-top-hr-platforms-with-mcp-connectors-right-now/)
+- A Bersin piece (Feb 2026) on the enterprise learning tech market says it is reorganizing quickly around AI, relevant to skills-based org tooling. — [Josh Bersin, Feb 2026](https://joshbersin.com/2026/02/the-enterprise-learning-tech-market-quickly-transforms-around-ai/)
+
+### Inferences
+- "Digital labor" in the plan is becoming an expected concept: AI agents as capacity and cost lines next to human positions. OrgFlow's position/FTE separation suits this well. A position "worker type = AI agent" with cost and capacity, plus human-vs-agent FTE in the forecast, would be a cheap and on-trend differentiator.
+- The delayering trend plus Gartner's rehire warnings point to demand for span/layers analytics with guardrails: target-span alerts, manager-overload flags and "what happens if we remove layer N" scenarios. That last one fits OrgFlow's scenario engine.
+- Skills-based planning in practice needs a taxonomy, proficiency levels and demand (by position) vs. supply (by person). OrgFlow's declared skills plus capability summaries cover supply only.
+- OrgFlow's MCP "draft proposals only" policy matches the governance model Orgvue and Deloitte describe, and can be marketed as such.
+
+### Gaps
+- McKinsey 2025–2026 SWP / org-design publications were not retrieved for lack of tool budget.
+- The Gartner Hype Cycle for HR Technology 2026 positions of SWP, skills tech and agentic HR were not found in accessible sources.
+- Full text of the Gartner 2026 press releases could not be fetched, so specific trend names and figures in them are unverified here.
+
+## 4. Which capabilities do mid-market buyers (200–5,000 employees) request most?
+
+### Takeaway
+Direct survey data on mid-market SWP priorities was not found. Vendor positioning and buyer guides consistently point to four needs: (1) headcount plans tied to the budget with plan-vs-actual; (2) approval workflows for new roles; (3) fast time-to-value through HRIS/ATS sync instead of long implementations; (4) affordable pricing compared with Pigment and Anaplan. Advanced skills intelligence and agentic workforce modeling are mostly sold to enterprises today.
+
+### Cited Findings
+- Abacum explicitly targets the mid-market (about 100–800 employees) with headcount tied directly to budget and 4–8 week implementation. Pigment is considered out of reach for most companies under 500 employees. — [CFO Shortlist: Abacum vs Pigment](https://www.cfoshortlist.com/reports/abacum-vs-pigment); [Bolt Consulting](https://boltconsulting.co.uk/compare/abacum-vs-pigment)
+- HiBob framed the Mosaic acquisition around mid-sized businesses needing a shared HR and finance view of workforce decisions and their financial outcomes. — [UNLEASH](https://www.unleash.ai/hr-technology/news/hibob-acquires-mosaic-in-game-changing-move-to-bridge-hr-and-finance-gap-for-mid-sized-businesses)
+- Buyer guides list plan-vs-actual with automatic matching of hires to planned roles, and approvals showing plan impact, as core requirements. — [Abacum buyer's guide](https://www.abacum.ai/blog/best-headcount-workforce-planning-software)
+- Mid-market ATS buyers (Ashby, Greenhouse) expect headcount tracking and approvals linked to hiring. Ashby builds this in natively, and add-ons like TeamOhana exist to enforce approved headcount. — [Ashby](https://www.ashbyhq.com/compare/ashby-vs-greenhouse); [TeamOhana](https://www.teamohana.com/partners/ashby)
+- ChartHop's published entry price is about $5 PEPM, roughly $12K–$300K/year across 200–5,000 employees (my arithmetic). Pigment's 3-year TCO is estimated at $250K–$900K. — [ChartHop](https://www.charthop.com/); [CFO Shortlist: Pigment](https://www.cfoshortlist.com/vendors/pigment)
+- Skills platforms such as Eightfold take multiple months to deploy, which suggests an enterprise focus. — [The AI Agent Index: Eightfold](https://theaiagentindex.com/agents/eightfold-ai)
+
+### Inferences
+- For OrgFlow's mid-market targets, the most-requested missing capabilities are, in rough priority: (1) HRIS sync, at least a few top mid-market HRIS (HiBob, BambooHR, Personio, ADP) or SCIM, to feed actuals; (2) a headcount request and approval flow against department budgets; (3) plan-vs-actual headcount and cost; (4) fully loaded cost with burden rates and FX; (5) an ATS hook for Ashby/Greenhouse/Lever; (6) span/layers and basic org-health dashboards; (7) attrition/backfill assumptions in the forecast. Human+agent capacity modeling and skills taxonomies are differentiators rather than table stakes in this segment.
+- OrgFlow's free/self-hosted model and its existing agent/MCP layer give it a credible "governed AI planning for the mid-market" angle that undercuts ChartHop and FP&A suites on price. It needs at least items 1–3 to be considered a headcount-planning tool rather than an org-chart tool.
+
+### Gaps
+- No G2 category data (Workforce Planning, Headcount Planning) was retrieved: no rankings, review counts or most-cited features. G2 pages did not appear in results.
+- No independent survey (Gartner, Bersin or otherwise) was found that ranks SWP features specifically for companies with 200–5,000 employees. The priority order above is inference from vendor positioning.

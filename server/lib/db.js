@@ -28,6 +28,8 @@ const MEMBERSHIP_COLUMNS = `
       FOREIGN KEY (tenant_id) REFERENCES tenants(id),
       FOREIGN KEY (user_id) REFERENCES users(id)`;
 const ROLES = ['admin', 'editor', 'viewer', 'employee'];
+// `workplace` lets a CLI or agent act as the member in the workplace API (plans, vacation, desks, approvals) — never the org chart.
+const TOKEN_SCOPES = ['read', 'export', 'propose', 'workplace'];
 
 function migrateMemberships(db) {
   const row = db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'memberships'").get();
@@ -348,7 +350,7 @@ function createStore(db, options = {}) {
   }
 
   function createApiToken(userId, name, { scopes = ['read'], expiresInDays = 30 } = {}) {
-    if (!Array.isArray(scopes) || !scopes.length || scopes.some(x => !['read','export','propose'].includes(x))) throw new Error('Token scopes must be read, export or propose.');
+    if (!Array.isArray(scopes) || !scopes.length || scopes.some(x => !TOKEN_SCOPES.includes(x))) throw new Error('Token scopes must be read, export, propose or workplace.');
     if (!Number.isInteger(expiresInDays) || expiresInDays < 1 || expiresInDays > 90) throw new Error('Token lifetime must be 1–90 days.');
     const expiresAt = new Date(Date.now()+expiresInDays*86400000).toISOString();
     const raw = 'ofk_' + crypto.randomBytes(32).toString('hex');
@@ -447,4 +449,4 @@ function createStore(db, options = {}) {
   };
 }
 
-module.exports = { openDatabase, createStore, newId, nowIso, ROLES };
+module.exports = { openDatabase, createStore, newId, nowIso, ROLES, TOKEN_SCOPES };

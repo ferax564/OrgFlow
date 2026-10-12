@@ -233,7 +233,7 @@ function createWorkplace(store, options = {}) {
         // Visitors learn only whether they may borrow a desk, never why its owner is away or present.
         if (!a.workplaceAdmin && !out.mine) out.reason = s.state === 'available' ? (s.reason === 'shared-desk' ? 'shared-desk' : 'owner-away') : s.state === 'protected' ? 'protected' : s.reason;
         if (res && me && res.employee_id === me) out.reservedByMe = res.id;
-        if (a.workplaceAdmin) { out.ownerName = s.ownerId ? view.name(s.ownerId) : ''; if (res) { out.visitorName = view.name(res.employee_id); out.reservationId = res.id; } }
+        if (a.workplaceAdmin) { out.ownerId = s.ownerId || ''; out.ownerName = s.ownerId ? view.name(s.ownerId) : ''; if (res) { out.visitorName = view.name(res.employee_id); out.reservationId = res.id; } }
         return out;
       })
     }));

@@ -114,6 +114,20 @@ function ssoToken(oid, upn) {
     await report.click('#reportForm button[type="submit"]');
     await report.waitForSelector('#status .ok');
     assert.ok((await call('admin@harbor.example', '/api/workplace/reports')).reports.some(r => r.kind === 'desk' && r.employeeName === 'Ana Silva'));
+    // A scheduling-only member creates a workplace token for the CLI and uses it, then revokes it.
+    const agents = await open('ana@harbor.example', '#agents');
+    await agents.fill('#tokenForm input[name="name"]', 'Claude Code on laptop');
+    await agents.click('#tokenForm button[type="submit"]');
+    await agents.waitForSelector('#newToken');
+    const issued = (await agents.textContent('#newToken')).match(/ORGFLOW_API_TOKEN=(ofk_\w+)/)[1];
+    const printed = [];
+    await require('../bin/orgflow.cjs').run(['bookings'], { env: { ORGFLOW_API_URL: base, ORGFLOW_API_TOKEN: issued, ORGFLOW_CONFIG: path.join(ROOT, 'test-results', 'no-config.json') }, stdout: s => printed.push(s) });
+    assert.match(printed.join('\n'), /Z\d\s+Zurich \/ Engineering floor\s+confirmed/);
+    if (OUT) { await agents.evaluate(t => { const pre = document.querySelector('#newToken'); pre.textContent = pre.textContent.replace(t, 'ofk_…'); }, issued); await agents.screenshot({ path: path.join(OUT, 'agents.png'), fullPage: true }); }
+    await agents.click('[data-act="token-revoke"]');
+    await agents.click('[data-ask="ok"]');
+    await agents.waitForSelector('#view .empty');
+    await assert.rejects(require('../bin/orgflow.cjs').run(['bookings'], { env: { ORGFLOW_API_URL: base, ORGFLOW_API_TOKEN: issued, ORGFLOW_CONFIG: path.join(ROOT, 'test-results', 'no-config.json') }, stdout: () => {} }), err => err.status === 401);
     await open('priya@harbor.example', '#team', { shot: 'team.png' });
     await open('luca@harbor.example', '#approvals/' + vacation.id, { shot: 'approvals.png' });
     const ana = await open('ana@harbor.example', '#week/' + next, { shot: 'week-booked.png' });

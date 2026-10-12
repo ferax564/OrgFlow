@@ -41,12 +41,13 @@
       <h2>Assigned reviews</h2>
       <p id="reviewAssignments" role="status"></p>
       <h2>MCP / API tokens</h2>
-      <p class="muted">Create a token for Cursor or Claude. It sees only what this member is allowed to see.</p>
+      <p class="muted">Create a token for the <code>orgflow</code> CLI, Claude Code, Codex or Cursor. It sees only what this member is allowed to see. <b>Workplace</b> lets it act for this member in work locations, vacation, desk booking and approvals; members can also create their own workplace tokens under <a href="workplace.html#agents">CLI &amp; agents</a>.</p>
       <form id="token" class="row">
         <input name="name" placeholder="Cursor on laptop" />
         <label>Expires in days <input name="expiresInDays" type="number" min="1" max="90" value="30" required /></label>
         <label class="check"><input name="export" type="checkbox" /> Export</label>
         <label class="check"><input name="propose" type="checkbox" /> Draft proposals</label>
+        <label class="check"><input name="workplace" type="checkbox" /> Workplace (CLI / agents)</label>
         <button class="btn" type="submit">Create token</button>
       </form>
       <pre id="newToken" hidden></pre>
@@ -94,7 +95,7 @@
     document.getElementById('token').onsubmit = async e => {
       e.preventDefault();
       const fd = new FormData(e.target);
-      const created = await api('/api/tokens', { method: 'POST', body: JSON.stringify({ name: fd.get('name') || 'MCP', expiresInDays:Number(fd.get('expiresInDays')),scopes:['read',...(fd.get('export')?['export']:[]),...(fd.get('propose')?['propose']:[])] }) });
+      const created = await api('/api/tokens', { method: 'POST', body: JSON.stringify({ name: fd.get('name') || 'MCP', expiresInDays:Number(fd.get('expiresInDays')),scopes:['read',...(fd.get('export')?['export']:[]),...(fd.get('propose')?['propose']:[]),...(fd.get('workplace')?['workplace']:[])] }) });
       const pre = document.getElementById('newToken');
       pre.hidden = false;
       pre.textContent = `ORGFLOW_API_URL=${location.origin}\nORGFLOW_API_TOKEN=${created.token}\n\nCursor mcp.json:\n${JSON.stringify({ mcpServers: { orgflow: { command: 'node', args: ['server/mcp-stdio.js'], env: { ORGFLOW_API_URL: location.origin, ORGFLOW_API_TOKEN: created.token } } } }, null, 2)}`;

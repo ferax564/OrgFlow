@@ -39,7 +39,7 @@ function ok(title) { findings.push({ type: 'ok', title }); console.log('OK:', ti
     if (/\/api\/meta$/.test(msg.location()?.url || '')) return;
     consoleErrors.push(msg.text());
   });
-  page.on('dialog', async dialog => { await dialog.accept(); });
+  page.on('dialog', dialog => { dialog.accept().catch(() => {}); });
   await page.goto('http://127.0.0.1:4173/app.html', { waitUntil: 'networkidle0' });
   await page.evaluate(() => localStorage.clear());
   await page.reload({ waitUntil: 'networkidle0' });

@@ -1,5 +1,24 @@
 # Changelog
 
+## 2.8.0
+
+OrgFlow from the command line and from coding agents. The workspace data format is unchanged (document version 3); there is no database migration.
+
+### Command line, Claude Code and Codex
+
+- **`orgflow` CLI** (`bin/orgflow.cjs`, no dependencies): `whoami`, `week`, `plan`, `pattern`, `offices`, `desks`, `book`, `bookings`, `unbook`, `vacation request|change|cancel`, `team`, `approvals`, `approve`, `reject`, `not-mine`, `conflicts`, `notifications`, `report`, and read-only `org` commands. Readable output or `--json`; dates accept `today`, `tomorrow`, `+N`, ranges and lists; offices by id or name. `orgflow login` checks the token and saves it with owner-only permissions; plain `http://` is refused except for localhost.
+- **Workplace tokens**: a new `workplace` token scope covers `/api/workplace/*` as the token's member. Members create, list and revoke their own tokens under **CLI & agents** on the workplace screen; scheduling-only members can create workplace tokens (never organization-chart tokens). The Admin page token form gains the scope too.
+- **Agent skills** for Claude Code (`.claude/skills/`) and Codex (`.agents/skills/`): `orgflow-workplace` (plans, vacation, desks and approvals, confirming every booking, cancellation and decision with the person), `orgflow-org` (organization chart and draft proposals, never approving or applying) and `orgflow-develop` (checks, tests and releases). `orgflow skills install` copies the user-facing skills to `~/.claude/skills` and `~/.agents/skills`. New `AGENTS.md` and `CLAUDE.md`.
+- **`orgflow mcp`** runs the organization-chart MCP bridge with the saved login: `claude mcp add orgflow -- orgflow mcp`.
+
+### Fixes
+
+- The desktop lifecycle test (and the browser QA scripts) no longer fail a finished run when a dialog closes on its own while the app shuts down ("No dialog is showing"). This made the 2.7.0 Windows desktop job flaky on `main`.
+
+### Tests
+
+- `tests/cli.test.cjs` runs the CLI against an in-memory host: planning, booking and its conflicts, vacation request and manager approval, token scope separation, login and config file permissions, http refusal, exit codes, skills installation and the MCP bridge. `tests/skills.test.cjs` keeps the Claude Code and Codex skills identical and checks that every command they show exists.
+
 ## 2.7.0
 
 Workplace planning on the shared enterprise host — work locations, vacation approval and desk sharing — available in the browser and as a Microsoft Teams app, plus a visual refresh. The workspace data format is unchanged (document version 3): 2.6 files, seating plans and backups open as-is.

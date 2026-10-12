@@ -36,7 +36,7 @@ async function serve(root, port) {
   try {
     const page = await browser.newPage();
     page.on('pageerror', err => { throw err; });
-    page.on('dialog', async dialog => { await dialog.accept(); });
+    page.on('dialog', dialog => { dialog.accept().catch(() => {}); });
     await page.setViewport({ width: 1280, height: 800 });
     await page.goto(`http://127.0.0.1:${port}/`, { waitUntil: 'networkidle0' });
     const home = await page.$eval('h1', el => el.textContent);

@@ -451,7 +451,9 @@ function createApp(options = {}) {
           const exportRoute = method === 'POST' && ['/api/org/share-snapshot','/api/exports'].includes(p);
           const proposalRoute = method === 'POST' && ['/api/proposals','/api/org/preview-proposal','/api/org/validate-proposal'].includes(p);
           const mcpRoute = p === '/api/mcp' && method === 'POST';
-          if (!(readRoute&&ident.scopes.includes('read') || exportRoute&&ident.scopes.includes('export') || proposalRoute&&ident.scopes.includes('propose') || mcpRoute&&ident.scopes.includes('read'))) {sendError(res,403,'Token scope does not allow this operation.');return;}
+          const workplaceRoute = p.startsWith('/api/workplace/');
+          const sessionRoute = p === '/api/session' && method === 'GET';
+          if (!(sessionRoute || readRoute&&ident.scopes.includes('read') || exportRoute&&ident.scopes.includes('export') || proposalRoute&&ident.scopes.includes('propose') || mcpRoute&&ident.scopes.includes('read') || workplaceRoute&&ident.scopes.includes('workplace'))) {sendError(res,403,'Token scope does not allow this operation.');return;}
         }
         const tenant = store.getTenant();
 
@@ -463,8 +465,9 @@ function createApp(options = {}) {
           await handleWorkplace(req, res, { ident, url, send, readJson });
           return;
         }
-        // Scheduling-only members never receive organization-chart data or tools.
-        if (membership.role === 'employee') {
+        // Scheduling-only members never receive organization-chart data or tools. They may manage their own
+        // workplace-only tokens for the CLI and coding agents.
+        if (membership.role === 'employee' && !(p === '/api/tokens' || p.startsWith('/api/tokens/'))) {
           sendError(res, 403, 'Your account can plan work locations, vacation and desks, but not open the organization chart.');
           return;
         }
@@ -709,6 +712,7 @@ function createApp(options = {}) {
         if (p === '/api/tokens' && method === 'POST') {
           const body = await readJson(req, res);
           if (!body) return;
+          if (membership.role === 'employee' && (!Array.isArray(body.scopes) || body.scopes.some(s => s !== 'workplace'))) { sendError(res, 403, 'Scheduling-only members can create workplace tokens only.'); return; }
           let created;try{created = store.createApiToken(user.id, body.name || 'MCP', {scopes:body.scopes,expiresInDays:body.expiresInDays});}catch(error){sendError(res,400,error.message);return;}
           store.audit({ userId: user.id, action: 'token.create', detail: { id: created.id, name: body.name || 'MCP' } });
           send(res, 201, { id: created.id, token: created.token, prefix: created.prefix, expiresAt:created.expiresAt, scopes:created.scopes, warning: 'Copy this token now. It is not shown again.' });

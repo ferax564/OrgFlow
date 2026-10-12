@@ -28,13 +28,13 @@ Then open http://localhost:4173/ or http://localhost:4173/app.html. Opening the 
 
 ### Desktop app
 
-CI builds desktop binaries for each OS. **v2.7.0** is the current release. The Windows and macOS builds are not code-signed yet, so the first open shows a SmartScreen or Gatekeeper prompt (see each row below). Download it below, or browse [all GitHub Releases](https://github.com/ferax564/OrgFlow/releases) (or the **Desktop binaries** workflow artifacts). You do not install into Program Files or `/Applications`.
+CI builds desktop binaries for each OS. **v2.8.0** is the current release. The Windows and macOS builds are not code-signed yet, so the first open shows a SmartScreen or Gatekeeper prompt (see each row below). Download it below, or browse [all GitHub Releases](https://github.com/ferax564/OrgFlow/releases) (or the **Desktop binaries** workflow artifacts). You do not install into Program Files or `/Applications`.
 
 | OS | File | How to run |
 | --- | --- | --- |
-| Windows | [OrgFlow-2.7.0-windows.exe](https://github.com/ferax564/OrgFlow/releases/download/v2.7.0/OrgFlow-2.7.0-windows.exe) | Double-click the `.exe`. Windows may show SmartScreen on an unsigned build — More info → Run anyway. Workspace data is stored in `OrgFlow-data` next to the exe. |
-| macOS | [OrgFlow-2.7.0-mac.zip](https://github.com/ferax564/OrgFlow/releases/download/v2.7.0/OrgFlow-2.7.0-mac.zip) | Unzip and double-click `OrgFlow.app`. You can leave it in Downloads; you do not need to drag it to Applications. If Gatekeeper blocks it, right-click → Open. |
-| Linux | [OrgFlow-2.7.0-linux.AppImage](https://github.com/ferax564/OrgFlow/releases/download/v2.7.0/OrgFlow-2.7.0-linux.AppImage) | `chmod +x OrgFlow-*-linux.AppImage && ./OrgFlow-*-linux.AppImage` |
+| Windows | [OrgFlow-2.8.0-windows.exe](https://github.com/ferax564/OrgFlow/releases/download/v2.8.0/OrgFlow-2.8.0-windows.exe) | Double-click the `.exe`. Windows may show SmartScreen on an unsigned build — More info → Run anyway. Workspace data is stored in `OrgFlow-data` next to the exe. |
+| macOS | [OrgFlow-2.8.0-mac.zip](https://github.com/ferax564/OrgFlow/releases/download/v2.8.0/OrgFlow-2.8.0-mac.zip) | Unzip and double-click `OrgFlow.app`. You can leave it in Downloads; you do not need to drag it to Applications. If Gatekeeper blocks it, right-click → Open. |
+| Linux | [OrgFlow-2.8.0-linux.AppImage](https://github.com/ferax564/OrgFlow/releases/download/v2.8.0/OrgFlow-2.8.0-linux.AppImage) | `chmod +x OrgFlow-*-linux.AppImage && ./OrgFlow-*-linux.AppImage` |
 
 ```bash
 npm ci
@@ -56,7 +56,7 @@ The desktop app loads the planner from a fixed `orgflow://` origin, so restarts 
 
 On this public site there is no backend. IndexedDB is the authoritative document store, with full recovery checkpoints and an atomic pending-change queue. `localStorage` is an optional cache and preference store; its quota failure does not prevent durable saves. Concurrent stale tabs are refused rather than overwriting newer commits. Clearing *all* site data still removes everything; export a JSON backup first. An optional Node host can share one org — see [Enterprise host](#enterprise-host-optional).
 
-Windows automatic updates require the [installer](https://github.com/ferax564/OrgFlow/releases/download/v2.7.0/OrgFlow-2.7.0-windows-setup.exe). The portable EXE uses manual replacement. See [release validation](RELEASE_VALIDATION.md), [changes](CHANGELOG.md), and [host operations](server/README.md).
+Windows automatic updates require the [installer](https://github.com/ferax564/OrgFlow/releases/download/v2.8.0/OrgFlow-2.8.0-windows-setup.exe). The portable EXE uses manual replacement. See [release validation](RELEASE_VALIDATION.md), [changes](CHANGELOG.md), and [host operations](server/README.md).
 
 ## Using the planner
 
@@ -234,6 +234,32 @@ That host also provides:
 
 Details, hardening notes, Docker Keycloak, AWS: [`server/README.md`](server/README.md).
 
+### Command line, Claude Code and Codex
+
+The `orgflow` command line plans your week, requests vacation, books desks, handles approvals and reads the organization chart on a shared host. It needs only Node 22.16+ and this repository.
+
+```bash
+npm link                                   # once, in this checkout: puts `orgflow` on your PATH
+# or, without npm: alias orgflow="node /path/to/OrgFlow/bin/orgflow.cjs"
+orgflow login --url https://orgflow.example.com --token-stdin   # paste a token from "CLI & agents"
+orgflow week
+orgflow plan 2026-10-14..2026-10-15 remote
+orgflow book zurich 2026-10-21
+orgflow vacation request 2026-12-21 2026-12-24 --note "Family"
+orgflow approvals
+orgflow --help
+```
+
+Create the token in OrgFlow under **CLI & agents** (`workplace.html#agents`). Workplace tokens act as you and can do exactly what you can do in the browser; tick "Also read the organization chart" to use `orgflow org …` too. Scheduling-only members can create workplace tokens.
+
+For coding agents, the repository ships skills for Claude Code (`.claude/skills/`) and Codex (`.agents/skills/`), plus [`AGENTS.md`](AGENTS.md) and [`CLAUDE.md`](CLAUDE.md):
+
+- `orgflow-workplace`: work locations, vacation, desks and approvals through the CLI; the agent confirms bookings, cancellations and decisions with you first.
+- `orgflow-org`: the organization chart and draft proposals; it never approves or applies changes.
+- `orgflow-develop`: checks, tests and the release procedure for working on OrgFlow.
+
+`orgflow skills install` copies the first two to `~/.claude/skills` and `~/.agents/skills` so they work in every project. `claude mcp add orgflow -- orgflow mcp` (or `codex mcp add orgflow -- orgflow mcp`) adds the organization-chart MCP tools with the saved login.
+
 ## Management and data-integrity release (2.1)
 
 The Planning tab adds scenario decisions, conflict-aware application and rollback proposals, dated staffing/reporting, declared capabilities, project allocation, commitments and monthly position-budget forecasts. Saving is revision-aware; sharing a chart no longer embeds a workspace backup. CSV source mappings create Draft proposals by default.
@@ -253,7 +279,7 @@ python3 tests/browser-regressions.py --browser chromium
 
 The suite covers CSV parsing, spreadsheet-formula escaping, scenario validation, dotted-line rules, custom-field CSV round-trips, starter templates, comparison diffs, example workspaces, filter-set migration, stacked chart layout, sibling reordering, custom position levels, group/site chips, bulk edit, named views, A3 tiling, schema-version guards and forward-compatible field preservation, seating-plan geometry (walls, desk overlap, desk blocks, auto-seat and redaction), share-dataset redaction and subtree scoping, the journaled desktop workspace store (atomic writes, rotating backups, newest-revision selection), the desktop file server, and enterprise ACL/stress cases (forged cookies, path traversal, oversized bodies, last-admin protection, concurrent saves).
 
-`npm test` also covers the workplace rules and acceptance criteria (time zones and daylight saving, availability, vacation approval, concurrent bookings, seating conflicts, permissions, Teams sign-in, bot delivery and the Teams package). `npm run test:workplace` drives the workplace screens and the Teams tab in Chromium (set `CHROMIUM_PATH` if Playwright's browser is not installed).
+`npm test` also covers the workplace rules and acceptance criteria (time zones and daylight saving, availability, vacation approval, concurrent bookings, seating conflicts, permissions, Teams sign-in, bot delivery and the Teams package). `tests/cli.test.cjs` runs every CLI command against an in-memory host, and `tests/skills.test.cjs` keeps the Claude Code and Codex skills identical. `npm run test:workplace` drives the workplace screens and the Teams tab in Chromium (set `CHROMIUM_PATH` if Playwright's browser is not installed).
 
 With Chrome and `puppeteer-core` installed locally:
 

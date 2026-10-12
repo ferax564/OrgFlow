@@ -2,10 +2,10 @@
 const readonly = names => Object.fromEntries(names.split(/\s+/).filter(Boolean).map(name=>[name,'readonly']));
 module.exports = [
   { ignores:['js/vendor/**','node_modules/**','dist*/**','out/**','test-results/**','examples/**'] },
-  { files:['js/**/*.js','server/**/*.js','desktop/**/*.cjs','scripts/**/*.cjs','tests/**/*.cjs'],
+  { files:['js/**/*.js','server/**/*.js','desktop/**/*.cjs','scripts/**/*.cjs','tests/**/*.cjs','bin/**/*.cjs'],
     languageOptions:{ecmaVersion:2023,sourceType:'script'},
     rules:{'constructor-super':'error','for-direction':'error','no-const-assign':'error','no-dupe-args':'error','no-dupe-class-members':'error','no-dupe-keys':'error','no-empty-pattern':'error','no-func-assign':'error','no-invalid-regexp':'error','no-setter-return':'error','no-this-before-super':'error','no-unreachable':'error','no-unsafe-finally':'error','no-unsafe-negation':'error','use-isnan':'error','valid-typeof':'error'} },
-  { files:['server/**/*.js','desktop/**/*.cjs','scripts/**/*.cjs','tests/**/*.cjs','js/management-core.js','js/persistence.js','js/orgflow-core.js','js/seating-core.js','js/workplace-core.js'],
+  { files:['server/**/*.js','desktop/**/*.cjs','scripts/**/*.cjs','tests/**/*.cjs','bin/**/*.cjs','js/management-core.js','js/persistence.js','js/orgflow-core.js','js/seating-core.js','js/workplace-core.js'],
     languageOptions:{globals:readonly('module require exports __dirname __filename process Buffer console global globalThis structuredClone crypto fetch Response URL URLSearchParams TextEncoder TextDecoder Blob File AbortController setTimeout clearTimeout setInterval clearInterval setImmediate clearImmediate performance Intl')},
     rules:{'no-undef':'error'} },
   { files:['scripts/browser-qa.cjs','scripts/smoke.cjs','scripts/generate-examples.cjs','scripts/workplace-e2e.cjs'],

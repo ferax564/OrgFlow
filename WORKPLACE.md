@@ -30,7 +30,7 @@ The same screens open in a browser at `/workplace.html` and as the OrgFlow perso
 | Workplace administrator | Every OrgFlow administrator, plus members with the **Workplace admin** tick on the Admin page | Manage offices and time zones, assign seating rooms to offices, enable desk sharing and describe equipment, close offices, rooms or desks, book and cancel on behalf of employees, resolve seating conflicts |
 | OrgFlow administrator | `admin` role | Members, roles, employee links, approver corrections and configuration, plus everything a workplace administrator can do |
 
-- The new **employee** role is scheduling-only. It never receives the organization chart, scenarios, the people directory or API tokens: `/api/workspace`, `/api/org/*` and MCP return 403. Opening the planner sends these accounts to the workplace screens. Admin, editor and viewer members can use the workplace screens too once their account is linked.
+- The new **employee** role is scheduling-only. It never receives the organization chart, scenarios or the people directory: `/api/workspace`, `/api/org/*` and MCP return 403. It can create personal **workplace** tokens for the command line (see below), never organization-chart tokens. Opening the planner sends these accounts to the workplace screens. Admin, editor and viewer members can use the workplace screens too once their account is linked.
 - Each account is linked to one stable employee ID in Current (for example `EMP-008`) on the Admin page. A record can be linked to only one account. Optionally, `WORKPLACE_LINK_BY_EMAIL=true` links a member automatically when exactly one employee in Current has an `email` field equal to the member's verified sign-in email. Leave it off if organization-chart editors should not be able to influence links by editing employee emails.
 - Visitors browsing another office see desk availability, the room plan, equipment and notes. They do not see who owns a desk or why the owner is away.
 - All rules are enforced by the server, whichever screen sends the request, including the Teams tab. Employees cannot approve their own vacation, and only the assigned approver can decide a request. OrgFlow administrators correct approvers; they do not approve on a manager's behalf.
@@ -173,3 +173,24 @@ Vacation balances, accrual, payroll and HR-system integration; half days; automa
 ## Tests
 
 `npm test` covers the rules and the acceptance criteria (`tests/workplace-core.test.cjs`, `tests/workplace-api.test.cjs`, `tests/teams.test.cjs`). `npm run test:workplace` drives the screens in Chromium against a seeded host, including the Teams tab with single sign-on and no cookies.
+
+## Command line and coding agents
+
+![CLI & agents: creating a workplace token](docs/workplace/agents.png)
+
+Everything on the workplace screens is also available from the `orgflow` command line, for people who prefer a terminal and for coding agents such as Claude Code and Codex. Under **CLI & agents** (`workplace.html#agents`, linked in the header) each member creates a personal token with the **workplace** scope, valid for 1–90 days, and can revoke it at any time. The token acts as that member: the same rules, permissions and audit records apply as in the browser.
+
+```bash
+orgflow login --url https://orgflow.example.com --token-stdin
+orgflow whoami                       # account, employee record, desk, approver
+orgflow week                         # this week's plans, vacation and bookings
+orgflow plan tomorrow remote
+orgflow pattern mon=zrh tue=zrh wed=remote
+orgflow desks zrh 2026-10-21 --available
+orgflow book zrh 2026-10-21 Z4
+orgflow vacation request 2026-12-21 2026-12-24
+orgflow approvals && orgflow approve REQUEST_ID --note "Enjoy"
+orgflow report approver "My manager changed in September"
+```
+
+`--json` prints the raw API response for scripts. The CLI stores the host and token in `~/.config/orgflow/config.json` (`%APPDATA%\orgflow\config.json` on Windows) with owner-only permissions, refuses plain `http://` except for localhost, and prints errors with the server's code (for example `[desk_taken]`). The `orgflow-workplace` skill tells agents to confirm bookings, cancellations, vacation changes and approval decisions with the person before running them. Full days only applies here too.

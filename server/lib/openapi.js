@@ -21,7 +21,7 @@ function spec(version) {
     Change:object({entity:{enum:['positions','employees','assignments','reportingLines','costs','allocations','commitments']},id:str,operation:{enum:['upsert','remove']},values:obj},['entity','id','operation']),
     Proposal:object({version:integer,name:{type:'string',maxLength:80},rationale:{type:'string',maxLength:3000},changes:{type:'array',maxItems:500,items:ref('Change')}},['version','name','rationale','changes']),
     Member:object({email:{type:'string',format:'email'},name:str,role:{enum:['admin','editor','viewer','employee']},canExport:{type:'boolean'},scopePositionId:str,employeeId:str,workplaceAdmin:{type:'boolean'}},['email','role']),
-    TokenRequest:object({name:str,scopes:{type:'array',minItems:1,items:{enum:['read','export','propose']},default:['read']},expiresInDays:{type:'integer',minimum:1,maximum:90,default:30}}),
+    TokenRequest:object({name:str,scopes:{type:'array',minItems:1,items:{enum:['read','export','propose','workplace']},default:['read']},expiresInDays:{type:'integer',minimum:1,maximum:90,default:30}}),
     RpcRequest:{type:'object',required:['jsonrpc','method'],properties:{jsonrpc:{enum:['2.0']},id:{oneOf:[str,{type:'number'}]},method:str,params:obj},additionalProperties:false},
     QueryResult:{type:'object',properties:{context:ref('Context')},additionalProperties:true}
   };

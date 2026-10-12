@@ -20,7 +20,7 @@ async function main() {
   try {
     const page = await browser.newPage();
     await page.setViewport({ width: 1440, height: 900, deviceScaleFactor: 1 });
-    page.on('dialog', async dialog => { await dialog.accept(); });
+    page.on('dialog', dialog => { dialog.accept().catch(() => {}); });
     await page.goto(`http://127.0.0.1:${port}/app.html`, { waitUntil: 'networkidle0', timeout: 30000 });
     await page.evaluate(() => localStorage.clear());
     await page.reload({ waitUntil: 'networkidle0' });

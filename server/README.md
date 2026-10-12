@@ -78,6 +78,19 @@ On `/admin.html` create a token:
 
 Read tools: `get_org`, `search_positions`, `get_person`, `span_of_control`, `dotted_lines`, `list_vacancies`, `diff_scenarios`. Same ACL as the planner.
 
+`orgflow mcp` (see the main README) starts the same bridge with the host and token saved by `orgflow login`, so `claude mcp add orgflow -- orgflow mcp` needs no token in the client configuration.
+
+### Token scopes
+
+| Scope | Allows |
+| --- | --- |
+| `read` | `GET /api/workspace`, `/api/org/*`, the OpenAPI document and MCP read tools |
+| `export` | Share snapshots and export records |
+| `propose` | Proposal preview, validation and Draft proposals |
+| `workplace` | `/api/workplace/*` as the token's member: plans, vacation, desks, approvals (used by the `orgflow` CLI) |
+
+Every token may read `GET /api/session`. Scheduling-only `employee` members can create `workplace` tokens only, on the workplace screen under **CLI & agents**.
+
 ## What the host refuses
 
 - Tampered session cookies and unknown API tokens

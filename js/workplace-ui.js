@@ -116,12 +116,14 @@
     if (tab === 'week' && W.isDate(a)) st.weekStart = W.mondayOf(a);
     if (tab === 'book') { if (a) st.bookOffice = a; if (W.isDate(b)) st.bookDate = b; }
     if (tab === 'conflict') return { tab: 'conflict', id: a };
+    if (tab === 'agents') return { tab: 'agents' };
     if (tab === 'admin' && a === 'reservations' && W.isDate(b)) { st.adminDate = b; }
     if (tab === 'admin' && (a === 'routing' || a === 'reports')) return { tab: 'admin', id: b || '' };
     return { tab: ['week', 'vacation', 'book', 'team', 'approvals', 'admin'].includes(tab) ? tab : 'week', id: tab === 'vacation' || tab === 'approvals' ? a || '' : '' };
   }
   async function route() {
     const r = parseHash();
+    if (r.tab === 'agents') { document.querySelectorAll('[data-tab]').forEach(b => b.setAttribute('aria-selected', 'false')); st.tab = 'agents'; return renderAgents(); }
     if (r.tab === 'conflict') {
       const list = await api('/api/workplace/conflicts').catch(() => ({ conflicts: [] }));
       const c = list.conflicts.find(x => x.id === r.id);
@@ -395,6 +397,28 @@
     }
   }
 
+  // ---- CLI and coding agents ----------------------------------------------------------------------
+  /** Personal tokens for the `orgflow` CLI, Claude Code and Codex. The token acts as you, with your permissions. */
+  async function renderAgents(created) {
+    const { tokens } = await api('/api/tokens');
+    const origin = location.origin;
+    view().innerHTML = `<div class="card"><h2>Use OrgFlow from the command line, Claude Code or Codex</h2>
+      <p class="muted small">Create a personal token, then run the <code>orgflow</code> CLI from a checkout of the OrgFlow repository (<code>npm link</code> once to put it on your path). The repository's agent skills teach Claude Code and Codex to plan your week, request vacation, book desks and handle approvals with it. The token acts as you: it can do exactly what you can do here, nothing more. Agents should still confirm bookings, cancellations and approvals with you. <code>orgflow skills install</code> makes the skills available in every project.</p>
+      ${created ? `<p class="ok">Copy this token now; it is not shown again.</p><pre class="small" id="newToken">export ORGFLOW_API_URL=${esc(origin)}
+export ORGFLOW_API_TOKEN=${esc(created.token)}
+
+orgflow whoami
+orgflow week</pre>` : ''}
+      <form class="row" id="tokenForm"><label>Name<input name="name" maxlength="80" placeholder="Claude Code on laptop" required></label><label>Expires in days<input name="days" type="number" min="1" max="90" value="30" required></label>
+        ${st.me.orgAccess ? '<label class="check small"><input type="checkbox" name="read"> Also read the organization chart</label>' : ''}<button class="btn primary" type="submit">Create token</button></form></div>
+      <div class="card"><h2>Your tokens</h2><div class="list">${tokens.map(t => `<div class="item"><div class="what"><b>${esc(t.name)}</b><span class="small muted">${esc(t.token_prefix)}… · ${esc(JSON.parse(t.scopes || '[]').join(', '))} · expires ${esc((t.expires_at || '').slice(0, 10))}${t.last_used_at ? ' · last used ' + esc(t.last_used_at.slice(0, 10)) : ''}</span></div><button class="btn small danger" data-act="token-revoke" data-id="${esc(t.id)}">Revoke</button></div>`).join('') || '<p class="empty">No tokens.</p>'}</div></div>`;
+    $('#tokenForm').onsubmit = async e => {
+      e.preventDefault();
+      const fd = new FormData(e.target);
+      try { renderAgents(await api('/api/tokens', { method: 'POST', body: { name: fd.get('name'), expiresInDays: Number(fd.get('days')), scopes: ['workplace', ...(fd.get('read') ? ['read'] : [])] } })); } catch (error) { toast(error.message); }
+    };
+  }
+
   // ---- Notifications ----------------------------------------------------------------------------
   async function openDrawer() {
     const d = $('#drawer');
@@ -407,7 +431,7 @@
   async function refreshMe() { st.me = await api('/api/workplace/me'); chrome(); }
   function chrome() {
     const me = st.me, s = st.session;
-    $('#who').innerHTML = `<span class="email">${esc(me.employee?.name || s.user?.name || s.user?.email || '')}</span><button class="bell" id="bell" aria-label="Notifications${me.unread ? ', ' + me.unread + ' unread' : ''}">🔔${me.unread ? `<b>${me.unread}</b>` : ''}</button>${me.orgAccess ? '<a href="app.html">Planner</a>' : ''}${s.isAdmin ? '<a href="admin.html">Admin</a>' : ''}${st.teams ? '' : '<a href="/auth/logout">Sign out</a>'}`;
+    $('#who').innerHTML = `<span class="email">${esc(me.employee?.name || s.user?.name || s.user?.email || '')}</span><button class="bell" id="bell" aria-label="Notifications${me.unread ? ', ' + me.unread + ' unread' : ''}">🔔${me.unread ? `<b>${me.unread}</b>` : ''}</button><a href="#agents" id="agentsLink">CLI &amp; agents</a>${me.orgAccess ? '<a href="app.html">Planner</a>' : ''}${s.isAdmin ? '<a href="admin.html">Admin</a>' : ''}${st.teams ? '' : '<a href="/auth/logout">Sign out</a>'}`;
     $('#bell').onclick = () => openDrawer().catch(e => toast(e.message));
     $('#tabs').classList.remove('hidden');
     document.querySelector('[data-tab="approvals"]').hidden = !me.isManager;
@@ -463,6 +487,7 @@
       if (act === 'share-room') { const r = await api('/api/workplace/admin/sharing', { method: 'PUT', body: { roomId: id, enabled: btn.dataset.on === '1' } }); toast(r.keptReservations ? `Sharing off; ${r.keptReservations} confirmed reservation(s) are kept.` : 'Sharing updated.'); return renderAdmin(); }
       if (act === 'read-all') { await api('/api/workplace/notifications/read', { method: 'POST', body: { ids: 'all' } }); $('#drawer').classList.add('hidden'); return refreshMe(); }
       if (act === 'close-drawer') { $('#drawer').classList.add('hidden'); $('#bell').focus(); }
+      if (act === 'token-revoke') { if (!(await ask('Revoke this token? Anything using it stops working.', { ok: 'Revoke' }))) return; await api('/api/tokens/' + encodeURIComponent(id), { method: 'DELETE' }); toast('Token revoked.'); return renderAgents(); }
     } catch (error) { toast(error.message); }
   });
   document.addEventListener('keydown', e => {

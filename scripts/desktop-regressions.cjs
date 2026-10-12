@@ -15,7 +15,8 @@ const output=path.join(root,'test-results','desktop');fs.mkdirSync(output,{recur
     const env={...process.env,PORTABLE_EXECUTABLE_DIR:path.join(temp,folder)};
     delete env.ELECTRON_RUN_AS_NODE;
     app=await _electron.launch({executablePath:require('electron'),args:['--no-sandbox',boot],env,timeout:45000});
-    const page=await app.firstWindow();page.on('dialog',d=>d.accept());
+    // A dialog can close on its own while the app shuts down; accepting it then must not crash a finished run.
+    const page=await app.firstWindow();page.on('dialog',d=>d.accept().catch(()=>{}));
     const errors=[];page.on('pageerror',e=>errors.push(e.message));
     await page.waitForFunction(()=>typeof workspace!=='undefined'&&workspace?.scenarios?.length);
     await page.evaluate(()=>OrgFlowStore.flush());

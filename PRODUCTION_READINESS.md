@@ -1,6 +1,6 @@
-# Production readiness — 2.7.0
+# Production readiness — 2.8.0
 
-2.7.0 is a stable release shipped **without code signing**, at the owner's decision, while signing certificates are not yet available. The code and automated release gates are hardened; the pipeline signs and verifies automatically as soon as the signing secrets are configured. Until then Windows SmartScreen and macOS Gatekeeper warn on first open, and macOS builds cannot self-update.
+2.8.0 is a stable release shipped **without code signing**, at the owner's decision, while signing certificates are not yet available. The code and automated release gates are hardened; the pipeline signs and verifies automatically as soon as the signing secrets are configured. Until then Windows SmartScreen and macOS Gatekeeper warn on first open, and macOS builds cannot self-update.
 
 ## Review findings and resolutions
 
@@ -16,6 +16,7 @@
 | Governance | Reviewers were arbitrary labels; retries could create duplicate proposals | Resolve reviewers to actual administrator memberships, enforce assigned approval, expose review queue, and store transactional idempotency receipts |
 | Operations | No verified live backup/restore path, readiness or retention | Consistent SQLite snapshots and validated restore-to-new-destination; database readiness; graceful shutdown; bounded retention; non-root container |
 | Workplace and Teams (2.7.0) | Scheduling must not expose the organization chart; bookings must not race or overwrite seating; Teams identities and notifications must not be trusted blindly; wrong reporting lines must not strand requests | Scheduling-only role with server-side checks; reservations in separate tables with unique indexes; Entra ID tokens validated on the server and restricted to the Teams clients; header session precedence; notification outbox without duplicates; routing queue, "Not my report" and reports of wrong details |
+| Command line and agents (2.8.0) | Personal tokens in a terminal or agent could leak or reach more than the browser; agents could act without the person | Separate `workplace` scope; scheduling-only members cannot obtain organization-chart tokens; expiring, revocable tokens; owner-only config file; https required except localhost; skills require confirmation before bookings, cancellations and decisions, and never approve or apply organization changes |
 | Release | Old Electron vulnerabilities, incomplete update artifacts, weak release checks | Electron 44.4.3; audited lockfile; native lifecycle and three-browser CI; Windows installer; universal Mac build; manifests/blockmaps; stable tags require signing secrets |
 
 ## Assessment of the supplied recommendations

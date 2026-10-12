@@ -14,7 +14,7 @@ Employees plan where they work, request vacation and borrow desks in other offic
 - **Planner**: the Seating view shows date-specific availability from live plans. A new scheduling-only **employee** role never receives the organization chart. Members can be linked to employee records on the Admin page. OrgFlow administrators are workplace administrators automatically; the **Workplace admin** tick grants the same to other members.
 - **Microsoft Teams**: a personal tab with Entra ID single sign-on validated on the server (pop-up sign-in as fallback; works without third-party cookies), Teams themes and deep links, and a notification-only bot. Messages carry a one-line summary and links; the in-app notification list stays authoritative, deliveries retry without duplicates. `npm run teams:package` builds the app package.
 - Records are kept beside the workspace, which keeps its format; older databases migrate on start, backups include the new tables, and retention is configurable.
-- Tests: 21 new unit, API and Teams tests covering the acceptance criteria, and `npm run test:workplace` for a browser run including the Teams tab.
+- Tests: 22 new unit, API and Teams tests covering the acceptance criteria, and `npm run test:workplace` for a browser run including the Teams tab.
 
 ### Visual refresh
 

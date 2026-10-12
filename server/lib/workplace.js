@@ -81,7 +81,8 @@ function createWorkplace(store, options = {}) {
     }
     return {
       userId: ident.user.id, email: ident.user.email, role: m.role, employeeId: m.employee_id || '',
-      orgAdmin: m.role === 'admin', workplaceAdmin: Boolean(m.workplace_admin), orgAccess: m.role !== 'employee' && !m.scope_position_id
+      // OrgFlow administrators are always workplace administrators; others need the explicit flag.
+      orgAdmin: m.role === 'admin', workplaceAdmin: Boolean(m.workplace_admin) || m.role === 'admin', orgAccess: m.role !== 'employee' && !m.scope_position_id
     };
   }
   function requireEmployee(a) {
@@ -94,8 +95,7 @@ function createWorkplace(store, options = {}) {
   function userForEmployee(employeeId) { return db.prepare('SELECT user_id FROM memberships WHERE tenant_id = ? AND employee_id = ?').get(T, employeeId)?.user_id || ''; }
   function userName(userId) { if (!userId || userId === 'system') return userId === 'system' ? 'OrgFlow' : ''; const u = db.prepare('SELECT name, email FROM users WHERE id = ?').get(userId); return u ? u.name || u.email : ''; }
   function workplaceAdminUsers() {
-    const flagged = db.prepare('SELECT user_id FROM memberships WHERE tenant_id = ? AND workplace_admin = 1').all(T).map(r => r.user_id);
-    return flagged.length ? flagged : db.prepare("SELECT user_id FROM memberships WHERE tenant_id = ? AND role = 'admin'").all(T).map(r => r.user_id);
+    return db.prepare("SELECT user_id FROM memberships WHERE tenant_id = ? AND (workplace_admin = 1 OR role = 'admin')").all(T).map(r => r.user_id);
   }
   function overrides() { return new Map(db.prepare('SELECT employee_id, approver_id FROM approver_overrides WHERE tenant_id = ?').all(T).map(r => [r.employee_id, r.approver_id])); }
   function approverFor(employeeId, over = overrides()) {

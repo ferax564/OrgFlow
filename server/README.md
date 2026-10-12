@@ -51,7 +51,7 @@ On AWS: Node 22 container, Keycloak in the VPC, HTTPS `PUBLIC_URL`, `SECURE_COOK
 | viewer | yes | no | no | no |
 | employee | no (scheduling only) | no | no | no |
 
-Any member linked to an employee record (Admin page, *Employee ID*) can plan work locations, request vacation and book desks at `/workplace.html`. **Workplace admin** is a separate tick for offices, desk sharing, closures, reservations and seating conflicts. Managers are derived from Current. See [WORKPLACE.md](../WORKPLACE.md); for Microsoft Teams, [TEAMS.md](../TEAMS.md).
+Any member linked to an employee record (Admin page, *Employee ID*) can plan work locations, request vacation and book desks at `/workplace.html`. Admins are always workplace administrators; the **Workplace admin** tick grants offices, desk sharing, closures, reservations and seating conflicts to other members. Managers are derived from Current. See [WORKPLACE.md](../WORKPLACE.md); for Microsoft Teams, [TEAMS.md](../TEAMS.md).
 
 **Export** is a separate flag. A viewer can be allowed to download; an editor can be denied.
 

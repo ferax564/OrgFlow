@@ -6,14 +6,27 @@ The same screens open in a browser at `/workplace.html` and as the OrgFlow perso
 
 > **First release: full days only.** Work locations, vacation requests and desk reservations always cover whole days. A confirmed desk reservation stays with the visitor even if the desk owner later changes plans. The interface shows this notice on every screen. Put the same statement in your company's workplace policy (wording below).
 
+## Screens
+
+| | |
+| --- | --- |
+| ![My week with a seating conflict](docs/workplace/week.png) | ![Booking a borrowed desk](docs/workplace/book.png) |
+| **My week**: plans, pattern, reservations and a seating conflict | **Book a desk**: availability on the room plan, confirmed by the server |
+| ![Approval inbox](docs/workplace/approvals.png) | ![Team absence calendar](docs/workplace/team.png) |
+| **Approvals**: the manager's inbox and the team's absences | **Team**: confirmed and tentative absences |
+| ![Resolving a seating conflict](docs/workplace/admin-conflict.png) | ![Teams tab in dark theme](docs/workplace/teams-approval.png) |
+| **Workplace admin**: arranging an alternative desk | **Teams tab** (dark theme), deep-linked to an approval |
+| ![Planner availability overlay](docs/workplace/planner-availability.png) | ![Phone layout](docs/workplace/mobile-book.png) |
+| **Planner Seating view** with availability on a date | **Phone browser** fallback |
+
 ## What each person can do
 
 | Role | How it is granted | Can |
 | --- | --- | --- |
 | Employee | Any member whose account is linked to an employee record in Current | Maintain their own work location and weekly pattern, request, change and cancel their own vacation, see permitted desk availability, book and cancel their own reservations, see the team absence calendar |
 | Manager | Derived: the nearest filled position above a person in Current, or an administrator correction | Employee actions, plus the approval inbox for the people they are responsible for and their team's pending and approved absences |
-| Workplace administrator | **Workplace admin** tick on the Admin page | Manage offices and time zones, assign seating rooms to offices, enable desk sharing and describe equipment, close offices, rooms or desks, book and cancel on behalf of employees, resolve seating conflicts |
-| OrgFlow administrator | `admin` role | Members, roles, employee links, approver corrections and configuration |
+| Workplace administrator | Every OrgFlow administrator, plus members with the **Workplace admin** tick on the Admin page | Manage offices and time zones, assign seating rooms to offices, enable desk sharing and describe equipment, close offices, rooms or desks, book and cancel on behalf of employees, resolve seating conflicts |
+| OrgFlow administrator | `admin` role | Members, roles, employee links, approver corrections and configuration, plus everything a workplace administrator can do |
 
 - The new **employee** role is scheduling-only. It never receives the organization chart, scenarios, the people directory or API tokens: `/api/workspace`, `/api/org/*` and MCP return 403. Opening the planner sends these accounts to the workplace screens. Admin, editor and viewer members can use the workplace screens too once their account is linked.
 - Each account is linked to one stable employee ID in Current (for example `EMP-008`) on the Admin page. A record can be linked to only one account. Optionally, `WORKPLACE_LINK_BY_EMAIL=true` links a member automatically when exactly one employee in Current has an `email` field equal to the member's verified sign-in email. Leave it off if organization-chart editors should not be able to influence links by editing employee emails.

@@ -20,7 +20,7 @@
     </nav>
     <main>
       <h1>Organization access</h1>
-      <p class="muted">One workspace per tenant. Roles: admin (members + replace org), editor (save), viewer (read), employee (work locations, vacation and desk booking only — no organization chart). Export is a separate flag. Subtree scope is a position id; that person only receives that branch. Link each account to its employee record in Current (for example EMP-008) so it can plan, book and approve. Workplace administrators manage offices, desk sharing, closures and reservations.</p>
+      <p class="muted">One workspace per tenant. Roles: admin (members + replace org), editor (save), viewer (read), employee (work locations, vacation and desk booking only — no organization chart). Export is a separate flag. Subtree scope is a position id; that person only receives that branch. Link each account to its employee record in Current (for example EMP-008) so it can plan, book and approve. Workplace administrators manage offices, desk sharing, closures and reservations; admins always are one, the tick grants it to other members.</p>
       <h2>Members</h2>
       <form id="add" class="row">
         <input name="email" type="email" required placeholder="email@company.com" />
@@ -71,7 +71,7 @@
       if (!session.isAdmin) { document.querySelector('main').innerHTML = '<p>Admin only. <a href="app.html">Back</a></p>'; return; }
       const members = await api('/api/members');
       document.getElementById('members').innerHTML = members.members.map(m =>
-        `<tr><td>${esc(m.email)}<br><span class="muted">${esc(m.name || '')}</span></td><td>${esc(m.role)}</td><td>${m.can_export ? 'yes' : 'no'}</td><td>${esc(m.role === 'employee' ? '—' : m.scope_position_id || 'whole org')}</td><td>${esc(m.employee_id || 'not linked')}</td><td>${m.workplace_admin ? 'yes' : 'no'}</td><td><button data-edit="${esc(m.email)}" data-name="${esc(m.name || '')}" data-role="${esc(m.role)}" data-scope="${esc(m.scope_position_id || '')}" data-employee="${esc(m.employee_id || '')}" data-export="${m.can_export ? 1 : 0}" data-workplace="${m.workplace_admin ? 1 : 0}">Edit</button> <button data-del="${esc(m.user_id)}">Remove</button></td></tr>`
+        `<tr><td>${esc(m.email)}<br><span class="muted">${esc(m.name || '')}</span></td><td>${esc(m.role)}</td><td>${m.can_export ? 'yes' : 'no'}</td><td>${esc(m.role === 'employee' ? '—' : m.scope_position_id || 'whole org')}</td><td>${esc(m.employee_id || 'not linked')}</td><td>${m.role === 'admin' ? 'yes (admin)' : m.workplace_admin ? 'yes' : 'no'}</td><td><button data-edit="${esc(m.email)}" data-name="${esc(m.name || '')}" data-role="${esc(m.role)}" data-scope="${esc(m.scope_position_id || '')}" data-employee="${esc(m.employee_id || '')}" data-export="${m.can_export ? 1 : 0}" data-workplace="${m.workplace_admin ? 1 : 0}">Edit</button> <button data-del="${esc(m.user_id)}">Remove</button></td></tr>`
       ).join('');
       const assigned=await api('/api/reviews');
       document.getElementById('reviewAssignments').textContent=assigned.reviews.length?assigned.reviews.map(r=>r.name+' — '+r.owner).join(' · '):'No scenarios awaiting your review.';

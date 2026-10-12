@@ -43,7 +43,7 @@ function ssoToken(oid, upn) {
     { id: 'room-lon', name: 'Product studio', floor: 'London', outline: [[0, 0], [700, 0], [700, 400], [0, 400]], deskSize: { w: 160, h: 80 }, desks: [{ id: 'dl1', label: 'L1', x: 200, y: 200, w: 160, h: 80, rotation: 0, positionId: 'POS-006', hotDesk: false }] }
   ] };
   await call('admin@harbor.example', '/api/workspace', { workspace: doc, version: 1 }, 'PUT');
-  await call('admin@harbor.example', '/api/members', { email: 'admin@harbor.example', role: 'admin', employeeId: 'EMP-001', workplaceAdmin: true, canExport: true }, 'PUT');
+  await call('admin@harbor.example', '/api/members', { email: 'admin@harbor.example', role: 'admin', employeeId: 'EMP-001', canExport: true }, 'PUT');
   for (const [email, employeeId] of [['priya@harbor.example', 'EMP-008'], ['luca@harbor.example', 'EMP-003'], ['elena@harbor.example', 'EMP-006'], ['ana@harbor.example', 'EMP-010']]) { await call('admin@harbor.example', '/api/members', { email, role: 'employee', employeeId }, 'PUT'); await login(email); }
   for (const [id, name, timezone] of [['zrh', 'Zurich', 'Europe/Zurich'], ['lon', 'London', 'Europe/London']]) await call('admin@harbor.example', '/api/workplace/admin/offices', { id, name, timezone }, 'PUT');
   await call('admin@harbor.example', '/api/workplace/admin/rooms/room-zrh/office', { officeId: 'zrh' }, 'PUT');
@@ -81,8 +81,26 @@ function ssoToken(oid, upn) {
     assert.match(await book.textContent('#status'), /Reserved: desk Z\d · Engineering floor · Zurich/);
     if (OUT) await book.screenshot({ path: path.join(OUT, 'book.png'), fullPage: true });
     // Administrators see open conflicts and the approver table; mobile layout stays usable.
+    // OrgFlow administrators manage the workplace without a separate tick.
     const admin = await open('admin@harbor.example', '#admin', { shot: 'admin.png' });
     assert.match(await admin.textContent('#view'), /Seating conflicts[\s\S]*Needs action/);
+    await admin.click('[data-act="cfl-alt"]');
+    await admin.waitForSelector('[data-resolve] select');
+    if (OUT) await admin.screenshot({ path: path.join(OUT, 'admin-conflict.png') });
+    await admin.goto(base + '/admin.html');
+    await admin.waitForSelector('#members tr');
+    assert.match(await admin.textContent('#members'), /EMP-008[\s\S]*yes \(admin\)|yes \(admin\)[\s\S]*EMP-008/);
+    if (OUT) await admin.screenshot({ path: path.join(OUT, 'admin-members.png'), fullPage: true });
+    await open('priya@harbor.example', '#vacation', { shot: 'vacation.png' });
+    await open('priya@harbor.example', '#team', { shot: 'team.png' });
+    await open('luca@harbor.example', '#approvals/' + vacation.id, { shot: 'approvals.png' });
+    const ana = await open('ana@harbor.example', '#week/' + next, { shot: 'week-booked.png' });
+    assert.match(await ana.textContent('.res'), /Desk Z\d/);
+    const bell = await open('priya@harbor.example', '#week/' + next);
+    await bell.click('#bell');
+    await bell.waitForSelector('#drawer:not(.hidden) .item');
+    if (OUT) await bell.screenshot({ path: path.join(OUT, 'notifications.png') });
+    await open('elena@harbor.example', `#book/zrh/${W.addDays(next, 2)}`, { width: 390, height: 844, shot: 'mobile-book.png' });
     await open('elena@harbor.example', '#week/' + next, { width: 390, height: 844, shot: 'mobile.png' });
     // Planner seating view: date-specific availability over the permanent plan.
     const ctx = await browser.newContext({ viewport: { width: 1400, height: 900 } });

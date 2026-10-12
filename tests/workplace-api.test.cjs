@@ -298,6 +298,24 @@ test('scheduling access never grants the organization chart; records stay person
   assert.equal((await call(people.owner, `/api/workplace/vacations/${vac.id}`)).decisionNote, '');
 });
 
+test('OrgFlow administrators are workplace administrators; the tick grants it to others', async t => {
+  const { call, member, people } = await setup(t);
+  const plainAdmin = await member('second-admin@test.example', 'EMP-014', 'admin', { workplaceAdmin: false });
+  assert.equal((await call(plainAdmin, '/api/session')).workplaceAdmin, true);
+  assert.equal((await call(plainAdmin, '/api/workplace/admin/sharing', { deskIds: ['desk-l1'], enabled: true }, 'PUT')).status, 200);
+  assert.equal((await call(plainAdmin, '/api/workplace/me')).workplaceAdmin, true);
+  assert.equal((await call(people.other, '/api/workplace/admin/sharing', { deskIds: ['desk-l1'], enabled: false }, 'PUT')).status, 403);
+  const facilities = await member('facilities@test.example', 'EMP-015', 'employee', { workplaceAdmin: true });
+  assert.equal((await call(facilities, '/api/workplace/admin/closures', { officeId: 'zrh', start: '2026-12-24', end: '2026-12-24', reason: 'Holiday' })).status, 201);
+  assert.equal((await call(facilities, '/api/workplace/admin/approvers', { employeeId: 'EMP-008', approverId: 'EMP-001' }, 'PUT')).status, 403, 'approver corrections stay with OrgFlow administrators');
+  // Conflict notifications reach every OrgFlow administrator and every flagged workplace administrator.
+  await call(people.owner, '/api/workplace/pattern', { weekdays: { 3: 'remote' } }, 'PUT');
+  await call(people.visitor, '/api/workplace/reservations', { deskId: 'desk-z1', date: '2026-10-14' });
+  await call(people.owner, '/api/workplace/days', { dates: ['2026-10-14'], location: 'office:zrh' }, 'PUT');
+  for (const cookie of [people.admin, plainAdmin, facilities]) assert.ok((await call(cookie, '/api/workplace/notifications')).items.some(n => n.kind === 'conflict.opened'));
+  assert.ok(!(await call(people.other, '/api/workplace/notifications')).items.some(n => n.kind === 'conflict.opened'));
+});
+
 test('planning scenarios do not affect live schedules or reservations (10)', async t => {
   const { call, people, desk } = await setup(t);
   await call(people.owner, '/api/workplace/pattern', { weekdays: { 3: 'remote' } }, 'PUT');

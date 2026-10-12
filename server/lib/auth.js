@@ -97,7 +97,7 @@ function publicSession(user, membership, tenant) {
     scopePositionId: membership.scope_position_id || '',
     orgAccess: membership.role !== 'employee',
     employeeId: membership.employee_id || '',
-    workplaceAdmin: Boolean(membership.workplace_admin)
+    workplaceAdmin: Boolean(membership.workplace_admin) || membership.role === 'admin'
   };
 }
 

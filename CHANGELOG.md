@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## 2.7.0
+
+Workplace planning on the shared enterprise host — work locations, vacation approval and desk sharing — available in the browser and as a Microsoft Teams app, plus a visual refresh. The workspace data format is unchanged (document version 3): 2.6 files, seating plans and backups open as-is.
 
 ### Workplace planning and Microsoft Teams
 
@@ -16,6 +18,19 @@ Employees plan where they work, request vacation and borrow desks in other offic
 - **Microsoft Teams**: a personal tab with Entra ID single sign-on validated on the server (pop-up sign-in as fallback; works without third-party cookies), Teams themes and deep links, and a notification-only bot. Messages carry a one-line summary and links; the in-app notification list stays authoritative, deliveries retry without duplicates. `npm run teams:package` builds the app package.
 - Records are kept beside the workspace, which keeps its format; older databases migrate on start, backups include the new tables, and retention is configurable.
 - Tests: 23 new unit, API and Teams tests covering the acceptance criteria, and `npm run test:workplace` for a browser run including the Teams tab.
+
+### Upgrade notes
+
+- **Enterprise hosts migrate their database on start**: the memberships table is rebuilt once to allow the new scheduling-only `employee` role, and new tables hold work locations, vacation requests, reservations, conflicts, reports and notifications. Back up first (`npm run backup`); the workspace document itself is untouched. To roll back, restore that backup into a 2.6 server rather than pointing 2.6 at the migrated database: 2.6 does not know the `employee` role and would let those members read the organization chart.
+- Nothing changes for existing members until you use it: link accounts to employee IDs on the Admin page, create offices in **Workplace admin**, assign rooms and enable sharing. OrgFlow administrators are workplace administrators automatically.
+- Teams is optional. Configure `TEAMS_*` and build the package with `npm run teams:package` (see TEAMS.md); without it the workplace screens run in the browser only.
+- The browser-only planner and desktop app gain the visual refresh; workplace planning needs the shared host.
+
+### Fixes
+
+- Seating tools and group filters stay usable after a shared save (the planner repaints once a server write finishes, and chip filters refresh when undo or redo changes which groups exist).
+- A browser regression test that only passed while the current month was September now commits the forecast month explicitly in Firefox and WebKit.
+- Dependency audit: `http-cache-semantics` and `fast-uri` updated within their ranges; `electron-builder` resolves to 26.17.0.
 
 ### Visual refresh
 

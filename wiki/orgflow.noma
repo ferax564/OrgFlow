@@ -47,7 +47,7 @@ Optional Node 22.16+ server (`server/`). `npm run start:enterprise` binds 127.0.
 
 | Item | Value | Source |
 | --- | --- | --- |
-| Version | 2.6.0 (stable) | `package.json`, `CHANGELOG.md` |
+| Version | 2.7.0 (stable) | `package.json`, `CHANGELOG.md` |
 | Latest commit on `main` | 2026-09-26, "Keep seating tools and group filters usable after a shared save." | git log |
 | Document format | `orgflow.workspace` document version 3 (reads v2) | `js/orgflow-core.js` |
 | Code signing | Not configured; Windows SmartScreen and macOS Gatekeeper warn on first open | `PRODUCTION_READINESS.md` |

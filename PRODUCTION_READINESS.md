@@ -1,6 +1,6 @@
-# Production readiness — 2.6.0
+# Production readiness — 2.7.0
 
-2.6.0 is a stable release shipped **without code signing**, at the owner's decision, while signing certificates are not yet available. The code and automated release gates are hardened; the pipeline signs and verifies automatically as soon as the signing secrets are configured. Until then Windows SmartScreen and macOS Gatekeeper warn on first open, and macOS builds cannot self-update.
+2.7.0 is a stable release shipped **without code signing**, at the owner's decision, while signing certificates are not yet available. The code and automated release gates are hardened; the pipeline signs and verifies automatically as soon as the signing secrets are configured. Until then Windows SmartScreen and macOS Gatekeeper warn on first open, and macOS builds cannot self-update.
 
 ## Review findings and resolutions
 
@@ -15,6 +15,7 @@
 | Server security | Static denylist, unlimited tokens, bearer administrative powers | Public asset allowlist with realpath checks; expiring scoped tokens; proposal-only integration writes; same-origin browser mutations; reject unsafe production configuration |
 | Governance | Reviewers were arbitrary labels; retries could create duplicate proposals | Resolve reviewers to actual administrator memberships, enforce assigned approval, expose review queue, and store transactional idempotency receipts |
 | Operations | No verified live backup/restore path, readiness or retention | Consistent SQLite snapshots and validated restore-to-new-destination; database readiness; graceful shutdown; bounded retention; non-root container |
+| Workplace and Teams (2.7.0) | Scheduling must not expose the organization chart; bookings must not race or overwrite seating; Teams identities and notifications must not be trusted blindly; wrong reporting lines must not strand requests | Scheduling-only role with server-side checks; reservations in separate tables with unique indexes; Entra ID tokens validated on the server and restricted to the Teams clients; header session precedence; notification outbox without duplicates; routing queue, "Not my report" and reports of wrong details |
 | Release | Old Electron vulnerabilities, incomplete update artifacts, weak release checks | Electron 44.4.3; audited lockfile; native lifecycle and three-browser CI; Windows installer; universal Mac build; manifests/blockmaps; stable tags require signing secrets |
 
 ## Assessment of the supplied recommendations
